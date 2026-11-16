@@ -20,6 +20,8 @@ export const AdminMonetizationScreen: React.FC = () => {
   const [plansList, setPlansList] = useState<any[]>([]);
   const [providersRegistry, setProvidersRegistry] = useState<any[]>([]);
   const [systemHealth, setSystemHealth] = useState<any>(null);
+  const [promoAnalytics, setPromoAnalytics] = useState<any>(null);
+  const [promoFeedback, setPromoFeedback] = useState('');
   const [backupResult, setBackupResult] = useState<any>(null);
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupError, setBackupError] = useState('');
@@ -57,7 +59,7 @@ export const AdminMonetizationScreen: React.FC = () => {
     setLoading(true);
     try {
       const headers = { 'x-user-role': 'admin' };
-      const [mRes, sRes, aRes, pRes, provRes, healthRes] = await Promise.all([
+      const [mRes, sRes, aRes, pRes, provRes, healthRes, promoRes] = await Promise.all([
         fetch('/api/admin/metrics', { headers }).then((r) => r.json()),
         fetch('/api/admin/subscriptions', { headers }).then((r) => r.json()),
         fetch('/api/admin/ads', { headers }).then((r) => r.json()),
@@ -68,11 +70,15 @@ export const AdminMonetizationScreen: React.FC = () => {
         fetch('/api/admin/system-health', { headers })
           .then((r) => (r.ok ? r.json() : fetch('/api/health').then((h) => h.json())))
           .catch(() => ({ ok: false })),
+        fetch('/api/admin/promotions', { headers })
+          .then((r) => (r.ok ? r.json() : { ok: false }))
+          .catch(() => ({ ok: false })),
       ]);
       if (mRes.ok) setMetrics(mRes.metrics);
       if (sRes.ok) setAdminData(sRes);
       if (provRes?.ok) setProvidersRegistry(provRes.providers || []);
       if (healthRes?.ok) setSystemHealth(healthRes);
+      if (promoRes?.ok) setPromoAnalytics(promoRes);
       if (aRes.ok) {
         setAdsReport(aRes);
         if (aRes.googleAdSense) {
@@ -893,6 +899,149 @@ export const AdminMonetizationScreen: React.FC = () => {
           </div>
         )}
       </section>
+
+      {/* 6. Campanha de Lançamento (50% off / 3 meses) · Conversão, Cancelamento & Renovação Pós-Promoção */}
+      {promoAnalytics?.campaign && (
+        <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold text-[#FF6A00]">
+                6. Campanhas Promocionais · {promoAnalytics.campaign.slug}
+              </p>
+              <h2 className="font-display font-bold text-lg text-[#0A2540]">
+                {promoAnalytics.campaign.nome}
+              </h2>
+              <p className="text-xs text-[#0A2540]/70">
+                Status:{' '}
+                <strong className="uppercase">
+                  {promoAnalytics.campaign.status}
+                </strong>{' '}
+                · Limite total: {promoAnalytics.campaign.limite_total_resgates}{' '}
+                resgates
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <button
+                type="button"
+                onClick={async () => {
+                  setPromoFeedback('');
+                  const nextStatus =
+                    promoAnalytics.campaign.status === 'ativo'
+                      ? 'pausado'
+                      : 'ativo';
+                  const res = await fetch(
+                    `/api/admin/promotions/${promoAnalytics.campaign.id}`,
+                    {
+                      method: 'PATCH',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'x-user-role': 'admin',
+                      },
+                      body: JSON.stringify({ status: nextStatus }),
+                    }
+                  );
+                  if (res.ok) {
+                    setPromoFeedback(
+                      `Campanha atualizada para status "${nextStatus}".`
+                    );
+                    loadAdminDashboard();
+                  }
+                }}
+                className="min-h-[38px] px-3.5 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold cursor-pointer"
+              >
+                {promoAnalytics.campaign.status === 'ativo'
+                  ? 'Pausar Campanha'
+                  : 'Reativar Campanha'}
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  setPromoFeedback('');
+                  const res = await fetch('/api/admin/promotions/notify-ending', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'x-user-role': 'admin',
+                    },
+                    body: JSON.stringify({ daysBeforeEnd: 7 }),
+                  });
+                  const body = await res.json();
+                  if (res.ok && body.ok) {
+                    setPromoFeedback(
+                      `Avisos de término (E-mail + WhatsApp) disparados para ${body.sentCount} prestador(es) no 3º ciclo.`
+                    );
+                  }
+                }}
+                className="min-h-[38px] px-4 py-2 rounded-xl bg-[#0A2540] hover:bg-[#13385d] text-white font-semibold cursor-pointer"
+              >
+                Disparar Avisos de Término (E-mail + WhatsApp)
+              </button>
+            </div>
+          </div>
+
+          {promoFeedback && (
+            <p className="p-3 rounded-xl bg-emerald-50 text-emerald-900 text-xs font-medium">
+              {promoFeedback}
+            </p>
+          )}
+
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 text-xs font-mono tabular-nums">
+            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
+              <p className="font-sans text-[#0A2540]/65">Resgates Totais</p>
+              <p className="text-lg font-bold text-[#0A2540] mt-1">
+                {promoAnalytics.metrics.totalRedemptions}
+              </p>
+              <p className="font-sans text-[11px] text-[#0A2540]/60">
+                Ativos na promo: {promoAnalytics.metrics.activeInPromoCount}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
+              <p className="font-sans text-[#0A2540]/65">Conversão da Oferta</p>
+              <p className="text-lg font-bold text-emerald-700 mt-1">
+                {promoAnalytics.metrics.conversionRatePercent}%
+              </p>
+              <p className="font-sans text-[11px] text-[#0A2540]/60">
+                Elegíveis: {promoAnalytics.metrics.eligibleChecksCount}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
+              <p className="font-sans text-[#0A2540]/65">
+                Cancelamentos na Promo
+              </p>
+              <p className="text-lg font-bold text-[#FF6A00] mt-1">
+                {promoAnalytics.metrics.cancelDuringPromoRatePercent}%
+              </p>
+              <p className="font-sans text-[11px] text-[#0A2540]/60">
+                Cancelados: {promoAnalytics.metrics.canceledDuringPromoCount}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
+              <p className="font-sans text-[#0A2540]/65">
+                Renovação Pós-Promoção
+              </p>
+              <p className="text-lg font-bold text-[#1D6FE0] mt-1">
+                {promoAnalytics.metrics.postPromoRenewalRatePercent}%
+              </p>
+              <p className="font-sans text-[11px] text-[#0A2540]/60">
+                No preço cheio: {promoAnalytics.metrics.renewedAfterPromoCount}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
+              <p className="font-sans text-[#0A2540]/65">
+                Bloqueios Antifraude
+              </p>
+              <p className="text-lg font-bold text-red-700 mt-1">
+                {promoAnalytics.metrics.blockedFraudCount}
+              </p>
+              <p className="font-sans text-[11px] text-[#0A2540]/60">
+                Multi-conta / reuso
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   );
 };

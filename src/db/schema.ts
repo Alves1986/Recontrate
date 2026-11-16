@@ -190,6 +190,74 @@ export const storageAssets = pgTable('storage_assets', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const promotionalCampaigns = pgTable('promotional_campaigns', {
+  id: text('id').primaryKey(),
+  nome: text('nome').notNull(),
+  slug: text('slug').notNull().unique(),
+  descricao: text('descricao').notNull(),
+  tipo: text('tipo').notNull().default('introducao_novos_prestadores'),
+  descontoPercentual: integer('desconto_percentual').notNull().default(50),
+  duracaoCiclos: integer('duracao_ciclos').notNull().default(3),
+  planosElegiveisJson: jsonb('planos_elegiveis_json').notNull(),
+  precoCheioJson: jsonb('preco_cheio_json').notNull(),
+  precoPromocionalJson: jsonb('preco_promocional_json').notNull(),
+  dataInicio: timestamp('data_inicio', { withTimezone: true }).notNull(),
+  dataFim: timestamp('data_fim', { withTimezone: true }).notNull(),
+  limiteTotalResgates: integer('limite_total_resgates').notNull().default(10000),
+  limitePorPrestador: integer('limite_por_prestador').notNull().default(1),
+  status: text('status').notNull().default('ativo'),
+  criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+  atualizadoEm: timestamp('atualizado_em', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const promotionalRedemptions = pgTable('promotional_redemptions', {
+  id: text('id').primaryKey(),
+  campaignId: text('campaign_id').notNull(),
+  providerProfileId: text('provider_profile_id').notNull(),
+  userId: text('user_id'),
+  subscriptionId: text('subscription_id').notNull(),
+  planoId: text('plano_id').notNull(),
+  cicloPromocionalAtual: integer('ciclo_promocional_atual').notNull().default(1),
+  dataInicioPromocao: timestamp('data_inicio_promocao', {
+    withTimezone: true,
+  }).notNull(),
+  dataFimPromocao: timestamp('data_fim_promocao', {
+    withTimezone: true,
+  }).notNull(),
+  dataRetornoPrecoCheio: timestamp('data_retorno_preco_cheio', {
+    withTimezone: true,
+  }).notNull(),
+  status: text('status').notNull().default('ativo'),
+  criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),
+  atualizadoEm: timestamp('atualizado_em', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const promotionEligibilityChecks = pgTable(
+  'promotion_eligibility_checks',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id'),
+    providerProfileId: text('provider_profile_id'),
+    campaignId: text('campaign_id').notNull(),
+    emailNormalizado: text('email_normalizado').notNull().default(''),
+    telefoneNormalizado: text('telefone_normalizado').notNull().default(''),
+    documentoNormalizado: text('documento_normalizado').notNull().default(''),
+    fingerprintDispositivo: text('fingerprint_dispositivo')
+      .notNull()
+      .default(''),
+    ipHash: text('ip_hash').notNull().default(''),
+    resultado: text('resultado').notNull(),
+    motivo: text('motivo').notNull().default(''),
+    criadoEm: timestamp('criado_em', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  }
+);
+
 export type PlanRow = typeof plans.$inferSelect;
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 export type SubscriptionEventRow = typeof subscriptionEvents.$inferSelect;

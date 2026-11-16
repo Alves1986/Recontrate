@@ -375,6 +375,22 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       }
     }
 
+    const { rows: mig4Check } = await directPool.query(
+      `SELECT 1 FROM information_schema.tables
+       WHERE table_schema = 'public'
+         AND table_name = 'promotional_campaigns'`
+    );
+    if (mig4Check.length === 0) {
+      const phase4CampaignMigrationPath = path.resolve(
+        process.cwd(),
+        'migrations/004_launch_offer_campaign.sql'
+      );
+      if (existsSync(phase4CampaignMigrationPath)) {
+        const migration4Sql = readFileSync(phase4CampaignMigrationPath, 'utf-8');
+        await directPool.query(migration4Sql);
+      }
+    }
+
     const structuralCategories = [
       {
         slug: 'eletricista',
@@ -477,6 +493,32 @@ export async function ensureSchemaAndSeed(): Promise<void> {
         ]
       );
     }
+
+    // Seed da Campanha de Lançamento (50% off nos 3 primeiros meses para novos prestadores)
+    await directPool.query(
+      `INSERT INTO promotional_campaigns (
+        id, nome, slug, descricao, tipo, desconto_percentual, duracao_ciclos,
+        planos_elegiveis_json, preco_cheio_json, preco_promocional_json,
+        data_inicio, data_fim, limite_total_resgates, limite_por_prestador, status
+      ) VALUES (
+        'camp-lancamento-50-off',
+        'Oferta de lançamento: 50% de desconto nos 3 primeiros meses',
+        'lancamento-50-off-3-meses',
+        'Válida apenas para a primeira assinatura mensal paga de novos prestadores nos planos Essencial, Profissional, Premium e Padrinho. A partir do 4º mês aplica-se o preço cheio.',
+        'introducao_novos_prestadores',
+        50,
+        3,
+        '["essencial","profissional","premium","padrinho"]'::jsonb,
+        '{"essencial":2990,"profissional":5990,"premium":9990,"padrinho":9990}'::jsonb,
+        '{"essencial":1495,"profissional":2995,"premium":4995,"padrinho":4995}'::jsonb,
+        NOW() - INTERVAL '1 day',
+        NOW() + INTERVAL '180 days',
+        10000,
+        1,
+        'ativo'
+      )
+      ON CONFLICT (slug) DO NOTHING`
+    );
 
     if (process.env.NODE_ENV !== 'production') {
       const devProviders = [

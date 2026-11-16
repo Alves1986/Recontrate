@@ -218,13 +218,33 @@ export const BillingCycleToggle: React.FC<{
   );
 };
 
+export interface LaunchOfferCardState {
+  eligible: boolean;
+  promoPricesCentavos: Record<string, number>;
+  fullPricesCentavos: Record<string, number>;
+  durationCycles: number;
+  fullPriceStartDate?: string;
+}
+
 export const PlanCard: React.FC<{
   plan: PlanPricingDisplay;
   cycle: BillingCycleOption;
+  launchOffer?: LaunchOfferCardState | null;
   onSelectPlan: (planSlug: string, cycle: BillingCycleOption) => void;
-}> = ({ plan, cycle, onSelectPlan }) => {
+}> = ({ plan, cycle, launchOffer, onSelectPlan }) => {
   const isProfissional = plan.slug === 'profissional';
   const isPadrinho = plan.slug === 'padrinho';
+  const hasLaunchOfferForPlan =
+    cycle === 'mensal' &&
+    Boolean(launchOffer?.eligible) &&
+    plan.slug !== 'gratuito' &&
+    typeof launchOffer?.promoPricesCentavos?.[plan.slug] === 'number';
+  const promoPriceCents = hasLaunchOfferForPlan
+    ? launchOffer!.promoPricesCentavos[plan.slug]
+    : null;
+  const fullPriceStartLabel = launchOffer?.fullPriceStartDate
+    ? new Date(launchOffer.fullPriceStartDate).toLocaleDateString('pt-BR')
+    : null;
   const monthlyEquivalent = calculateAnnualMonthlyEquivalentCentavos(
     plan.precoAnualCentavos
   );
@@ -263,31 +283,80 @@ export const PlanCard: React.FC<{
         {/* Preço sempre visível */}
         <div className="space-y-1">
           {cycle === 'mensal' ? (
-            <>
-              <div className="flex items-baseline gap-1 font-mono tabular-nums">
-                <span className="text-2xl sm:text-3xl font-bold">
-                  {plan.precoMensalCentavos === 0
-                    ? 'R$ 0'
-                    : formatCentavosBRL(plan.precoMensalCentavos)}
+            hasLaunchOfferForPlan && promoPriceCents !== null ? (
+              <div className="space-y-1">
+                <span className="inline-block px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-bold">
+                  {isProfissional ? (
+                    'Oferta de lançamento: 50% off'
+                  ) : (
+                    <span className="text-emerald-700">
+                      Oferta de lançamento: 50% off
+                    </span>
+                  )}
                 </span>
-                <span
-                  className={`text-xs ${
-                    isProfissional ? 'text-white/70' : 'text-[#0A2540]/60'
+                <div className="flex items-baseline gap-1 font-mono tabular-nums">
+                  <span className="text-2xl sm:text-3xl font-bold">
+                    {formatCentavosBRL(promoPriceCents)}
+                  </span>
+                  <span
+                    className={`text-xs ${
+                      isProfissional ? 'text-white/75' : 'text-[#0A2540]/70'
+                    }`}
+                  >
+                    /mês
+                  </span>
+                </div>
+                <p
+                  className={`text-[11px] font-semibold ${
+                    isProfissional ? 'text-[#FF6A00]' : 'text-[#1D6FE0]'
                   }`}
                 >
-                  /mês
-                </span>
+                  Válido nos {launchOffer?.durationCycles || 3} primeiros meses
+                </p>
+                <p
+                  className={`text-[11px] line-through ${
+                    isProfissional ? 'text-white/55' : 'text-[#0A2540]/50'
+                  }`}
+                >
+                  Preço normal: {formatCentavosBRL(plan.precoMensalCentavos)}/mês
+                </p>
+                <p
+                  className={`text-[11px] ${
+                    isProfissional ? 'text-white/80' : 'text-[#0A2540]/75'
+                  }`}
+                >
+                  A partir do 4º mês:{' '}
+                  {formatCentavosBRL(plan.precoMensalCentavos)}/mês
+                  {fullPriceStartLabel ? ` (${fullPriceStartLabel})` : ''}
+                </p>
               </div>
-              <p
-                className={`text-[11px] ${
-                  isProfissional ? 'text-white/75' : 'text-[#0A2540]/65'
-                }`}
-              >
-                {plan.precoMensalCentavos === 0
-                  ? 'Sem cartão de crédito'
-                  : 'Cancele a qualquer momento'}
-              </p>
-            </>
+            ) : (
+              <>
+                <div className="flex items-baseline gap-1 font-mono tabular-nums">
+                  <span className="text-2xl sm:text-3xl font-bold">
+                    {plan.precoMensalCentavos === 0
+                      ? 'R$ 0'
+                      : formatCentavosBRL(plan.precoMensalCentavos)}
+                  </span>
+                  <span
+                    className={`text-xs ${
+                      isProfissional ? 'text-white/70' : 'text-[#0A2540]/60'
+                    }`}
+                  >
+                    /mês
+                  </span>
+                </div>
+                <p
+                  className={`text-[11px] ${
+                    isProfissional ? 'text-white/75' : 'text-[#0A2540]/65'
+                  }`}
+                >
+                  {plan.precoMensalCentavos === 0
+                    ? 'Sem cartão de crédito'
+                    : 'Cancele a qualquer momento'}
+                </p>
+              </>
+            )
           ) : (
             <>
               <div className="flex items-baseline gap-1 font-mono tabular-nums">
@@ -511,6 +580,9 @@ export const PlansPricingPage: React.FC<{
   const [cycle, setCycle] = useState<BillingCycleOption>('mensal');
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'cartao' | 'boleto'>('pix');
   const [subSummary, setSubSummary] = useState<any>(null);
+  const [launchOffer, setLaunchOffer] = useState<LaunchOfferCardState | null>(
+    null
+  );
   const [actionLoading, setActionLoading] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<{
     type: 'success' | 'error';
@@ -549,6 +621,30 @@ export const PlansPricingPage: React.FC<{
   useEffect(() => {
     loadSubscription();
   }, [loadSubscription]);
+
+  useEffect(() => {
+    const params = new URLSearchParams({ cycle });
+    if (providerContext?.providerProfileId) {
+      params.set('providerProfileId', providerContext.providerProfileId);
+    }
+    if (providerContext?.email) {
+      params.set('email', providerContext.email);
+    }
+    fetch(`/api/promotions/launch-offer/eligibility?${params.toString()}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (body?.ok) {
+          setLaunchOffer({
+            eligible: Boolean(body.eligible),
+            promoPricesCentavos: body.promoPricesCentavos || {},
+            fullPricesCentavos: body.fullPricesCentavos || {},
+            durationCycles: Number(body.durationCycles || 3),
+            fullPriceStartDate: body.fullPriceStartDate,
+          });
+        }
+      })
+      .catch(() => null);
+  }, [cycle, providerContext?.providerProfileId, providerContext?.email]);
 
   const handleSelectPlan = async (
     planSlug: string,
@@ -625,6 +721,11 @@ export const PlansPricingPage: React.FC<{
       }
 
       // Novo checkout no gateway Asaas (desacoplado via BillingProvider)
+      const shouldApplyLaunchOffer =
+        Boolean(launchOffer?.eligible) &&
+        selectedCycle === 'mensal' &&
+        planSlug !== 'gratuito';
+
       const res = await fetch('/api/subscriptions/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -636,6 +737,7 @@ export const PlansPricingPage: React.FC<{
           planSlug,
           cycle: selectedCycle,
           paymentMethod,
+          applyLaunchOffer: shouldApplyLaunchOffer,
         }),
       });
       const body = await res.json();
@@ -713,6 +815,15 @@ export const PlansPricingPage: React.FC<{
         </div>
 
         <BillingCycleToggle cycle={cycle} onChange={setCycle} />
+
+        {cycle === 'mensal' && launchOffer?.eligible && (
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6A00]/10 border border-[#FF6A00]/30 text-[#0A2540] text-xs font-bold">
+            <Sparkles className="w-4 h-4 text-[#FF6A00]" />
+            <span>
+              Oferta de lançamento: 50% off nos 3 primeiros meses para novos prestadores
+            </span>
+          </div>
+        )}
 
         {isLoggedProvider && providerContext && (
           <div className="max-w-4xl mx-auto pt-3 border-t border-[#0A2540]/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-left text-xs">
@@ -799,6 +910,7 @@ export const PlansPricingPage: React.FC<{
               key={plan.slug}
               plan={plan}
               cycle={cycle}
+              launchOffer={launchOffer}
               onSelectPlan={handleSelectPlan}
             />
           ))}

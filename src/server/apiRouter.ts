@@ -32,6 +32,12 @@ import { createPhase1Router } from './phase1Routes';
 import { extractBearerOrCookieToken } from './authMiddleware';
 import { AuthService } from '../services/authService';
 import { MonitoringAndBackupService } from '../services/monitoringAndBackupService';
+import {
+  checkLaunchOfferEligibility,
+  getLaunchOfferAdminAnalytics,
+  notifyUpcomingLaunchOfferEnd,
+  updateLaunchOfferCampaign,
+} from '../services/launchOfferService';
 
 const lifecycleService = new SubscriptionLifecycleService();
 const limitService = new OpportunityLimitService();
@@ -137,6 +143,9 @@ const CheckoutSchema = z.object({
   ]),
   cycle: z.enum(['mensal', 'anual']).default('mensal'),
   paymentMethod: z.enum(['pix', 'cartao', 'boleto']).default('pix'),
+  applyLaunchOffer: z.boolean().optional(),
+  cpfCnpj: z.string().optional(),
+  deviceFingerprint: z.string().optional(),
 });
 
 const UpgradeSchema = z.object({
@@ -259,13 +268,59 @@ export function createApiRouter(): express.Router {
     }
   });
 
+  router.get('/promotions/launch-offer/eligibility', async (req, res) => {
+    try {
+      const providerProfileId = req.query.providerProfileId
+        ? String(req.query.providerProfileId)
+        : undefined;
+      const email = req.query.email ? String(req.query.email) : undefined;
+      const phone = req.query.phone ? String(req.query.phone) : undefined;
+      const cpfCnpj = req.query.cpfCnpj ? String(req.query.cpfCnpj) : undefined;
+      const planSlug = req.query.planSlug
+        ? String(req.query.planSlug)
+        : undefined;
+      const cycle = req.query.cycle ? String(req.query.cycle) : 'mensal';
+      const deviceFingerprint = req.query.deviceFingerprint
+        ? String(req.query.deviceFingerprint)
+        : undefined;
+
+      const eligibility = await checkLaunchOfferEligibility(
+        {
+          userId: req.authSession?.userId || null,
+          email,
+          phone,
+          cpfCnpj,
+          deviceFingerprint,
+          ipAddress: req.ip,
+        },
+        {
+          providerProfileId,
+          whatsapp: phone,
+          cpfCnpj,
+        },
+        {
+          planSlug,
+          cycle,
+        }
+      );
+
+      res.json({ ok: true, ...eligibility });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
   router.post(
     '/subscriptions/checkout',
     rateLimit(30),
     async (req, res) => {
       try {
         const parsed = CheckoutSchema.parse(req.body);
-        const result = await lifecycleService.startCheckout(parsed);
+        const result = await lifecycleService.startCheckout({
+          ...parsed,
+          ipAddress: req.ip,
+          userId: req.authSession?.userId,
+        });
         res.status(201).json({ ok: true, ...result });
       } catch (err) {
         res.status(400).json({ ok: false, error: (err as Error).message });
@@ -509,6 +564,55 @@ export function createApiRouter(): express.Router {
       res.status(400).json({ ok: false, error: (err as Error).message });
     }
   });
+
+  // 5.4. Admin Promotional Campaigns & Conversion/Retention Reports
+  router.get('/admin/promotions', requireAdminRole, async (_req, res) => {
+    try {
+      const analytics = await getLaunchOfferAdminAnalytics();
+      res.json({ ok: true, ...analytics });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.patch(
+    '/admin/promotions/:campaignId',
+    requireAdminRole,
+    async (req, res) => {
+      try {
+        const schema = z.object({
+          status: z
+            .enum(['rascunho', 'ativo', 'pausado', 'encerrado'])
+            .optional(),
+          dataInicio: z.string().optional(),
+          dataFim: z.string().optional(),
+          limiteTotalResgates: z.number().int().min(1).optional(),
+        });
+        const parsed = schema.parse(req.body || {});
+        const updated = await updateLaunchOfferCampaign(
+          req.params.campaignId,
+          parsed
+        );
+        res.json({ ok: true, campaign: updated });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post(
+    '/admin/promotions/notify-ending',
+    requireAdminRole,
+    async (req, res) => {
+      try {
+        const daysBeforeEnd = Number(req.body?.daysBeforeEnd ?? 7);
+        const result = await notifyUpcomingLaunchOfferEnd(daysBeforeEnd);
+        res.json({ ok: true, ...result });
+      } catch (err) {
+        res.status(500).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
 
   // 5.5. Admin System Health, Backups & Error Alerts
   router.get('/admin/system-health', requireAdminRole, async (_req, res) => {

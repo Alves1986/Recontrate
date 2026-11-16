@@ -21,6 +21,12 @@ import {
   TransactionalEmailService,
   WhatsAppBusinessService,
 } from './essentialIntegrations';
+import {
+  advancePromotionalCycleOrReturnFullPrice,
+  checkLaunchOfferEligibility,
+  forfeitLaunchOfferOnCancel,
+  recordLaunchOfferRedemption,
+} from './launchOfferService';
 
 const emailService = new TransactionalEmailService();
 const whatsappService = new WhatsAppBusinessService();
@@ -177,15 +183,58 @@ export class SubscriptionLifecycleService {
     cycle: BillingCycle;
     paymentMethod: PaymentMethod;
     startWithTrial?: boolean;
+    applyLaunchOffer?: boolean;
+    cpfCnpj?: string;
+    deviceFingerprint?: string;
+    ipAddress?: string;
+    userId?: string;
   }) {
     await ensureSchemaAndSeed();
     const plan = await this.getPlanBySlug(input.planSlug);
     const now = new Date();
     const fim = calculateCycleEndDate(now, input.cycle);
-    const amountCents =
+    let amountCents =
       input.cycle === 'anual'
         ? plan.precoAnualCentavos
         : plan.precoMensalCentavos;
+
+    let appliedCampaignId: string | null = null;
+    let appliedRedemption: any = null;
+
+    if (input.applyLaunchOffer) {
+      const eligibility = await checkLaunchOfferEligibility(
+        {
+          userId: input.userId,
+          email: input.providerEmail,
+          phone: input.providerPhone,
+          cpfCnpj: input.cpfCnpj,
+          deviceFingerprint: input.deviceFingerprint,
+          ipAddress: input.ipAddress,
+        },
+        {
+          providerProfileId: input.providerProfileId,
+          whatsapp: input.providerPhone,
+          cpfCnpj: input.cpfCnpj,
+        },
+        {
+          planSlug: plan.slug,
+          cycle: input.cycle,
+          now,
+        }
+      );
+
+      if (!eligibility.eligible || !eligibility.campaignId) {
+        throw new Error(
+          eligibility.reason ||
+          'Não foi possível validar sua elegibilidade. Fale com o suporte.'
+        );
+      }
+
+      if (typeof eligibility.selectedPlanPromoCentavos === 'number') {
+        amountCents = eligibility.selectedPlanPromoCentavos;
+        appliedCampaignId = eligibility.campaignId;
+      }
+    }
 
     const customer = await this.billing.createCustomer({
       providerProfileId: input.providerProfileId,
@@ -211,8 +260,8 @@ export class SubscriptionLifecycleService {
     const initialStatus: SubscriptionStatus = input.startWithTrial
       ? 'trial'
       : amountCents === 0
-      ? 'ativa'
-      : 'pendente';
+        ? 'ativa'
+        : 'pendente';
 
     const [createdSub] = await db
       .insert(subscriptions)
@@ -271,11 +320,25 @@ export class SubscriptionLifecycleService {
         .where(eq(providerProfiles.id, input.providerProfileId));
     }
 
+    if (appliedCampaignId) {
+      appliedRedemption = await recordLaunchOfferRedemption({
+        campaignId: appliedCampaignId,
+        providerProfileId: input.providerProfileId,
+        userId: input.userId,
+        subscriptionId: subId,
+        planId: plan.id,
+        cpfCnpj: input.cpfCnpj,
+        now,
+      });
+    }
+
     return {
       subscription: createdSub,
       invoice: createdInvoice,
       plan,
       checkoutUrl: gatewaySub.checkoutUrl,
+      launchOfferApplied: Boolean(appliedCampaignId),
+      launchOfferRedemption: appliedRedemption,
     };
   }
 
@@ -330,6 +393,32 @@ export class SubscriptionLifecycleService {
       dadosNovos: { status: 'ativa', planSlug: plan.slug },
       gatewayEventId,
     });
+
+    // Se já era uma assinatura ativa (renovação mensal), avança o ciclo promocional e agenda retorno ao preço cheio no 4º ciclo
+    if (sub.status === 'ativa') {
+      const promoAdvance = await advancePromotionalCycleOrReturnFullPrice(
+        sub.id,
+        now
+      );
+      if (promoAdvance.returnedToFullPrice && sub.gatewaySubscriptionId) {
+        await this.billing.updateSubscription(sub.gatewaySubscriptionId, {
+          planSlug: plan.slug,
+          planName: plan.nome,
+          amountCents: plan.precoMensalCentavos,
+          cycle: sub.ciclo as BillingCycle,
+        });
+        await this.logEvent({
+          subscriptionId: sub.id,
+          evento: 'promotion_returned_to_full_price',
+          dadosNovos: {
+            planSlug: plan.slug,
+            fullPriceCentavos: plan.precoMensalCentavos,
+            cycleNumber: promoAdvance.cycleNumber,
+          },
+          gatewayEventId,
+        });
+      }
+    }
 
     // Envia confirmação por E-mail e WhatsApp de forma resiliente
     try {
@@ -462,6 +551,8 @@ export class SubscriptionLifecycleService {
       })
       .where(eq(subscriptions.id, subscriptionId))
       .returning();
+
+    await forfeitLaunchOfferOnCancel(subscriptionId, now);
 
     await this.logEvent({
       subscriptionId: sub.id,
