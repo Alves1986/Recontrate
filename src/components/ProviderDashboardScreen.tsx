@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Bell,
   CheckCircle2,
@@ -152,6 +152,72 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   const [realtimeNotifications, setRealtimeNotifications] = useState<
     ProviderRealtimeNotification[]
   >(INITIAL_PROVIDER_NOTIFICATIONS);
+  const [sponsoredAd, setSponsoredAd] = useState<any | null>(null);
+  const [sessionBannersShown, setSessionBannersShown] = useState(0);
+  const [adClickConfirmed, setAdClickConfirmed] = useState(false);
+
+  useEffect(() => {
+    if (activeProvider.plan !== 'Gratuito') {
+      setSponsoredAd(null);
+      return;
+    }
+    if (sessionBannersShown >= 1) {
+      return;
+    }
+
+    let cancelled = false;
+    fetch(
+      `/api/ads/provider-panel?surface=painel_prestador&providerProfileId=${encodeURIComponent(
+        activeProvider.id
+      )}&sessionBannersShown=${sessionBannersShown}`
+    )
+      .then((r) => r.json())
+      .then((body) => {
+        if (!cancelled && body.ok && body.ad) {
+          setSponsoredAd(body.ad);
+          setSessionBannersShown(1);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSponsoredAd({
+            id: 'ad-ferramentas-1',
+            badge: 'Patrocinado',
+            nome: 'Kit Alicate Amperímetro Digital True RMS + EPI NR-10',
+            categoria: 'ferramentas',
+            anunciante: 'Casa do Eletricista & Ferramentas SP',
+            texto:
+              'Desconto de 15% para autônomos verificados em instrumentos de medição, EPIs certificados e materiais elétricos.',
+            linkDestino: 'https://fornecedores.confiare.com.br/ferramentas-nr10',
+            dailyImpressionsUsed: 1,
+            dailyImpressionsLimit: 3,
+          });
+          setSessionBannersShown(1);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProvider.id, activeProvider.plan, sessionBannersShown]);
+
+  const handleTrackAdClick = async () => {
+    if (!sponsoredAd) return;
+    setAdClickConfirmed(true);
+    try {
+      const res = await fetch(`/api/ads/${sponsoredAd.id}/click`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providerProfileId: activeProvider.id }),
+      });
+      const body = await res.json();
+      if (body.ok && body.ad) {
+        setSponsoredAd((prev: any) => (prev ? { ...prev, ...body.ad } : prev));
+      }
+    } catch {
+      // Offline preview fallback
+    }
+  };
 
   const currentPlanConfig =
     PLANS_CONFIG.find((p) => p.tier === activeProvider.plan) || PLANS_CONFIG[0];
@@ -733,31 +799,47 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       )}
 
       {/* ESPAÇO PUBLICITÁRIO MODERADO — EXIBIDO EXCLUSIVAMENTE NO PLANO GRATUITO NO PAINEL DO PRESTADOR */}
-      {activeProvider.plan === 'Gratuito' && (
+      {activeProvider.plan === 'Gratuito' && sponsoredAd && (
         <aside
           aria-label="Oferta Patrocinada para Prestadores"
-          className="bg-white rounded-2xl p-4 border border-[#0A2540]/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs"
+          className="bg-white rounded-2xl p-4 sm:p-5 border border-[#0A2540]/10 flex flex-col lg:flex-row lg:items-center justify-between gap-4 text-xs"
         >
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="px-2 py-0.5 rounded bg-[#0A2540]/10 text-[#0A2540] font-mono text-[10px] font-bold uppercase">
-                Patrocinado
+                {sponsoredAd.badge || 'Patrocinado'}
               </span>
               <span className="font-semibold text-[#1D6FE0]">
-                Ferramentas & EPIs Certificados NR-10 (Máx. 1 banner/sessão · 3/dia)
+                {sponsoredAd.nome} · {sponsoredAd.anunciante}
+              </span>
+              <span className="text-[11px] font-mono text-[#0A2540]/60">
+                (1 banner/sessão · {sponsoredAd.dailyImpressionsUsed || 1}/
+                {sponsoredAd.dailyImpressionsLimit || 3} impressões hoje)
               </span>
             </div>
-            <p className="text-[#0A2540]/80">
-              Kit Alicate Amperímetro True RMS e EPIs com 15% de desconto para autônomos cadastrados na Confiare. (Mude para o plano Essencial para remover anúncios).
+            <p className="text-[#0A2540]/80">{sponsoredAd.texto}</p>
+            <p className="text-[11px] text-[#0A2540]/60">
+              Privacidade garantida: nenhum dado pessoal ou sensível seu é compartilhado com anunciantes.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setActiveTab('plano')}
-            className="px-3.5 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold whitespace-nowrap cursor-pointer"
-          >
-            Remover anúncios (Upgrade)
-          </button>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleTrackAdClick}
+              className="px-3.5 py-2 rounded-xl bg-[#0A2540] hover:bg-[#13385c] text-white font-semibold whitespace-nowrap cursor-pointer"
+            >
+              {adClickConfirmed
+                ? '✓ Clique registrado na oferta'
+                : 'Ver oferta para prestadores'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('plano')}
+              className="px-3.5 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold whitespace-nowrap cursor-pointer"
+            >
+              Remover anúncios (Upgrade)
+            </button>
+          </div>
         </aside>
       )}
     </div>

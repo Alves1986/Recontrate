@@ -1,14 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  BarChart3,
-  CheckCircle2,
-  DollarSign,
-  FileText,
-  Megaphone,
+  Pause,
+  Play,
   RefreshCw,
-  ShieldAlert,
-  TrendingUp,
-  Users,
+  Trash2,
 } from 'lucide-react';
 
 function formatBRLFromCents(cents: number): string {
@@ -21,17 +16,28 @@ function formatBRLFromCents(cents: number): string {
 export const AdminMonetizationScreen: React.FC = () => {
   const [metrics, setMetrics] = useState<any>(null);
   const [adminData, setAdminData] = useState<any>(null);
+  const [adsReport, setAdsReport] = useState<any>(null);
   const [plansList, setPlansList] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [adForm, setAdForm] = useState({
     nome: '',
+    tipo: 'banner_painel_prestador' as
+      | 'banner_painel_prestador'
+      | 'banner_perfil_prestador'
+      | 'card_oferta',
     categoria: 'ferramentas',
     anunciante: '',
     texto: '',
     linkDestino: 'https://fornecedores.confiare.com.br',
-    imagemUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758',
+    imagemUrl:
+      'https://images.unsplash.com/photo-1581092160607-ee22621dd758',
+    prioridade: 5,
+    dataInicio: new Date().toISOString().slice(0, 10),
+    dataFim: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10),
   });
   const [adFeedback, setAdFeedback] = useState('');
 
@@ -39,13 +45,15 @@ export const AdminMonetizationScreen: React.FC = () => {
     setLoading(true);
     try {
       const headers = { 'x-user-role': 'admin' };
-      const [mRes, sRes, pRes] = await Promise.all([
+      const [mRes, sRes, aRes, pRes] = await Promise.all([
         fetch('/api/admin/metrics', { headers }).then((r) => r.json()),
         fetch('/api/admin/subscriptions', { headers }).then((r) => r.json()),
+        fetch('/api/admin/ads', { headers }).then((r) => r.json()),
         fetch('/api/plans').then((r) => r.json()),
       ]);
       if (mRes.ok) setMetrics(mRes.metrics);
       if (sRes.ok) setAdminData(sRes);
+      if (aRes.ok) setAdsReport(aRes);
       if (pRes.ok) setPlansList(pRes.plans || []);
     } catch (err) {
       console.error('Erro ao carregar painel admin:', err);
@@ -70,7 +78,9 @@ export const AdminMonetizationScreen: React.FC = () => {
         },
         body: JSON.stringify({
           ...adForm,
-          tipo: 'banner_painel_prestador',
+          prioridade: Number(adForm.prioridade) || 5,
+          dataInicio: new Date(adForm.dataInicio).toISOString(),
+          dataFim: new Date(adForm.dataFim).toISOString(),
         }),
       });
       const body = await res.json();
@@ -83,6 +93,43 @@ export const AdminMonetizationScreen: React.FC = () => {
       loadAdminDashboard();
     } catch (err) {
       setAdFeedback(`Falha: ${(err as Error).message}`);
+    }
+  };
+
+  const handleToggleAdStatus = async (ad: any) => {
+    const nextStatus = ad.status === 'ativo' ? 'pausado' : 'ativo';
+    try {
+      const res = await fetch(`/api/admin/ads/${ad.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': 'admin',
+        },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      if (res.ok) {
+        setAdFeedback(
+          `Anúncio "${ad.nome}" atualizado para status "${nextStatus}".`
+        );
+        loadAdminDashboard();
+      }
+    } catch (err) {
+      setAdFeedback(`Falha ao atualizar anúncio: ${(err as Error).message}`);
+    }
+  };
+
+  const handleDeleteAd = async (ad: any) => {
+    try {
+      const res = await fetch(`/api/admin/ads/${ad.id}`, {
+        method: 'DELETE',
+        headers: { 'x-user-role': 'admin' },
+      });
+      if (res.ok) {
+        setAdFeedback(`Anúncio "${ad.nome}" removido com sucesso.`);
+        loadAdminDashboard();
+      }
+    } catch (err) {
+      setAdFeedback(`Falha ao remover anúncio: ${(err as Error).message}`);
     }
   };
 
@@ -109,10 +156,10 @@ export const AdminMonetizationScreen: React.FC = () => {
             Governança Financeira & Operacional · Asaas + Neon Lakebase Postgres
           </p>
           <h1 className="font-display font-bold text-2xl sm:text-3xl">
-            Painel Administrativo — Monetização, Assinaturas e Anúncios
+            Painel Administrativo — Monetização, Assinaturas e Anúncios Moderados
           </h1>
           <p className="text-xs sm:text-sm text-white/80">
-            Métricas de MRR, ARR, churn, conversão, auditoria de webhooks idempotentes, limites por plano e publicidade moderada.
+            Métricas de MRR, ARR, churn, conversão, auditoria de webhooks idempotentes, CRUD de anúncios e relatórios de CTR e receita estimada.
           </p>
         </div>
 
@@ -255,91 +302,64 @@ export const AdminMonetizationScreen: React.FC = () => {
         </div>
       </section>
 
-      {/* Subscriptions & Webhook Events Audit */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <section className="lg:col-span-7 bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-semibold text-[#1D6FE0]">
-                2. Assinaturas & Ciclo de Vida
-              </p>
-              <h2 className="font-display font-bold text-lg text-[#0A2540]">
-                Busca por Prestador, Plano e Status ({filteredSubscriptions.length})
-              </h2>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <input
-                type="text"
-                placeholder="Buscar prestador ou plano..."
-                value={searchFilter}
-                onChange={(e) => setSearchFilter(e.target.value)}
-                className="px-3 py-1.5 rounded-xl border border-[#0A2540]/15 text-xs"
-              />
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 rounded-xl border border-[#0A2540]/15 text-xs bg-white"
-              >
-                <option value="todos">Todos os status</option>
-                <option value="ativa">Ativa</option>
-                <option value="pendente">Pendente</option>
-                <option value="inadimplente">Inadimplente (Tolerância)</option>
-                <option value="cancelada">Cancelada</option>
-                <option value="expirada">Expirada</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="max-h-72 overflow-y-auto divide-y divide-[#0A2540]/10 text-xs">
-            {filteredSubscriptions.slice(0, 12).map((s: any) => (
-              <div
-                key={s.id}
-                className="py-2.5 flex flex-wrap items-center justify-between gap-2"
-              >
-                <div>
-                  <p className="font-semibold text-[#0A2540]">
-                    Prestador: {s.providerProfileId} · Plano: {s.planId}
-                  </p>
-                  <p className="text-[#0A2540]/65 font-mono">
-                    ID: {s.id} · Ciclo: {s.ciclo}
-                  </p>
-                </div>
-                <span className="px-2.5 py-1 rounded-lg bg-[#F4F2EF] font-mono font-semibold text-[#0A2540]">
-                  {s.status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Moderated Ad Slot Creator */}
-        <section className="lg:col-span-5 bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4">
+      {/* CRUD Administrativo de Anúncios + Relatório de Impressões, Cliques, CTR e Receita Estimada */}
+      <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#0A2540]/10 pb-4">
           <div>
             <p className="text-xs font-semibold text-[#FF6A00]">
-              3. Administrador de Anúncios Moderados
+              2. Administrador de Anúncios Moderados (Exclusivo Plano Gratuito · Painel do Prestador)
             </p>
             <h2 className="font-display font-bold text-lg text-[#0A2540]">
-              Cadastrar Patrocínio para Painel Gratuito
+              CRUD de Anúncios e Relatório de Impressões, Cliques, CTR e Receita Estimada
             </h2>
-            <p className="text-xs text-[#0A2540]/70">
-              Bloqueio automático de apostas, empréstimos predatórios, conteúdo adulto e concorrentes. Zero exibição para clientes.
+            <p className="text-xs text-[#0A2540]/70 mt-0.5">
+              Limites ativos: máx. 1 banner por sessão · máx. 3 impressões/prestador/dia · 0 anúncios no fluxo do cliente · Selo obrigatório &quot;Patrocinado&quot;.
             </p>
           </div>
 
-          <form onSubmit={handleCreateAd} className="space-y-3 text-xs">
+          {adsReport && (
+            <div className="flex flex-wrap items-center gap-3 text-xs font-mono bg-[#F4F2EF] px-4 py-2.5 rounded-2xl">
+              <span>
+                <strong>Impressões:</strong> {adsReport.totalImpressions}
+              </span>
+              <span>·</span>
+              <span>
+                <strong>Cliques:</strong> {adsReport.totalClicks}
+              </span>
+              <span>·</span>
+              <span>
+                <strong>CTR:</strong> {adsReport.ctrPercent}%
+              </span>
+              <span>·</span>
+              <span className="text-[#1D6FE0] font-bold">
+                Receita Est.: {formatBRLFromCents(adsReport.estimatedRevenueCents)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Formulário de Criação/Agendamento */}
+          <form
+            onSubmit={handleCreateAd}
+            className="lg:col-span-5 bg-[#F4F2EF]/60 rounded-2xl p-4 border border-[#0A2540]/10 space-y-3 text-xs"
+          >
+            <p className="font-semibold text-[#0A2540]">
+              Criar e Agendar Novo Anúncio Patrocinado
+            </p>
             <input
               type="text"
               required
-              placeholder="Título da oferta (ex: Alicate Amperímetro NR-10)"
+              placeholder="Título (ex: Alicate Amperímetro NR-10)"
               value={adForm.nome}
               onChange={(e) =>
                 setAdForm((prev) => ({ ...prev, nome: e.target.value }))
               }
-              className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15"
+              className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
             />
             <div className="grid grid-cols-2 gap-2">
               <select
+                aria-label="Categoria do anúncio"
                 value={adForm.categoria}
                 onChange={(e) =>
                   setAdForm((prev) => ({ ...prev, categoria: e.target.value }))
@@ -355,6 +375,27 @@ export const AdminMonetizationScreen: React.FC = () => {
                 <option value="credito_empresarial">Crédito Empresarial</option>
                 <option value="fornecedores_locais">Fornecedores Locais</option>
               </select>
+              <select
+                aria-label="Tipo de slot do anúncio"
+                value={adForm.tipo}
+                onChange={(e) =>
+                  setAdForm((prev) => ({
+                    ...prev,
+                    tipo: e.target.value as any,
+                  }))
+                }
+                className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
+              >
+                <option value="banner_painel_prestador">
+                  Banner Painel Prestador
+                </option>
+                <option value="card_oferta">Card Oferta</option>
+                <option value="banner_perfil_prestador">
+                  Banner Perfil Prestador
+                </option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
               <input
                 type="text"
                 required
@@ -363,8 +404,49 @@ export const AdminMonetizationScreen: React.FC = () => {
                 onChange={(e) =>
                   setAdForm((prev) => ({ ...prev, anunciante: e.target.value }))
                 }
-                className="px-3 py-2 rounded-xl border border-[#0A2540]/15"
+                className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
               />
+              <input
+                type="number"
+                min={1}
+                max={100}
+                placeholder="Prioridade (1-100)"
+                value={adForm.prioridade}
+                onChange={(e) =>
+                  setAdForm((prev) => ({
+                    ...prev,
+                    prioridade: Number(e.target.value),
+                  }))
+                }
+                className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="space-y-1">
+                <span className="text-[11px] text-[#0A2540]/70">Início</span>
+                <input
+                  type="date"
+                  value={adForm.dataInicio}
+                  onChange={(e) =>
+                    setAdForm((prev) => ({
+                      ...prev,
+                      dataInicio: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-1.5 rounded-xl border border-[#0A2540]/15 bg-white"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="text-[11px] text-[#0A2540]/70">Fim</span>
+                <input
+                  type="date"
+                  value={adForm.dataFim}
+                  onChange={(e) =>
+                    setAdForm((prev) => ({ ...prev, dataFim: e.target.value }))
+                  }
+                  className="w-full px-3 py-1.5 rounded-xl border border-[#0A2540]/15 bg-white"
+                />
+              </label>
             </div>
             <textarea
               rows={2}
@@ -374,7 +456,7 @@ export const AdminMonetizationScreen: React.FC = () => {
               onChange={(e) =>
                 setAdForm((prev) => ({ ...prev, texto: e.target.value }))
               }
-              className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15"
+              className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
             />
             {adFeedback && (
               <p className="text-xs font-semibold text-[#1D6FE0]">
@@ -388,8 +470,148 @@ export const AdminMonetizationScreen: React.FC = () => {
               Validar Diretrizes e Publicar Anúncio
             </button>
           </form>
-        </section>
-      </div>
+
+          {/* Tabela de Anúncios e Métricas por Slot */}
+          <div className="lg:col-span-7 overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-[#0A2540]/10 text-[#0A2540]/70">
+                  <th className="py-2 pr-3">Anúncio / Selo</th>
+                  <th className="py-2 pr-3">Categoria</th>
+                  <th className="py-2 pr-3">Status</th>
+                  <th className="py-2 pr-3">Imp. / Cliques</th>
+                  <th className="py-2 pr-3">CTR</th>
+                  <th className="py-2 pr-3">Receita Est.</th>
+                  <th className="py-2">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#0A2540]/10 font-mono">
+                {(adsReport?.ads || []).map((ad: any) => (
+                  <tr key={ad.id}>
+                    <td className="py-3 pr-3 font-sans">
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-1.5 py-0.5 rounded bg-[#0A2540]/10 text-[#0A2540] font-mono text-[10px] font-bold">
+                          {ad.badge || 'Patrocinado'}
+                        </span>
+                        <span className="font-semibold text-[#0A2540]">
+                          {ad.nome}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-[#0A2540]/65">
+                        {ad.anunciante}
+                      </p>
+                    </td>
+                    <td className="py-3 pr-3">{ad.categoria}</td>
+                    <td className="py-3 pr-3">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          ad.status === 'ativo'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {ad.status}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-3">
+                      {ad.impressoes} / {ad.cliques}
+                    </td>
+                    <td className="py-3 pr-3">{ad.ctrPercent ?? 0}%</td>
+                    <td className="py-3 pr-3 font-bold text-[#1D6FE0]">
+                      {formatBRLFromCents(ad.receitaEstimadaCentavos || 0)}
+                    </td>
+                    <td className="py-3">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleAdStatus(ad)}
+                          title={
+                            ad.status === 'ativo'
+                              ? 'Pausar anúncio'
+                              : 'Ativar anúncio'
+                          }
+                          className="p-1.5 rounded-lg bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] cursor-pointer"
+                        >
+                          {ad.status === 'ativo' ? (
+                            <Pause className="w-3.5 h-3.5" />
+                          ) : (
+                            <Play className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAd(ad)}
+                          title="Remover anúncio"
+                          className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      {/* Subscriptions Audit */}
+      <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-[#1D6FE0]">
+              3. Assinaturas & Ciclo de Vida
+            </p>
+            <h2 className="font-display font-bold text-lg text-[#0A2540]">
+              Busca por Prestador, Plano e Status ({filteredSubscriptions.length})
+            </h2>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              placeholder="Buscar prestador ou plano..."
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border border-[#0A2540]/15 text-xs"
+            />
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-xl border border-[#0A2540]/15 text-xs bg-white"
+            >
+              <option value="todos">Todos os status</option>
+              <option value="ativa">Ativa</option>
+              <option value="pendente">Pendente</option>
+              <option value="inadimplente">Inadimplente (Tolerância)</option>
+              <option value="cancelada">Cancelada</option>
+              <option value="expirada">Expirada</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="max-h-72 overflow-y-auto divide-y divide-[#0A2540]/10 text-xs">
+          {filteredSubscriptions.slice(0, 12).map((s: any) => (
+            <div
+              key={s.id}
+              className="py-2.5 flex flex-wrap items-center justify-between gap-2"
+            >
+              <div>
+                <p className="font-semibold text-[#0A2540]">
+                  Prestador: {s.providerProfileId} · Plano: {s.planId}
+                </p>
+                <p className="text-[#0A2540]/65 font-mono">
+                  ID: {s.id} · Ciclo: {s.ciclo}
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-lg bg-[#F4F2EF] font-mono font-semibold text-[#0A2540]">
+                {s.status}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 };

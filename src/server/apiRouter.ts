@@ -278,6 +278,22 @@ export function createApiRouter(): express.Router {
     }
   });
 
+  router.post('/ads/:adId/impression', async (req, res) => {
+    try {
+      const providerProfileId = z
+        .string()
+        .min(1)
+        .parse(req.body?.providerProfileId);
+      const updated = await adAndMetricsService.recordAdImpression(
+        req.params.adId,
+        providerProfileId
+      );
+      res.json({ ok: true, ad: updated });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
   router.post('/ads/:adId/click', async (req, res) => {
     try {
       const providerProfileId = z
@@ -356,10 +372,40 @@ export function createApiRouter(): express.Router {
     }
   });
 
+  router.get('/admin/ads', requireAdminRole, async (_req, res) => {
+    try {
+      const report = await adAndMetricsService.getAdsAnalyticsReport();
+      res.json({ ok: true, ...report });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
   router.post('/admin/ads', requireAdminRole, async (req, res) => {
     try {
       const created = await adAndMetricsService.createAdSlot(req.body);
       res.status(201).json({ ok: true, ad: created });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.patch('/admin/ads/:adId', requireAdminRole, async (req, res) => {
+    try {
+      const updated = await adAndMetricsService.updateAdSlot(
+        req.params.adId,
+        req.body || {}
+      );
+      res.json({ ok: true, ad: updated });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.delete('/admin/ads/:adId', requireAdminRole, async (req, res) => {
+    try {
+      const deleted = await adAndMetricsService.deleteAdSlot(req.params.adId);
+      res.json({ ok: true, ...deleted });
     } catch (err) {
       res.status(400).json({ ok: false, error: (err as Error).message });
     }

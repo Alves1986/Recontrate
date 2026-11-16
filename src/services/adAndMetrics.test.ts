@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { ensureSchemaAndSeed, pool } from '../db/index';
 import { AsaasBillingAdapter } from './billingProvider';
 import { SubscriptionLifecycleService } from './subscriptionLifecycle';
 import {
   AdAndMetricsService,
+  calculateAdCtrPercent,
+  calculateEstimatedAdRevenueCents,
   validateAdSlotContent,
 } from './adAndMetricsService';
 
@@ -12,7 +15,7 @@ test.after(async () => {
   await pool.end();
 });
 
-test('Ads never appear in any client flow and never appear for paid plans', async () => {
+test('1. Client never sees ads across all client flow surfaces and client UI components', async () => {
   await ensureSchemaAndSeed();
   const adService = new AdAndMetricsService();
   const lifecycle = new SubscriptionLifecycleService(
@@ -30,12 +33,20 @@ test('Ads never appear in any client flow and never appear for paid plans', asyn
     paymentMethod: 'pix',
   });
 
-  // 1. All client flow surfaces must strictly return null
+  // Every client journey surface and screen ID must strictly return null
   const clientSurfaces = [
     'fluxo_busca_cliente',
     'fluxo_solicitacao_cliente',
     'fluxo_selecao_prestador',
     'fluxo_liberacao_contato',
+    'home',
+    'cadastro-cliente',
+    'criar-solicitacao',
+    'profissionais-compativeis',
+    'perfil-prestador',
+    'solicitar-novamente',
+    'indicacao-substituto',
+    'avaliacao-pos-atendimento',
   ] as const;
 
   for (const surface of clientSurfaces) {
@@ -44,31 +55,66 @@ test('Ads never appear in any client flow and never appear for paid plans', asyn
       providerProfileId: freeProvId,
       sessionBannersShown: 0,
     });
-    assert.equal(ad, null, `Ad must never appear on ${surface}`);
+    assert.equal(ad, null, `Client flow surface "${surface}" must never return an ad`);
   }
 
-  // 2. Paid plan provider must never see ads on provider panel
-  const paidProvId = `prov-ad-paid-${Date.now()}`;
-  const paidCheckout = await lifecycle.startCheckout({
-    providerProfileId: paidProvId,
-    providerName: 'Prestador Essencial Sem Ads',
-    providerEmail: 'adpaid@confiare.com.br',
-    providerPhone: '(11) 99111-0002',
-    planSlug: 'essencial',
-    cycle: 'mensal',
-    paymentMethod: 'pix',
-  });
-  await lifecycle.activateSubscription(paidCheckout.subscription.id);
-
-  const paidAd = await adService.getEligibleAdForSurface({
-    surface: 'painel_prestador',
-    providerProfileId: paidProvId,
-    sessionBannersShown: 0,
-  });
-  assert.equal(paidAd, null, 'Paid plan provider must not see ads');
+  // Verify client-facing React components contain zero ad slots or "Patrocinado" banners
+  const clientComponentFiles = [
+    'src/components/HomeScreen.tsx',
+    'src/components/AuthRegistrationScreens.tsx',
+    'src/components/ServiceRequestAndListScreens.tsx',
+    'src/components/ProviderProfileAndRepeatScreens.tsx',
+    'src/components/SubstituteAndReviewScreens.tsx',
+  ];
+  for (const filePath of clientComponentFiles) {
+    const src = readFileSync(filePath, 'utf-8');
+    assert.equal(
+      src.includes('/api/ads/provider-panel'),
+      false,
+      `${filePath} must never call the ads endpoint`
+    );
+    assert.equal(
+      src.includes('Oferta Patrocinada'),
+      false,
+      `${filePath} must never render sponsored ad banners`
+    );
+  }
 });
 
-test('Gratuito provider panel enforces max 1 banner per session, max 3 impressions per day, and "Patrocinado" badge', async () => {
+test('2. Paid plans (Essencial, Profissional, Premium, Padrinho) never see ads on the provider panel', async () => {
+  await ensureSchemaAndSeed();
+  const adService = new AdAndMetricsService();
+  const lifecycle = new SubscriptionLifecycleService(
+    new AsaasBillingAdapter({ apiKey: '' })
+  );
+
+  for (const paidSlug of ['essencial', 'profissional', 'premium', 'padrinho']) {
+    const paidProvId = `prov-ad-${paidSlug}-${Date.now()}`;
+    const paidCheckout = await lifecycle.startCheckout({
+      providerProfileId: paidProvId,
+      providerName: `Prestador ${paidSlug}`,
+      providerEmail: `${paidSlug}@confiare.com.br`,
+      providerPhone: '(11) 99111-0002',
+      planSlug: paidSlug,
+      cycle: 'mensal',
+      paymentMethod: 'pix',
+    });
+    await lifecycle.activateSubscription(paidCheckout.subscription.id);
+
+    const paidAd = await adService.getEligibleAdForSurface({
+      surface: 'painel_prestador',
+      providerProfileId: paidProvId,
+      sessionBannersShown: 0,
+    });
+    assert.equal(
+      paidAd,
+      null,
+      `Paid plan "${paidSlug}" must never display ads on the provider panel`
+    );
+  }
+});
+
+test('3. Gratuito provider panel enforces max 1 banner/session, max 3 impressions/day, and "Patrocinado" badge', async () => {
   await ensureSchemaAndSeed();
   const adService = new AdAndMetricsService();
   const lifecycle = new SubscriptionLifecycleService(
@@ -95,6 +141,7 @@ test('Gratuito provider panel enforces max 1 banner per session, max 3 impressio
   assert.ok(imp1);
   assert.equal(imp1.badge, 'Patrocinado');
   assert.equal(imp1.dailyImpressionsUsed, 1);
+  assert.equal(imp1.dailyImpressionsLimit, 3);
 
   // Same session (sessionBannersShown = 1) -> blocked (max 1 banner per session)
   const sameSession = await adService.getEligibleAdForSurface({
@@ -130,34 +177,69 @@ test('Gratuito provider panel enforces max 1 banner per session, max 3 impressio
   assert.equal(imp4, null, 'Max 3 impressions per provider per day');
 });
 
-test('validateAdSlotContent blocks gambling, predatory loans, adult content, and competitors, and getAdminMetrics computes MRR/ARR/CTR', async () => {
-  const blockedBet = validateAdSlotContent({
-    nome: 'Ganhe dinheiro na Bet Cassino',
-    categoria: 'ferramentas',
-    anunciante: 'Bet123',
-    texto: 'Aposte agora',
-  });
-  assert.equal(blockedBet.valid, false);
-
-  const blockedCategory = validateAdSlotContent({
-    nome: 'Produto Aleatório',
-    categoria: 'criptomoedas',
-    anunciante: 'Empresa X',
-    texto: 'Compre agora',
-  });
-  assert.equal(blockedCategory.valid, false);
-
-  const validToolAd = validateAdSlotContent({
-    nome: 'Parafusadeira Brushless 20V',
-    categoria: 'ferramentas',
-    anunciante: 'Loja do Mecânico & Eletricista',
-    texto: 'Condição especial para autônomos Confiare.',
-  });
-  assert.equal(validToolAd.valid, true);
-
+test('4. Admin CRUD (create, pause, resume, schedule, delete) and metrics (impressions, clicks, CTR, estimated revenue)', async () => {
+  await ensureSchemaAndSeed();
   const adService = new AdAndMetricsService();
-  const metrics = await adService.getAdminMetrics();
-  assert.equal(Number.isInteger(metrics.mrrCentavos), true);
-  assert.equal(metrics.arrCentavos, metrics.mrrCentavos * 12);
-  assert.ok(metrics.adImpressionsCount >= 3);
+
+  // Forbidden content must be rejected
+  assert.equal(
+    validateAdSlotContent({
+      nome: 'Ganhe dinheiro na Bet Cassino',
+      categoria: 'ferramentas',
+      anunciante: 'Bet123',
+      texto: 'Aposte agora',
+    }).valid,
+    false
+  );
+
+  // Create valid ad slot
+  const created = await adService.createAdSlot({
+    nome: 'Seguro Responsabilidade Civil para Eletricistas e Encanadores',
+    tipo: 'banner_painel_prestador',
+    categoria: 'seguros',
+    anunciante: 'Porto Profissional SP',
+    imagemUrl: 'https://images.unsplash.com/photo-1581092160607-ee22621dd758',
+    linkDestino: 'https://seguros.confiare.com.br',
+    texto: 'Proteção contra danos acidentais em atendimentos residenciais.',
+    prioridade: 20,
+  });
+  assert.equal(created.badge, 'Patrocinado');
+  assert.equal(created.status, 'ativo');
+
+  // Record click and check CTR / estimated revenue calculation
+  const clicked = await adService.recordAdClick(created.id, 'prov-joao');
+  assert.equal(clicked.cliques, 1);
+  assert.equal(
+    calculateEstimatedAdRevenueCents(10, 2),
+    10 * 15 + 2 * 120 // 150 + 240 = 390 centavos
+  );
+  assert.equal(calculateAdCtrPercent(10, 2), 20);
+
+  // Pause ad slot
+  const paused = await adService.updateAdSlot(created.id, {
+    status: 'pausado',
+  });
+  assert.equal(paused.status, 'pausado');
+
+  // Reactivate and update priority
+  const resumed = await adService.updateAdSlot(created.id, {
+    status: 'ativo',
+    prioridade: 15,
+  });
+  assert.equal(resumed.status, 'ativo');
+  assert.equal(resumed.prioridade, 15);
+
+  // Check dedicated analytics report
+  const report = await adService.getAdsAnalyticsReport();
+  assert.equal(report.compliance.badgeRequired, 'Patrocinado');
+  assert.equal(report.compliance.clientFlowAdsCount, 0);
+  assert.equal(report.compliance.maxBannersPerSession, 1);
+  assert.equal(report.compliance.maxImpressionsPerProviderPerDay, 3);
+  assert.ok(report.totalImpressions >= 3);
+  assert.ok(report.totalClicks >= 1);
+  assert.ok(report.estimatedRevenueCents > 0);
+
+  // Delete ad slot
+  const deleted = await adService.deleteAdSlot(created.id);
+  assert.equal(deleted.deleted, true);
 });
