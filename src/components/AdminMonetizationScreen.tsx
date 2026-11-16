@@ -18,6 +18,7 @@ export const AdminMonetizationScreen: React.FC = () => {
   const [adminData, setAdminData] = useState<any>(null);
   const [adsReport, setAdsReport] = useState<any>(null);
   const [plansList, setPlansList] = useState<any[]>([]);
+  const [providersRegistry, setProvidersRegistry] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
@@ -52,14 +53,18 @@ export const AdminMonetizationScreen: React.FC = () => {
     setLoading(true);
     try {
       const headers = { 'x-user-role': 'admin' };
-      const [mRes, sRes, aRes, pRes] = await Promise.all([
+      const [mRes, sRes, aRes, pRes, provRes] = await Promise.all([
         fetch('/api/admin/metrics', { headers }).then((r) => r.json()),
         fetch('/api/admin/subscriptions', { headers }).then((r) => r.json()),
         fetch('/api/admin/ads', { headers }).then((r) => r.json()),
         fetch('/api/plans').then((r) => r.json()),
+        fetch('/api/admin/providers', { headers })
+          .then((r) => (r.ok ? r.json() : { ok: false }))
+          .catch(() => ({ ok: false })),
       ]);
       if (mRes.ok) setMetrics(mRes.metrics);
       if (sRes.ok) setAdminData(sRes);
+      if (provRes?.ok) setProvidersRegistry(provRes.providers || []);
       if (aRes.ok) {
         setAdsReport(aRes);
         if (aRes.googleAdSense) {
@@ -720,6 +725,67 @@ export const AdminMonetizationScreen: React.FC = () => {
               <span className="px-2.5 py-1 rounded-lg bg-[#F4F2EF] font-mono font-semibold text-[#0A2540]">
                 {s.status}
               </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* 4. Aprovação de Cadastros de Prestadores */}
+      <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4">
+        <div>
+          <p className="text-xs font-semibold text-[#FF6A00]">
+            4. Governança Operacional · Curadoria de Prestadores
+          </p>
+          <h2 className="font-display font-bold text-lg text-[#0A2540]">
+            Aprovação de Cadastros e Verificação Documental ({providersRegistry.length})
+          </h2>
+        </div>
+
+        <div className="divide-y divide-[#0A2540]/10 text-xs">
+          {providersRegistry.slice(0, 12).map((prov: any) => (
+            <div
+              key={prov.id}
+              className="py-3 flex flex-wrap items-center justify-between gap-3"
+            >
+              <div>
+                <p className="font-semibold text-[#0A2540]">
+                  {prov.name} ({prov.category}) — {prov.city}
+                </p>
+                <p className="text-[#0A2540]/65 font-mono">
+                  ID: {prov.id} · Nota: {prov.rating_avg} · Status:{' '}
+                  <strong>{prov.verification_status}</strong>
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await fetch(`/api/admin/providers/${prov.id}/verify`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ decision: 'aprovado' }),
+                    });
+                    loadAdminDashboard();
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold cursor-pointer"
+                >
+                  Aprovar Cadastro
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await fetch(`/api/admin/providers/${prov.id}/verify`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ decision: 'rejeitado' }),
+                    });
+                    loadAdminDashboard();
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 border border-red-200 font-semibold cursor-pointer"
+                >
+                  Rejeitar
+                </button>
+              </div>
             </div>
           ))}
         </div>

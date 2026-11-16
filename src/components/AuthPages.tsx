@@ -732,7 +732,53 @@ export const OnboardingPage: React.FC<{
 
 export const PadrinhoDashboardPage: React.FC<{
   user: AuthenticatedUserSession;
-}> = ({ user }) => {
+  token?: string;
+}> = ({ user, token }) => {
+  const [mentees, setMentees] = React.useState<any[]>([]);
+  const [menteeProviderId, setMenteeProviderId] = React.useState('prov-carlos');
+  const [mentorCode, setMentorCode] = React.useState('PADRINHO-JOAO-2026');
+  const [feedback, setFeedback] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+
+  const loadMentees = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/app/padrinho/mentees', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const body = await res.json();
+      if (res.ok && body.ok) {
+        setMentees(body.mentees || []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  React.useEffect(() => {
+    loadMentees();
+  }, [loadMentees]);
+
+  const handleCreateMentorship = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFeedback('');
+    const res = await fetch('/api/app/padrinho/mentorships', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ menteeProviderId, mentorCode }),
+    });
+    const body = await res.json();
+    if (res.ok && body.ok) {
+      setFeedback('Apadrinhado autorizado com sucesso no PostgreSQL!');
+      loadMentees();
+    } else {
+      setFeedback(body.error || 'Erro ao vincular apadrinhado.');
+    }
+  };
+
   return (
     <div className="space-y-6 pb-12">
       <div className="bg-[#0A2540] text-white rounded-3xl p-8 space-y-2">
@@ -745,6 +791,85 @@ export const PadrinhoDashboardPage: React.FC<{
         <p className="text-xs sm:text-sm text-white/80">
           Acompanhe apenas os seus apadrinhados autorizados (protegido por RLS na tabela mentorships).
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
+        <form
+          onSubmit={handleCreateMentorship}
+          className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4"
+        >
+          <h2 className="font-display font-bold text-base text-[#0A2540]">
+            Autorizar Novo Apadrinhado
+          </h2>
+          {feedback && (
+            <div className="p-3 rounded-xl bg-emerald-50 text-emerald-900 font-medium">
+              {feedback}
+            </div>
+          )}
+          <div className="space-y-1">
+            <label className="font-semibold text-[#0A2540]">
+              ID do Profissional Apadrinhado
+            </label>
+            <input
+              type="text"
+              value={menteeProviderId}
+              onChange={(e) => setMenteeProviderId(e.target.value)}
+              className="w-full px-3.5 py-2 rounded-xl border border-[#0A2540]/15"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="font-semibold text-[#0A2540]">
+              Código de Mentoria Verificada
+            </label>
+            <input
+              type="text"
+              value={mentorCode}
+              onChange={(e) => setMentorCode(e.target.value)}
+              className="w-full px-3.5 py-2 rounded-xl border border-[#0A2540]/15 font-mono"
+            />
+          </div>
+          <button
+            type="submit"
+            className="min-h-[42px] px-4 py-2 rounded-xl bg-[#FF6A00] text-white font-semibold cursor-pointer"
+          >
+            Vincular Apadrinhado
+          </button>
+        </form>
+
+        <div className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4">
+          <h2 className="font-display font-bold text-base text-[#0A2540]">
+            Meus Apadrinhados Autorizados ({mentees.length})
+          </h2>
+          {loading ? (
+            <p className="text-[#0A2540]/60">Carregando apadrinhados...</p>
+          ) : mentees.length === 0 ? (
+            <p className="text-[#0A2540]/60">
+              Nenhum apadrinhado vinculado ainda para este padrinho.
+            </p>
+          ) : (
+            <div className="space-y-2.5">
+              {mentees.map((m) => (
+                <div
+                  key={m.id}
+                  className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10 flex items-center justify-between"
+                >
+                  <div>
+                    <p className="font-semibold text-[#0A2540]">
+                      {m.mentee_name || m.mentee_provider_id}
+                    </p>
+                    <p className="text-[11px] text-[#0A2540]/65">
+                      Código: {m.mentor_code} · Categoria:{' '}
+                      {m.mentee_category || 'Serviços'}
+                    </p>
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-semibold">
+                    {m.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

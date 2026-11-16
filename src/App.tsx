@@ -222,11 +222,33 @@ export default function App() {
     navigateUrl('/encontrar-profissional');
   };
 
-  const handleCreateServiceRequest = (newReq: ServiceRequest) => {
+  const handleCreateServiceRequest = async (newReq: ServiceRequest) => {
     setServiceRequests((prev) => [newReq, ...prev]);
     setActiveCategory(newReq.category);
     setLocationQuery(newReq.neighborhood);
     setSearchQuery('');
+
+    if (authUser) {
+      await fetch('/api/app/cliente/requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          categoryName: newReq.category,
+          problemTitle: newReq.problemTitle,
+          description: newReq.description,
+          neighborhood: newReq.neighborhood,
+          city: newReq.city,
+          urgency: newReq.urgency,
+          preferredTime: newReq.preferredTime,
+          estimatedBudget: newReq.estimatedBudget,
+          lgpdContactConsent: newReq.lgpdContactConsent,
+          customerPhone: clientProfile.phone,
+        }),
+      }).catch(() => null);
+    }
 
     const newOpp: ProviderOpportunity = {
       id: `opp-${Date.now()}`,
@@ -557,9 +579,25 @@ export default function App() {
             providers={providers}
             selectedProviderId={selectedProviderId}
             repeatRequests={repeatRequests}
-            onCreateRepeatRequest={(newRepeat) =>
-              setRepeatRequests((prev) => [newRepeat, ...prev])
-            }
+            onCreateRepeatRequest={(newRepeat) => {
+              setRepeatRequests((prev) => [newRepeat, ...prev]);
+              fetch('/api/app/cliente/repeat-requests', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+                },
+                body: JSON.stringify({
+                  providerProfileId: newRepeat.providerId,
+                  categoryName: newRepeat.category,
+                  serviceType: newRepeat.serviceType,
+                  desiredDate: newRepeat.desiredDate,
+                  urgency: newRepeat.urgency,
+                  notes: newRepeat.notes,
+                  lgpdShareConsent: newRepeat.lgpdShareConsent,
+                }),
+              }).catch(() => null);
+            }}
             onTriggerSubstituteFlow={() => navigateUrl('/app/cliente/substituto')}
             onNavigate={handleLegacyScreenNavigate}
           />
@@ -579,13 +617,31 @@ export default function App() {
           <PostServiceReviewScreen
             providers={providers}
             selectedProviderId={selectedProviderId}
-            onSubmitReview={(providerId, reviewData) =>
+            onSubmitReview={(providerId, reviewData) => {
               setProviders((prev) =>
                 prev.map((p) =>
                   p.id === providerId ? applyNewReviewToProvider(p, reviewData) : p
                 )
-              )
-            }
+              );
+              fetch('/api/app/cliente/reviews', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+                },
+                body: JSON.stringify({
+                  providerProfileId: providerId,
+                  neighborhood: reviewData.neighborhood,
+                  serviceTitle: reviewData.serviceTitle,
+                  qualidade: reviewData.qualidade,
+                  pontualidade: reviewData.pontualidade,
+                  comunicacao: reviewData.comunicacao,
+                  organizacao: reviewData.organizacao,
+                  wouldRecommend: reviewData.wouldRecommend,
+                  comment: reviewData.comment,
+                }),
+              }).catch(() => null);
+            }}
             onNavigate={handleLegacyScreenNavigate}
           />
         )}
@@ -623,7 +679,7 @@ export default function App() {
         )}
 
         {authUser && pathname.startsWith('/app/padrinho') && (
-          <PadrinhoDashboardPage user={authUser} />
+          <PadrinhoDashboardPage user={authUser} token={authToken} />
         )}
 
         {authUser && pathname.startsWith('/admin') && (
