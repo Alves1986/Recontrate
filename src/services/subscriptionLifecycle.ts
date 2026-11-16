@@ -1,5 +1,5 @@
 import { eq, desc } from 'drizzle-orm';
-import { db, ensureSchemaAndSeed } from '../db/index';
+import { db, ensureSchemaAndSeed, pool } from '../db/index';
 import {
   invoices,
   opportunityUsage,
@@ -17,6 +17,13 @@ import {
   type BillingProvider,
   type PaymentMethod,
 } from './billingProvider';
+import {
+  TransactionalEmailService,
+  WhatsAppBusinessService,
+} from './essentialIntegrations';
+
+const emailService = new TransactionalEmailService();
+const whatsappService = new WhatsAppBusinessService();
 
 export type SubscriptionStatus =
   | 'trial'
@@ -323,6 +330,57 @@ export class SubscriptionLifecycleService {
       dadosNovos: { status: 'ativa', planSlug: plan.slug },
       gatewayEventId,
     });
+
+    // Envia confirmação por E-mail e WhatsApp de forma resiliente
+    try {
+      const { rows: provRows } = await pool.query<{
+        name: string;
+        whatsapp: string;
+        user_id: string | null;
+        email: string | null;
+      }>(
+        `SELECT pp.name, pp.whatsapp, pp.user_id, u.email
+         FROM provider_profiles pp
+         LEFT JOIN users u ON u.id = pp.user_id
+         WHERE pp.id = $1
+         LIMIT 1`,
+        [sub.providerProfileId]
+      );
+      const prov = provRows[0];
+      const nextChargeLabel = fim.toLocaleDateString('pt-BR');
+
+      if (prov?.email) {
+        await emailService.sendEmail({
+          to: prov.email,
+          subject: `Confiare: Assinatura ${plan.nome} (${sub.ciclo}) ativada`,
+          template: 'aviso_aprovacao_cadastro',
+          userId: prov.user_id || undefined,
+          variables: {
+            providerName: prov.name,
+            planName: plan.nome,
+            cycle: sub.ciclo,
+            nextBillingDate: nextChargeLabel,
+          },
+        });
+      }
+
+      if (prov?.whatsapp) {
+        await whatsappService.sendTemplateNotification({
+          recipientPhone: prov.whatsapp,
+          templateName: 'nova_oportunidade_compativel',
+          providerProfileId: sub.providerProfileId,
+          customerUserId: prov.user_id || undefined,
+          parameters: {
+            event: 'subscription_activated',
+            planName: plan.nome,
+            cycle: sub.ciclo,
+            nextBillingDate: nextChargeLabel,
+          },
+        });
+      }
+    } catch {
+      // Não falhar a ativação da assinatura caso o canal de notificação externo esteja indisponível
+    }
 
     return updated;
   }
