@@ -27,6 +27,7 @@ import {
 } from '../utils/marketplaceRules';
 import { ProviderRealtimeNotifications } from './ProviderRealtimeNotifications';
 import { NeonServicesPanel } from './NeonServicesPanel';
+import { GoogleModeratedAdSlot } from './GoogleModeratedAdSlot';
 
 interface ProviderDashboardScreenProps {
   activeProvider: ProviderProfile;
@@ -798,49 +799,14 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
         </div>
       )}
 
-      {/* ESPAÇO PUBLICITÁRIO MODERADO — EXIBIDO EXCLUSIVAMENTE NO PLANO GRATUITO NO PAINEL DO PRESTADOR */}
+      {/* ESPAÇO PUBLICITÁRIO MODERADO (DIRETO + GOOGLE ADSENSE) — EXIBIDO EXCLUSIVAMENTE NO PLANO GRATUITO NO PAINEL DO PRESTADOR */}
       {activeProvider.plan === 'Gratuito' && sponsoredAd && (
-        <aside
-          aria-label="Oferta Patrocinada para Prestadores"
-          className="bg-white rounded-2xl p-4 sm:p-5 border border-[#0A2540]/10 flex flex-col lg:flex-row lg:items-center justify-between gap-4 text-xs"
-        >
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="px-2 py-0.5 rounded bg-[#0A2540]/10 text-[#0A2540] font-mono text-[10px] font-bold uppercase">
-                {sponsoredAd.badge || 'Patrocinado'}
-              </span>
-              <span className="font-semibold text-[#1D6FE0]">
-                {sponsoredAd.nome} · {sponsoredAd.anunciante}
-              </span>
-              <span className="text-[11px] font-mono text-[#0A2540]/60">
-                (1 banner/sessão · {sponsoredAd.dailyImpressionsUsed || 1}/
-                {sponsoredAd.dailyImpressionsLimit || 3} impressões hoje)
-              </span>
-            </div>
-            <p className="text-[#0A2540]/80">{sponsoredAd.texto}</p>
-            <p className="text-[11px] text-[#0A2540]/60">
-              Privacidade garantida: nenhum dado pessoal ou sensível seu é compartilhado com anunciantes.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={handleTrackAdClick}
-              className="px-3.5 py-2 rounded-xl bg-[#0A2540] hover:bg-[#13385c] text-white font-semibold whitespace-nowrap cursor-pointer"
-            >
-              {adClickConfirmed
-                ? '✓ Clique registrado na oferta'
-                : 'Ver oferta para prestadores'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('plano')}
-              className="px-3.5 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold whitespace-nowrap cursor-pointer"
-            >
-              Remover anúncios (Upgrade)
-            </button>
-          </div>
-        </aside>
+        <GoogleModeratedAdSlot
+          sponsoredAd={sponsoredAd}
+          adClickConfirmed={adClickConfirmed}
+          onTrackClick={handleTrackAdClick}
+          onUpgradeClick={() => setActiveTab('plano')}
+        />
       )}
     </div>
   );

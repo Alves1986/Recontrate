@@ -1,0 +1,131 @@
+import React, { useEffect } from 'react';
+
+declare global {
+  interface Window {
+    adsbygoogle?: any[] & { requestNonPersonalizedAds?: number };
+  }
+}
+
+interface GoogleModeratedAdSlotProps {
+  sponsoredAd: any;
+  adClickConfirmed: boolean;
+  onTrackClick: () => void;
+  onUpgradeClick: () => void;
+}
+
+export const GoogleModeratedAdSlot: React.FC<GoogleModeratedAdSlotProps> = ({
+  sponsoredAd,
+  adClickConfirmed,
+  onTrackClick,
+  onUpgradeClick,
+}) => {
+  const googleCfg = sponsoredAd?.googleAdSense;
+  const clientId: string =
+    googleCfg?.clientId ||
+    import.meta.env.VITE_GOOGLE_ADSENSE_CLIENT_ID ||
+    'ca-pub-0000000000000000';
+  const slotId: string =
+    googleCfg?.slotId || import.meta.env.VITE_GOOGLE_ADSENSE_SLOT_ID || '1234567890';
+  const isLivePublisherId =
+    Boolean(clientId) &&
+    clientId.startsWith('ca-pub-') &&
+    clientId !== 'ca-pub-0000000000000000';
+
+  useEffect(() => {
+    if (!isLivePublisherId) return;
+
+    // Enforce LGPD / Non-Personalized Ads (NPA=1): zero personal or sensitive data shared with Google
+    window.adsbygoogle = window.adsbygoogle || [];
+    window.adsbygoogle.requestNonPersonalizedAds = 1;
+
+    const existingScript = document.querySelector(
+      'script[data-confiare-google-ads="true"]'
+    );
+    if (!existingScript) {
+      const script = document.createElement('script');
+      script.async = true;
+      script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(
+        clientId
+      )}`;
+      script.crossOrigin = 'anonymous';
+      script.setAttribute('data-confiare-google-ads', 'true');
+      document.head.appendChild(script);
+    }
+
+    try {
+      window.adsbygoogle.push({});
+    } catch {
+      // AdSense push safe fallback when blocked by browser extension
+    }
+  }, [clientId, isLivePublisherId, sponsoredAd?.id]);
+
+  if (!sponsoredAd) return null;
+
+  const isGoogleNetwork = sponsoredAd.network === 'google_adsense';
+
+  return (
+    <aside
+      aria-label="Oferta Patrocinada para Prestadores"
+      className="bg-white rounded-2xl p-4 sm:p-5 border border-[#0A2540]/10 space-y-3 text-xs"
+    >
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="px-2 py-0.5 rounded bg-[#0A2540]/10 text-[#0A2540] font-mono text-[10px] font-bold uppercase">
+              {sponsoredAd.badge || 'Patrocinado'}
+            </span>
+            <span className="px-2 py-0.5 rounded bg-[#1D6FE0]/10 text-[#1D6FE0] font-mono text-[10px] font-semibold">
+              {isGoogleNetwork
+                ? `Google AdSense Contextual (NPA=1 · ${clientId})`
+                : 'Parceiro Verificado Confiare'}
+            </span>
+            <span className="font-semibold text-[#0A2540]">
+              {sponsoredAd.nome} · {sponsoredAd.anunciante}
+            </span>
+            <span className="text-[11px] font-mono text-[#0A2540]/60">
+              (1 banner/sessão · {sponsoredAd.dailyImpressionsUsed || 1}/
+              {sponsoredAd.dailyImpressionsLimit || 3} impressões hoje)
+            </span>
+          </div>
+          <p className="text-[#0A2540]/80">{sponsoredAd.texto}</p>
+          <p className="text-[11px] text-[#0A2540]/60">
+            Privacidade LGPD garantida: anúncios não personalizados (`requestNonPersonalizedAds=1`), restritos ao painel do prestador Gratuito e zero compartilhamento de dados pessoais.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onTrackClick}
+            className="px-3.5 py-2 rounded-xl bg-[#0A2540] hover:bg-[#13385c] text-white font-semibold whitespace-nowrap cursor-pointer"
+          >
+            {adClickConfirmed
+              ? '✓ Clique registrado na oferta'
+              : 'Ver oferta para prestadores'}
+          </button>
+          <button
+            type="button"
+            onClick={onUpgradeClick}
+            className="px-3.5 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold whitespace-nowrap cursor-pointer"
+          >
+            Remover anúncios (Upgrade)
+          </button>
+        </div>
+      </div>
+
+      {/* Bloco <ins class="adsbygoogle"> montado apenas quando um Publisher ID real (ca-pub-...) está configurado */}
+      {isLivePublisherId && (
+        <div className="pt-2 border-t border-[#0A2540]/10">
+          <ins
+            className="adsbygoogle"
+            style={{ display: 'block' }}
+            data-ad-client={clientId}
+            data-ad-slot={slotId}
+            data-ad-format="auto"
+            data-full-width-responsive="true"
+          />
+        </div>
+      )}
+    </aside>
+  );
+};

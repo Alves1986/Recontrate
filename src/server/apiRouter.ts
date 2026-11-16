@@ -23,8 +23,11 @@ import { SubscriptionLifecycleService } from '../services/subscriptionLifecycle'
 import { OpportunityLimitService } from '../services/opportunityLimitService';
 import {
   AdAndMetricsService,
+  generateAdsTxtContent,
   type AdContextSurface,
 } from '../services/adAndMetricsService';
+import { writeFileSync } from 'node:fs';
+import path from 'node:path';
 
 const lifecycleService = new SubscriptionLifecycleService();
 const limitService = new OpportunityLimitService();
@@ -260,17 +263,27 @@ export function createApiRouter(): express.Router {
   });
 
   // 4. Moderated Ads (Provider Panel Only)
+  router.get('/ads/ads.txt', (_req, res) => {
+    const cfg = adAndMetricsService.getGoogleAdSenseConfig();
+    res.type('text/plain').send(generateAdsTxtContent(cfg.clientId));
+  });
+
   router.get('/ads/provider-panel', async (req, res) => {
     try {
       const surface =
         (req.query.surface as AdContextSurface) || 'painel_prestador';
       const providerProfileId = String(req.query.providerProfileId || '');
       const sessionBannersShown = Number(req.query.sessionBannersShown || 0);
+      const preferNetwork = req.query.preferNetwork as
+        | 'google_adsense'
+        | 'direto'
+        | undefined;
 
       const ad = await adAndMetricsService.getEligibleAdForSurface({
         surface,
         providerProfileId,
         sessionBannersShown,
+        preferNetwork,
       });
       res.json({ ok: true, ad });
     } catch (err) {
@@ -378,6 +391,26 @@ export function createApiRouter(): express.Router {
       res.json({ ok: true, ...report });
     } catch (err) {
       res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.patch('/admin/ads/google-config', requireAdminRole, (req, res) => {
+    try {
+      const updated = adAndMetricsService.updateGoogleAdSenseConfig(
+        req.body || {}
+      );
+      try {
+        writeFileSync(
+          path.resolve(process.cwd(), 'public/ads.txt'),
+          generateAdsTxtContent(updated.clientId),
+          'utf-8'
+        );
+      } catch {
+        // Ignore read-only filesystem in serverless environments
+      }
+      res.json({ ok: true, googleAdSense: updated });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
     }
   });
 

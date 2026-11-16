@@ -61,12 +61,63 @@ export type AdContextSurface =
   | 'indicacao-substituto'
   | 'avaliacao-pos-atendimento';
 
+export type GoogleAdsDeliveryMode =
+  | 'hibrido_google_adsense'
+  | 'google_adsense_preferencial'
+  | 'direto_apenas';
+
+export interface GoogleAdSenseConfig {
+  enabled: boolean;
+  mode: GoogleAdsDeliveryMode;
+  clientId: string; // ca-pub-XXXXXXXXXXXXXXXX
+  slotId: string;
+  nonPersonalizedAds: true; // data-npa="1" / requestNonPersonalizedAds = 1 (LGPD: zero dados sensíveis)
+  autoAdsDisabled: true; // Auto Ads sempre desativado para proteger o fluxo do cliente
+  blockedSensitiveCategories: string[];
+  adsTxtLine: string;
+}
+
 export const MAX_AD_BANNERS_PER_SESSION = 1;
 export const MAX_AD_IMPRESSIONS_PER_PROVIDER_PER_DAY = 3;
 
 // Estimativa conservadora em centavos: R$ 0,15 (15 centavos) por impressão + R$ 1,20 (120 centavos) por clique
 export const ESTIMATED_CPM_IMPRESSION_CENTS = 15;
 export const ESTIMATED_CPC_CLICK_CENTS = 120;
+
+export function normalizeGooglePubId(clientId: string): string {
+  const cleaned = (clientId || '').trim().replace(/^ca-/, '');
+  if (/^pub-\d{10,20}$/.test(cleaned)) {
+    return cleaned;
+  }
+  return 'pub-0000000000000000';
+}
+
+export function generateAdsTxtContent(clientId: string): string {
+  const pubId = normalizeGooglePubId(clientId);
+  return `# Confiare — Authorized Digital Sellers (ads.txt)\ngoogle.com, ${pubId}, DIRECT, f08c47fec0942fa0\n`;
+}
+
+let runtimeGoogleAdsConfig: GoogleAdSenseConfig = {
+  enabled: true,
+  mode:
+    (process.env.VITE_GOOGLE_ADS_MODE as GoogleAdsDeliveryMode) ||
+    'hibrido_google_adsense',
+  clientId:
+    process.env.VITE_GOOGLE_ADSENSE_CLIENT_ID || 'ca-pub-0000000000000000',
+  slotId: process.env.VITE_GOOGLE_ADSENSE_SLOT_ID || '1234567890',
+  nonPersonalizedAds: true,
+  autoAdsDisabled: true,
+  blockedSensitiveCategories: [
+    'Jogos de azar e apostas (Gambling & Betting)',
+    'Conteúdo adulto / sexual',
+    'Empréstimos predatórios / alto risco',
+    'Saúde e suplementos sem comprovação',
+    'Concorrentes diretos da Confiare',
+  ],
+  adsTxtLine: `google.com, ${normalizeGooglePubId(
+    process.env.VITE_GOOGLE_ADSENSE_CLIENT_ID || 'ca-pub-0000000000000000'
+  )}, DIRECT, f08c47fec0942fa0`,
+};
 
 export function calculateAdCtrPercent(
   impressions: number,
@@ -122,42 +173,100 @@ export interface AdSlotReportItem extends AdSlotRow {
   badge: 'Patrocinado';
   ctrPercent: number;
   receitaEstimadaCentavos: number;
+  network: 'google_adsense' | 'direto';
 }
 
 export class AdAndMetricsService {
   private readonly limitService = new OpportunityLimitService();
 
+  getGoogleAdSenseConfig(): GoogleAdSenseConfig {
+    return { ...runtimeGoogleAdsConfig };
+  }
+
+  updateGoogleAdSenseConfig(patch: {
+    enabled?: boolean;
+    mode?: GoogleAdsDeliveryMode;
+    clientId?: string;
+    slotId?: string;
+  }): GoogleAdSenseConfig {
+    const nextClientId = (
+      patch.clientId ?? runtimeGoogleAdsConfig.clientId
+    ).trim();
+    const normalizedClientId = nextClientId.startsWith('ca-pub-')
+      ? nextClientId
+      : `ca-${normalizeGooglePubId(nextClientId)}`;
+
+    runtimeGoogleAdsConfig = {
+      ...runtimeGoogleAdsConfig,
+      enabled: patch.enabled ?? runtimeGoogleAdsConfig.enabled,
+      mode: patch.mode ?? runtimeGoogleAdsConfig.mode,
+      clientId: normalizedClientId,
+      slotId: (patch.slotId ?? runtimeGoogleAdsConfig.slotId).trim(),
+      nonPersonalizedAds: true,
+      autoAdsDisabled: true,
+      adsTxtLine: `google.com, ${normalizeGooglePubId(
+        normalizedClientId
+      )}, DIRECT, f08c47fec0942fa0`,
+    };
+
+    return this.getGoogleAdSenseConfig();
+  }
+
   async ensureDefaultAdSlots() {
     await ensureSchemaAndSeed();
     const existing = await db.select().from(adSlots);
-    if (existing.length > 0) return existing;
-
     const now = new Date();
     const nextYear = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
 
-    const [created] = await db
-      .insert(adSlots)
-      .values({
-        id: 'ad-ferramentas-1',
-        nome: 'Kit Alicate Amperímetro Digital True RMS + EPI NR-10',
-        tipo: 'banner_painel_prestador',
-        categoria: 'ferramentas',
-        anunciante: 'Casa do Eletricista & Ferramentas SP',
-        imagemUrl:
-          'https://images.unsplash.com/photo-1581092160607-ee22621dd758',
-        linkDestino: 'https://fornecedores.confiare.com.br/ferramentas-nr10',
-        texto:
-          'Desconto de 15% para autônomos verificados em instrumentos de medição, EPIs certificados e materiais elétricos.',
-        dataInicio: now,
-        dataFim: nextYear,
-        prioridade: 10,
-        status: 'ativo',
-        impressoes: 0,
-        cliques: 0,
-      })
-      .returning();
+    if (!existing.some((a) => a.id === 'ad-ferramentas-1')) {
+      await db
+        .insert(adSlots)
+        .values({
+          id: 'ad-ferramentas-1',
+          nome: 'Kit Alicate Amperímetro Digital True RMS + EPI NR-10',
+          tipo: 'banner_painel_prestador',
+          categoria: 'ferramentas',
+          anunciante: 'Casa do Eletricista & Ferramentas SP',
+          imagemUrl:
+            'https://images.unsplash.com/photo-1581092160607-ee22621dd758',
+          linkDestino: 'https://fornecedores.confiare.com.br/ferramentas-nr10',
+          texto:
+            'Desconto de 15% para autônomos verificados em instrumentos de medição, EPIs certificados e materiais elétricos.',
+          dataInicio: now,
+          dataFim: nextYear,
+          prioridade: 10,
+          status: 'ativo',
+          impressoes: 0,
+          cliques: 0,
+        })
+        .onConflictDoNothing();
+    }
 
-    return [created];
+    if (!existing.some((a) => a.id === 'ad-google-adsense-1')) {
+      await db
+        .insert(adSlots)
+        .values({
+          id: 'ad-google-adsense-1',
+          nome: 'Bloco Contextual Google AdSense — Ferramentas, Seguros e MEI',
+          tipo: 'banner_painel_prestador',
+          categoria: 'maquininhas',
+          anunciante: 'Google AdSense (Contextual Moderado · NPA=1)',
+          imagemUrl:
+            'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d',
+          linkDestino: 'https://adsense.google.com',
+          texto:
+            'Ofertas contextuais verificadas pelo Google AdSense (ferramentas profissionais, maquininhas, seguros e cursos técnicos) sem rastreamento de dados pessoais.',
+          dataInicio: now,
+          dataFim: nextYear,
+          prioridade: 8,
+          status: 'ativo',
+          impressoes: 0,
+          cliques: 0,
+        })
+        .onConflictDoNothing();
+    }
+
+    return db.select().from(adSlots);
   }
 
   /**
@@ -180,6 +289,13 @@ export class AdAndMetricsService {
     return expiredCount;
   }
 
+  private isGoogleAdSlot(ad: AdSlotRow): boolean {
+    return (
+      ad.id.startsWith('ad-google-') ||
+      ad.anunciante.toLowerCase().includes('google adsense')
+    );
+  }
+
   /**
    * Lists all ad slots with calculated CTR, estimated revenue in cents, and "Patrocinado" badge.
    */
@@ -195,6 +311,7 @@ export class AdAndMetricsService {
     return rows.map((row) => ({
       ...row,
       badge: 'Patrocinado' as const,
+      network: this.isGoogleAdSlot(row) ? 'google_adsense' : 'direto',
       ctrPercent: calculateAdCtrPercent(row.impressoes, row.cliques),
       receitaEstimadaCentavos: calculateEstimatedAdRevenueCents(
         row.impressoes,
@@ -232,7 +349,9 @@ export class AdAndMetricsService {
       : new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
 
     if (endDate <= startDate) {
-      throw new Error('A data final do anúncio deve ser posterior à data inicial.');
+      throw new Error(
+        'A data final do anúncio deve ser posterior à data inicial.'
+      );
     }
 
     const [created] = await db
@@ -258,6 +377,7 @@ export class AdAndMetricsService {
     return {
       ...created,
       badge: 'Patrocinado',
+      network: this.isGoogleAdSlot(created) ? 'google_adsense' : 'direto',
       ctrPercent: 0,
       receitaEstimadaCentavos: 0,
     };
@@ -314,7 +434,9 @@ export class AdAndMetricsService {
       : existing.dataFim;
 
     if (nextEnd <= nextStart) {
-      throw new Error('A data final do anúncio deve ser posterior à data inicial.');
+      throw new Error(
+        'A data final do anúncio deve ser posterior à data inicial.'
+      );
     }
 
     const [updated] = await db
@@ -338,6 +460,7 @@ export class AdAndMetricsService {
     return {
       ...updated,
       badge: 'Patrocinado',
+      network: this.isGoogleAdSlot(updated) ? 'google_adsense' : 'direto',
       ctrPercent: calculateAdCtrPercent(updated.impressoes, updated.cliques),
       receitaEstimadaCentavos: calculateEstimatedAdRevenueCents(
         updated.impressoes,
@@ -372,13 +495,14 @@ export class AdAndMetricsService {
    * - Strictly returns null if the provider is on a paid plan (exibeAnuncios === false).
    * - Enforces max 1 banner per panel session (sessionBannersShown < 1).
    * - Enforces max 3 impressions per provider per day.
+   * - Supports Direct Ads and Google AdSense (with nonPersonalizedAds=true / NPA=1).
    * - Always labels returned ad with badge='Patrocinado'.
-   * - Never shares provider personal data with advertisers.
    */
   async getEligibleAdForSurface(params: {
     surface: AdContextSurface | string;
     providerProfileId?: string;
     sessionBannersShown?: number;
+    preferNetwork?: 'google_adsense' | 'direto';
     now?: Date;
   }) {
     // Regra absoluta: NUNCA exibir anúncio fora do painel do prestador (jamais no fluxo do cliente)
@@ -434,9 +558,26 @@ export class AdAndMetricsService {
       .where(eq(adSlots.status, 'ativo'))
       .orderBy(desc(adSlots.prioridade));
 
-    const validAd = activeAds.find(
+    const validAds = activeAds.filter(
       (ad) => ad.dataInicio <= now && ad.dataFim >= now
     );
+
+    const googleCfg = this.getGoogleAdSenseConfig();
+    let validAd: AdSlotRow | undefined;
+
+    if (
+      params.preferNetwork === 'google_adsense' ||
+      (googleCfg.enabled && googleCfg.mode === 'google_adsense_preferencial')
+    ) {
+      validAd =
+        validAds.find((a) => this.isGoogleAdSlot(a)) || validAds[0];
+    } else if (!googleCfg.enabled || googleCfg.mode === 'direto_apenas') {
+      validAd = validAds.find((a) => !this.isGoogleAdSlot(a));
+    } else {
+      // Modo híbrido: prioriza campanha direta com maior prioridade, usando Google AdSense como backfill/rotação
+      validAd = validAds[0];
+    }
+
     if (!validAd) {
       return null;
     }
@@ -456,10 +597,22 @@ export class AdAndMetricsService {
       .set({ impressoes: newImpressions })
       .where(eq(adSlots.id, validAd.id));
 
+    const isGoogle = this.isGoogleAdSlot(validAd);
+
     return {
       ...validAd,
       impressoes: newImpressions,
       badge: 'Patrocinado' as const,
+      network: isGoogle ? ('google_adsense' as const) : ('direto' as const),
+      googleAdSense: googleCfg.enabled
+        ? {
+            enabled: true,
+            clientId: googleCfg.clientId,
+            slotId: googleCfg.slotId,
+            nonPersonalizedAds: true as const,
+            mode: googleCfg.mode,
+          }
+        : null,
       ctrPercent: calculateAdCtrPercent(newImpressions, validAd.cliques),
       receitaEstimadaCentavos: calculateEstimatedAdRevenueCents(
         newImpressions,
@@ -580,7 +733,7 @@ export class AdAndMetricsService {
   }
 
   /**
-   * Dedicated advertising performance report (impressions, clicks, CTR, estimated revenue in cents).
+   * Dedicated advertising performance report (impressions, clicks, CTR, estimated revenue in cents, plus Google AdSense status).
    */
   async getAdsAnalyticsReport() {
     const items = await this.listAdSlots();
@@ -630,6 +783,7 @@ export class AdAndMetricsService {
       estimatedRevenueCents,
       byCategory,
       ads: items,
+      googleAdSense: this.getGoogleAdSenseConfig(),
       compliance: {
         badgeRequired: 'Patrocinado',
         maxBannersPerSession: MAX_AD_BANNERS_PER_SESSION,

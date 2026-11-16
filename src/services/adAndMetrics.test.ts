@@ -8,6 +8,7 @@ import {
   AdAndMetricsService,
   calculateAdCtrPercent,
   calculateEstimatedAdRevenueCents,
+  generateAdsTxtContent,
   validateAdSlotContent,
 } from './adAndMetricsService';
 
@@ -242,4 +243,27 @@ test('4. Admin CRUD (create, pause, resume, schedule, delete) and metrics (impre
   // Delete ad slot
   const deleted = await adService.deleteAdSlot(created.id);
   assert.equal(deleted.deleted, true);
+
+  // 5. Google AdSense & ads.txt configuration and strict LGPD / client-flow isolation
+  const googleCfg = adService.updateGoogleAdSenseConfig({
+    enabled: true,
+    mode: 'google_adsense_preferencial',
+    clientId: 'ca-pub-9876543210987654',
+    slotId: '5544332211',
+  });
+  assert.equal(googleCfg.nonPersonalizedAds, true);
+  assert.equal(googleCfg.autoAdsDisabled, true);
+  assert.equal(
+    googleCfg.adsTxtLine,
+    'google.com, pub-9876543210987654, DIRECT, f08c47fec0942fa0'
+  );
+  assert.ok(
+    generateAdsTxtContent('ca-pub-9876543210987654').includes(
+      'google.com, pub-9876543210987654, DIRECT, f08c47fec0942fa0'
+    )
+  );
+
+  // Global index.html must never contain global adsbygoogle script (so client flow never loads it)
+  const indexHtml = readFileSync('index.html', 'utf-8');
+  assert.equal(indexHtml.includes('adsbygoogle'), false);
 });

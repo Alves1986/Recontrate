@@ -40,6 +40,13 @@ export const AdminMonetizationScreen: React.FC = () => {
       .slice(0, 10),
   });
   const [adFeedback, setAdFeedback] = useState('');
+  const [googleForm, setGoogleForm] = useState({
+    enabled: true,
+    mode: 'hibrido_google_adsense',
+    clientId: 'ca-pub-0000000000000000',
+    slotId: '1234567890',
+  });
+  const [googleFeedback, setGoogleFeedback] = useState('');
 
   const loadAdminDashboard = useCallback(async () => {
     setLoading(true);
@@ -53,7 +60,17 @@ export const AdminMonetizationScreen: React.FC = () => {
       ]);
       if (mRes.ok) setMetrics(mRes.metrics);
       if (sRes.ok) setAdminData(sRes);
-      if (aRes.ok) setAdsReport(aRes);
+      if (aRes.ok) {
+        setAdsReport(aRes);
+        if (aRes.googleAdSense) {
+          setGoogleForm({
+            enabled: aRes.googleAdSense.enabled,
+            mode: aRes.googleAdSense.mode,
+            clientId: aRes.googleAdSense.clientId,
+            slotId: aRes.googleAdSense.slotId,
+          });
+        }
+      }
       if (pRes.ok) setPlansList(pRes.plans || []);
     } catch (err) {
       console.error('Erro ao carregar painel admin:', err);
@@ -65,6 +82,30 @@ export const AdminMonetizationScreen: React.FC = () => {
   useEffect(() => {
     loadAdminDashboard();
   }, [loadAdminDashboard]);
+
+  const handleSaveGoogleAdsConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGoogleFeedback('');
+    try {
+      const res = await fetch('/api/admin/ads/google-config', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': 'admin',
+        },
+        body: JSON.stringify(googleForm),
+      });
+      const body = await res.json();
+      if (res.ok) {
+        setGoogleFeedback(
+          `Google AdSense atualizado! Linha ads.txt: ${body.googleAdSense.adsTxtLine}`
+        );
+        loadAdminDashboard();
+      }
+    } catch (err) {
+      setGoogleFeedback(`Falha: ${(err as Error).message}`);
+    }
+  };
 
   const handleCreateAd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -337,6 +378,77 @@ export const AdminMonetizationScreen: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Configuração Google AdSense & ads.txt (Modo Híbrido / NPA=1) */}
+        <form
+          onSubmit={handleSaveGoogleAdsConfig}
+          className="bg-[#0A2540]/5 rounded-2xl p-4 border border-[#0A2540]/10 space-y-3 text-xs"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <p className="font-semibold text-[#0A2540]">
+                Integração Google AdSense / Google Ad Manager (NPA=1 · Auto Ads Desativado)
+              </p>
+              <p className="text-[11px] text-[#0A2540]/70 font-mono">
+                ads.txt ativo: {adsReport?.googleAdSense?.adsTxtLine || 'google.com, pub-0000000000000000, DIRECT, f08c47fec0942fa0'}
+              </p>
+            </div>
+            <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-mono text-[10px] font-bold">
+              requestNonPersonalizedAds = 1 (LGPD)
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
+            <input
+              type="text"
+              placeholder="ca-pub-XXXXXXXXXXXXXXXX"
+              value={googleForm.clientId}
+              onChange={(e) =>
+                setGoogleForm((prev) => ({ ...prev, clientId: e.target.value }))
+              }
+              className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white font-mono"
+            />
+            <input
+              type="text"
+              placeholder="Slot ID (ex: 1234567890)"
+              value={googleForm.slotId}
+              onChange={(e) =>
+                setGoogleForm((prev) => ({ ...prev, slotId: e.target.value }))
+              }
+              className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white font-mono"
+            />
+            <select
+              aria-label="Modo de exibição Google AdSense"
+              value={googleForm.mode}
+              onChange={(e) =>
+                setGoogleForm((prev) => ({ ...prev, mode: e.target.value }))
+              }
+              className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
+            >
+              <option value="hibrido_google_adsense">
+                Modo Híbrido (Direto + Google Backfill)
+              </option>
+              <option value="google_adsense_preferencial">
+                Google AdSense Preferencial
+              </option>
+              <option value="direto_apenas">
+                Apenas Anunciantes Diretos
+              </option>
+            </select>
+            <button
+              type="submit"
+              className="min-h-[38px] px-4 py-2 rounded-xl bg-[#1D6FE0] hover:bg-[#1559b8] text-white font-semibold cursor-pointer"
+            >
+              Salvar Google AdSense &amp; ads.txt
+            </button>
+          </div>
+
+          {googleFeedback && (
+            <p className="text-xs font-semibold text-[#1D6FE0]">
+              ✓ {googleFeedback}
+            </p>
+          )}
+        </form>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Formulário de Criação/Agendamento */}
