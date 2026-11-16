@@ -1,0 +1,466 @@
+import express from 'express';
+import { z } from 'zod';
+import { desc, eq } from 'drizzle-orm';
+import { db, ensureSchemaAndSeed } from '../db/index';
+import {
+  adSlots,
+  invoices,
+  plans,
+  processedWebhookEvents,
+  subscriptionEvents,
+  subscriptions,
+} from '../db/schema';
+import {
+  sealProviderNotificationsQuery,
+  testAiGatewayService,
+  testAuthService,
+  testFunctionsService,
+  testObjectStorageService,
+  testPostgresService,
+  testRealtimeService,
+} from './neonServices';
+import { SubscriptionLifecycleService } from '../services/subscriptionLifecycle';
+import { OpportunityLimitService } from '../services/opportunityLimitService';
+import {
+  AdAndMetricsService,
+  type AdContextSurface,
+} from '../services/adAndMetricsService';
+
+const lifecycleService = new SubscriptionLifecycleService();
+const limitService = new OpportunityLimitService();
+const adAndMetricsService = new AdAndMetricsService();
+
+// Simple in-memory rate limiter for checkout and webhook endpoints
+const rateLimitWindowMs = 60_000;
+const rateLimitCounters = new Map<string, { count: number; resetAt: number }>();
+
+function rateLimit(maxRequestsPerMinute: number): express.RequestHandler {
+  return (req, res, next) => {
+    const key = `${req.path}:${req.ip || 'local'}`;
+    const now = Date.now();
+    const entry = rateLimitCounters.get(key);
+    if (!entry || now > entry.resetAt) {
+      rateLimitCounters.set(key, { count: 1, resetAt: now + rateLimitWindowMs });
+      next();
+      return;
+    }
+    entry.count += 1;
+    if (entry.count > maxRequestsPerMinute) {
+      res.status(429).json({
+        ok: false,
+        error: 'Rate limit excedido. Tente novamente em instantes.',
+      });
+      return;
+    }
+    next();
+  };
+}
+
+function requireAdminRole(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  const role = req.headers['x-user-role'];
+  if (role !== 'admin') {
+    res.status(403).json({
+      ok: false,
+      error: 'Acesso negado: permissão de administrador obrigatória.',
+    });
+    return;
+  }
+  next();
+}
+
+const CheckoutSchema = z.object({
+  providerProfileId: z.string().min(1),
+  providerName: z.string().min(2),
+  providerEmail: z.string().email(),
+  providerPhone: z.string().min(8),
+  planSlug: z.enum([
+    'gratuito',
+    'essencial',
+    'profissional',
+    'premium',
+    'padrinho',
+  ]),
+  cycle: z.enum(['mensal', 'anual']).default('mensal'),
+  paymentMethod: z.enum(['pix', 'cartao', 'boleto']).default('pix'),
+});
+
+const UpgradeSchema = z.object({
+  targetPlanSlug: z.enum([
+    'essencial',
+    'profissional',
+    'premium',
+    'padrinho',
+  ]),
+  targetCycle: z.enum(['mensal', 'anual']).optional(),
+  paymentMethod: z.enum(['pix', 'cartao', 'boleto']).optional(),
+});
+
+const DowngradeSchema = z.object({
+  targetPlanSlug: z.enum([
+    'gratuito',
+    'essencial',
+    'profissional',
+    'premium',
+  ]),
+});
+
+export function createApiRouter(): express.Router {
+  const router = express.Router();
+
+  // 1. Secure Webhook Endpoint: reads raw body BEFORE express.json()
+  router.post(
+    '/webhooks/billing',
+    rateLimit(120),
+    express.raw({ type: '*/*' }),
+    async (req, res) => {
+      try {
+        const rawBody = Buffer.isBuffer(req.body)
+          ? req.body
+          : Buffer.from(
+              typeof req.body === 'string'
+                ? req.body
+                : JSON.stringify(req.body || {}),
+              'utf-8'
+            );
+
+        const result = await lifecycleService.processWebhook(
+          rawBody,
+          req.headers as Record<string, string | string[] | undefined>
+        );
+        res.status(result.duplicate ? 200 : 202).json(result);
+      } catch (err) {
+        const msg = (err as Error).message || 'Webhook error';
+        const isAuthErr = msg.includes('signature token');
+        res.status(isAuthErr ? 401 : 400).json({ ok: false, error: msg });
+      }
+    }
+  );
+
+  // Standard JSON parser for all other routes
+  router.use(express.json());
+
+  // 2. Plans & Provider Subscription Routes
+  router.get('/plans', async (_req, res) => {
+    try {
+      await ensureSchemaAndSeed();
+      const allPlans = await db
+        .select()
+        .from(plans)
+        .orderBy(plans.ordemExibicao);
+      res.json({ ok: true, plans: allPlans });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.get('/providers/:providerId/subscription', async (req, res) => {
+    try {
+      const { providerId } = req.params;
+      // Anti-IDOR check if x-provider-id header is passed
+      const callerProviderId = req.headers['x-provider-id'];
+      const callerRole = req.headers['x-user-role'];
+      if (
+        callerProviderId &&
+        callerProviderId !== providerId &&
+        callerRole !== 'admin'
+      ) {
+        res.status(403).json({
+          ok: false,
+          error: 'Acesso negado (proteção contra IDOR).',
+        });
+        return;
+      }
+
+      const [summary, usage] = await Promise.all([
+        lifecycleService.getProviderSubscriptionSummary(providerId),
+        limitService.getUsageStatus(providerId),
+      ]);
+
+      res.json({
+        ok: true,
+        ...summary,
+        usage,
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.post(
+    '/subscriptions/checkout',
+    rateLimit(30),
+    async (req, res) => {
+      try {
+        const parsed = CheckoutSchema.parse(req.body);
+        const result = await lifecycleService.startCheckout(parsed);
+        res.status(201).json({ ok: true, ...result });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post('/subscriptions/:id/upgrade', async (req, res) => {
+    try {
+      const parsed = UpgradeSchema.parse(req.body);
+      const result = await lifecycleService.upgradeSubscription({
+        subscriptionId: req.params.id,
+        ...parsed,
+      });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.post('/subscriptions/:id/downgrade', async (req, res) => {
+    try {
+      const parsed = DowngradeSchema.parse(req.body);
+      const result = await lifecycleService.scheduleDowngrade({
+        subscriptionId: req.params.id,
+        targetPlanSlug: parsed.targetPlanSlug,
+      });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.post('/subscriptions/:id/cancel', async (req, res) => {
+    try {
+      const reason = req.body?.reason || 'Cancelamento solicitado no painel';
+      const updated = await lifecycleService.cancelSubscription(
+        req.params.id,
+        reason
+      );
+      res.json({ ok: true, subscription: updated });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  // 3. Opportunity Dispatch & Usage
+  router.post('/opportunities/dispatch', async (req, res) => {
+    try {
+      const providerProfileId = z
+        .string()
+        .min(1)
+        .parse(req.body?.providerProfileId);
+      const result = await limitService.recordOpportunitySent(
+        providerProfileId
+      );
+      res.status(result.allowed ? 200 : 403).json({ ok: result.allowed, ...result });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  // 4. Moderated Ads (Provider Panel Only)
+  router.get('/ads/provider-panel', async (req, res) => {
+    try {
+      const surface =
+        (req.query.surface as AdContextSurface) || 'painel_prestador';
+      const providerProfileId = String(req.query.providerProfileId || '');
+      const sessionBannersShown = Number(req.query.sessionBannersShown || 0);
+
+      const ad = await adAndMetricsService.getEligibleAdForSurface({
+        surface,
+        providerProfileId,
+        sessionBannersShown,
+      });
+      res.json({ ok: true, ad });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.post('/ads/:adId/click', async (req, res) => {
+    try {
+      const providerProfileId = z
+        .string()
+        .min(1)
+        .parse(req.body?.providerProfileId);
+      const updated = await adAndMetricsService.recordAdClick(
+        req.params.adId,
+        providerProfileId
+      );
+      res.json({ ok: true, ad: updated });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  // 5. Admin Routes (RBAC protected)
+  router.get('/admin/metrics', requireAdminRole, async (_req, res) => {
+    try {
+      const metrics = await adAndMetricsService.getAdminMetrics();
+      res.json({ ok: true, metrics });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.get('/admin/subscriptions', requireAdminRole, async (_req, res) => {
+    try {
+      await ensureSchemaAndSeed();
+      const [allSubs, allInvoices, allEvents, allWebhooks, allAds] =
+        await Promise.all([
+          db.select().from(subscriptions).orderBy(desc(subscriptions.criadoEm)),
+          db.select().from(invoices).orderBy(desc(invoices.criadoEm)),
+          db
+            .select()
+            .from(subscriptionEvents)
+            .orderBy(desc(subscriptionEvents.criadoEm)),
+          db
+            .select()
+            .from(processedWebhookEvents)
+            .orderBy(desc(processedWebhookEvents.criadoEm)),
+          db.select().from(adSlots).orderBy(desc(adSlots.prioridade)),
+        ]);
+
+      res.json({
+        ok: true,
+        subscriptions: allSubs,
+        invoices: allInvoices,
+        events: allEvents,
+        webhookEvents: allWebhooks,
+        ads: allAds,
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.patch('/admin/plans/:id', requireAdminRole, async (req, res) => {
+    try {
+      const UpdatePlanSchema = z.object({
+        precoMensalCentavos: z.number().int().min(0).optional(),
+        precoAnualCentavos: z.number().int().min(0).optional(),
+        limiteOportunidadesMensal: z.number().int().min(1).optional(),
+        prioridadeMatching: z.number().int().min(0).max(12).optional(),
+        ativo: z.boolean().optional(),
+      });
+      const data = UpdatePlanSchema.parse(req.body);
+      const [updated] = await db
+        .update(plans)
+        .set({ ...data, atualizadoEm: new Date() })
+        .where(eq(plans.id, req.params.id))
+        .returning();
+      res.json({ ok: true, plan: updated });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.post('/admin/ads', requireAdminRole, async (req, res) => {
+    try {
+      const created = await adAndMetricsService.createAdSlot(req.body);
+      res.status(201).json({ ok: true, ad: created });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  // 6. Neon Services E2E Verification Routes
+  router.get('/neon/postgres', async (_req, res) => {
+    try {
+      res.json(await testPostgresService());
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.post('/neon/auth', async (_req, res) => {
+    try {
+      res.json(await testAuthService());
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.post('/neon/storage', async (req, res) => {
+    try {
+      res.json(await testObjectStorageService(req.body?.title));
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.post('/neon/ai-gateway', async (req, res) => {
+    try {
+      res.json(await testAiGatewayService(req.body?.prompt));
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.get('/neon/functions', async (_req, res) => {
+    try {
+      res.json(await testFunctionsService());
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.post('/neon/realtime/seal', async (req, res) => {
+    try {
+      const providerId = req.body?.providerId || 'prov-joao';
+      res.json(await sealProviderNotificationsQuery(providerId));
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.post('/neon/realtime/test', async (req, res) => {
+    try {
+      const providerId = req.body?.providerId || 'prov-joao';
+      res.json(await testRealtimeService(providerId));
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.get('/neon/verify-all', async (_req, res) => {
+    try {
+      const [postgres, auth, storage, aiGateway, functions, realtime] =
+        await Promise.all([
+          testPostgresService(),
+          testAuthService(),
+          testObjectStorageService(),
+          testAiGatewayService(),
+          testFunctionsService(),
+          testRealtimeService(),
+        ]);
+
+      const allPassed =
+        postgres.ok &&
+        auth.ok &&
+        storage.ok &&
+        aiGateway.ok &&
+        functions.ok &&
+        realtime.ok;
+
+      res.status(allPassed ? 200 : 500).json({
+        ok: allPassed,
+        project: 'fancy-field-77458599',
+        branch: 'production',
+        services: {
+          postgres,
+          auth,
+          storage,
+          aiGateway,
+          functions,
+          realtime,
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  return router;
+}

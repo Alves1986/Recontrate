@@ -1,11 +1,41 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import express from 'express';
 import path from 'path';
-import {defineConfig} from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { createApiRouter } from './src/server/apiRouter';
 
-export default defineConfig(() => {
+function neonApiPlugin(): Plugin {
+  const apiApp = express();
+  apiApp.use('/api', createApiRouter());
+
   return {
-    plugins: [react(), tailwindcss()],
+    name: 'confiare-neon-api',
+    configureServer(server) {
+      server.middlewares.use(apiApp);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(apiApp);
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  return {
+    plugins: [react(), tailwindcss(), neonApiPlugin()],
+    define: {
+      'import.meta.env.VITE_NEON_AUTH_URL': JSON.stringify(
+        env.VITE_NEON_AUTH_URL && !env.VITE_NEON_AUTH_URL.startsWith('$')
+          ? env.VITE_NEON_AUTH_URL
+          : env.NEON_AUTH_BASE_URL || ''
+      ),
+      'import.meta.env.VITE_NEON_REALTIME_URL': JSON.stringify(
+        env.VITE_NEON_REALTIME_URL && !env.VITE_NEON_REALTIME_URL.startsWith('$')
+          ? env.VITE_NEON_REALTIME_URL
+          : env.NEON_REALTIME_URL || ''
+      ),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
