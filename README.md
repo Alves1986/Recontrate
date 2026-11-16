@@ -4,7 +4,7 @@ Plataforma web (React 19 + TypeScript + Vite + Express + Neon Lakebase PostgreSQ
 
 ---
 
-## Arquitetura de Produção (Fase 1 & Fase 2 Concluídas)
+## Arquitetura de Produção (Fases 1, 2 e 3 Concluídas)
 
 ### 1. Separação entre Área Pública e Área Autenticada
 
@@ -52,7 +52,23 @@ Implementadas em [`src/services/essentialIntegrations.ts`](file:///e:/Anderson/C
 1. **E-mail Transacional (`TransactionalEmailService`)**: confirmação de cadastro, recuperação de senha e avisos de aprovação/oportunidades (compatível com Resend API via `RESEND_API_KEY` + outbox auditável em `audit_logs`).
 2. **WhatsApp Business Cloud API (`WhatsAppBusinessService`)**: disparo de templates para novas oportunidades compatíveis, recontratação em 1 clique e indicação de substituto (via `WHATSAPP_BUSINESS_TOKEN` e `WHATSAPP_PHONE_NUMBER_ID`).
 3. **Geocodificação & Raio de Atendimento (`GeolocationRadiusService`)**: cálculo de distância Haversine (`calculateHaversineDistanceKm`) por coordenadas de bairros e integração opcional com Google Maps Geocoding API (`GOOGLE_MAPS_API_KEY`).
-4. **Gateway de Assinaturas (`AsaasBillingAdapter`)**: cobrança recorrente PIX/Cartão/Boleto e webhook idempotente (`POST /api/webhooks/asaas`).
+4. **Gateway de Assinaturas (`AsaasBillingAdapter`)**: cobrança recorrente PIX/Cartão/Boleto e webhook idempotente (`POST /api/webhooks/billing`).
+
+---
+
+### 4. Monitoramento, Backups e Prontidão de Go-Live (Fase 3)
+
+Implementados em [`src/services/monitoringAndBackupService.ts`](file:///e:/Anderson/Confiare/src/services/monitoringAndBackupService.ts) e [`src/server/apiRouter.ts`](file:///e:/Anderson/Confiare/src/server/apiRouter.ts):
+- **`GET /api/health`**: healthcheck público para uptime, latência do PostgreSQL e contagem de tabelas com Row Level Security (`rowsecurity = true`).
+- **`GET /api/admin/system-health`**: diagnóstico administrativo completo de infraestrutura, RLS e estado das integrações.
+- **`POST /api/admin/backups/snapshot`**: gera snapshot JSON de backup do banco e salva no bucket privado `assets` do Neon Object Storage (`backups/confiare-backup-*.json`), auditado em `audit_logs`.
+- **`POST /api/admin/monitoring/alerts`**: registra alertas operacionais em `audit_logs` e notifica administradores em `notifications`.
+- **`/api/neon/*` (protegido em produção)**: rotas de diagnóstico protegidas com `requireAdminInProd` quando `NODE_ENV=production`.
+
+#### Fluxo de Ambientes (Desenvolvimento → Staging → Produção)
+1. **Desenvolvimento (`.env.local`)**: seed automático estrutural + prestadores de exemplo apenas quando `NODE_ENV !== 'production'`.
+2. **Staging (Branch Neon `staging` + Vercel Preview)**: validar migrações SQL (`001` e `002`), healthcheck `/api/health`, login/cadastro Neon Auth e webhooks Asaas em sandbox/staging antes do merge para `main`.
+3. **Produção (`NODE_ENV=production` + Branch Neon `production`)**: definir todas as variáveis listadas em [`.env.example`](file:///e:/Anderson/Confiare/.env.example) no provedor de deploy, ativar domínio próprio com HTTPS/HSTS (`vercel.json`) e apontar URLs de retorno de autenticação do Neon Auth + Webhook do Asaas (`/api/webhooks/billing`).
 
 ---
 
@@ -74,7 +90,7 @@ Implementadas em [`src/services/essentialIntegrations.ts`](file:///e:/Anderson/C
 
 ---
 
-## Testes Automatizados (Fase 1 + Fase 2 + Monetização + Anúncios)
+## Testes Automatizados (Fases 1, 2 e 3 + Monetização + Anúncios)
 
 - **Fase 1 (Auth, RBAC, Recuperação de Senha, Proteção de Rotas e RLS)**:
   ```bash
@@ -83,6 +99,10 @@ Implementadas em [`src/services/essentialIntegrations.ts`](file:///e:/Anderson/C
 - **Fase 2 (Fluxo Completo do Marketplace, Matching com Raio, Avaliações, Recontratação, Substituto com Consentimento LGPD, Documentos Privados e Curadoria Admin)**:
   ```bash
   npx tsx --test src/services/phase2MarketplaceE2E.test.ts
+  ```
+- **Fase 3 (Go-Live: Healthcheck, RLS Audit, Backups no Neon Object Storage, Alertas e Blindagem de Produção)**:
+  ```bash
+  npx tsx --test src/services/phase3GoLiveReadiness.test.ts
   ```
 - **Suíte Completa**:
   ```bash
