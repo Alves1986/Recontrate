@@ -7,6 +7,10 @@ import { attachDatabasePool } from '@neon/functions';
 import { parseEnv } from '@neon/env';
 import config from '../../neon';
 import * as schema from './schema';
+import {
+  INITIAL_TAXONOMY_CATEGORIES,
+  slugifyTaxonomyTerm,
+} from '../data/taxonomySeed';
 
 if (existsSync('.env.local')) {
   dotenv.config({ path: '.env.local' });
@@ -391,59 +395,107 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       }
     }
 
-    const structuralCategories = [
-      {
-        slug: 'eletricista',
-        name: 'Eletricista',
-        shortDesc:
-          'Quadros elétricos, disjuntores, tomadas 20A, chuveiros e iluminação.',
-        avgResponseMin: 11,
-        verifiedCount: 42,
-      },
-      {
-        slug: 'encanador',
-        name: 'Encanador',
-        shortDesc:
-          'Caça-vazamentos, registros, válvulas Hydra, sifões e pressurizadores.',
-        avgResponseMin: 14,
-        verifiedCount: 35,
-      },
-      {
-        slug: 'diarista',
-        name: 'Diarista',
-        shortDesc:
-          'Limpeza residencial detalhada, pós-mudança e organização de ambientes.',
-        avgResponseMin: 16,
-        verifiedCount: 58,
-      },
-      {
-        slug: 'pintor',
-        name: 'Pintor',
-        shortDesc:
-          'Pintura acrílica fina, massa corrida, tratamento de trincas e umidade.',
-        avgResponseMin: 19,
-        verifiedCount: 29,
-      },
-      {
-        slug: 'tecnico-de-ar-condicionado',
-        name: 'Técnico de ar-condicionado',
-        shortDesc:
-          'Instalação Split Inverter, higienização profunda, carga de gás e dreno.',
-        avgResponseMin: 13,
-        verifiedCount: 24,
-      },
-    ];
-
-    for (const c of structuralCategories) {
-      await directPool.query(
-        `INSERT INTO categories (slug, name, short_desc, avg_response_min, verified_count, active)
-         VALUES ($1, $2, $3, $4, $5, true)
-         ON CONFLICT (slug) DO UPDATE SET
-           name = EXCLUDED.name,
-           short_desc = EXCLUDED.short_desc,
-           avg_response_min = EXCLUDED.avg_response_min`,
-        [c.slug, c.name, c.shortDesc, c.avgResponseMin, c.verifiedCount]
+    const { rows: mig5Check } = await directPool.query(
+      `SELECT 1 FROM information_schema.tables
+       WHERE table_schema = 'public'
+         AND table_name = 'specialty_suggestions'`
+    );
+    if (mig5Check.length === 0) {
+      const phase5TaxonomyMigrationPath = path.resolve(
+        process.cwd(),
+        'migrations/005_specialties_taxonomy_and_moderation.sql'
       );
+      if (existsSync(phase5TaxonomyMigrationPath)) {
+        const migration5Sql = readFileSync(
+          phase5TaxonomyMigrationPath,
+          'utf-8'
+        );
+        await directPool.query(migration5Sql);
+      }
+    }
+
+    const { rows: specCountRows } = await directPool.query<{ total: string }>(
+      `SELECT COUNT(*)::text AS total FROM specialties`
+    );
+    if (Number(specCountRows[0]?.total || 0) < 80) {
+      for (const cat of INITIAL_TAXONOMY_CATEGORIES) {
+        if (cat.legacySlug) {
+          await directPool.query(
+            `UPDATE categories
+             SET slug = $1,
+                 name = $2,
+                 nome = $2,
+                 short_desc = $3,
+                 descricao = $3,
+                 icone = $4,
+                 ordem_exibicao = $5,
+                 ativo = true,
+                 active = true,
+                 atualizado_em = NOW()
+             WHERE slug = $6
+               AND NOT EXISTS (SELECT 1 FROM categories WHERE slug = $1)`,
+            [
+              cat.slug,
+              cat.nome,
+              cat.descricao,
+              cat.icone,
+              cat.ordemExibicao,
+              cat.legacySlug,
+            ]
+          );
+        }
+
+        const { rows: catRows } = await directPool.query<{ id: string }>(
+          `INSERT INTO categories (
+            slug, name, nome, short_desc, descricao, icone,
+            avg_response_min, verified_count, active, ativo, ordem_exibicao
+          ) VALUES ($1,$2,$2,$3,$3,$4,$5,$6,true,true,$7)
+          ON CONFLICT (slug) DO UPDATE SET
+            name = EXCLUDED.name,
+            nome = EXCLUDED.nome,
+            short_desc = EXCLUDED.short_desc,
+            descricao = EXCLUDED.descricao,
+            icone = EXCLUDED.icone,
+            ordem_exibicao = EXCLUDED.ordem_exibicao,
+            active = true,
+            ativo = true,
+            atualizado_em = NOW()
+          RETURNING id`,
+          [
+            cat.slug,
+            cat.nome,
+            cat.descricao,
+            cat.icone,
+            cat.avgResponseMin,
+            cat.verifiedCount,
+            cat.ordemExibicao,
+          ]
+        );
+        const categoryId = catRows[0].id;
+
+        for (const spec of cat.specialties) {
+          const specSlug = slugifyTaxonomyTerm(spec.nome);
+          await directPool.query(
+            `INSERT INTO specialties (
+              category_id, nome, slug, descricao, sinonimos, ativo, oficial, criado_por
+            ) VALUES ($1, $2, $3, $4, $5, true, true, 'sistema')
+            ON CONFLICT (slug) DO UPDATE SET
+              category_id = EXCLUDED.category_id,
+              nome = EXCLUDED.nome,
+              sinonimos = EXCLUDED.sinonimos,
+              ativo = true,
+              oficial = true,
+              atualizado_em = NOW()`,
+            [
+              categoryId,
+              spec.nome,
+              specSlug,
+              spec.descricao || '',
+              spec.sinonimos || [],
+            ]
+          );
+        }
+      }
     }
 
     for (const p of INITIAL_PLANS_SEED) {

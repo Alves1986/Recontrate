@@ -12,6 +12,13 @@ import {
   validateSubstituteSelection,
 } from '../utils/marketplaceRules';
 import { assetsFiles } from '../server/neonServices';
+import {
+  CATEGORY_EQUIVALENCES,
+  INITIAL_TAXONOMY_CATEGORIES,
+  normalizeTaxonomyStem,
+  normalizeTaxonomyTerm,
+  slugifyTaxonomyTerm,
+} from '../data/taxonomySeed';
 import type { PlanTier, ProviderProfile } from '../types/confiare';
 
 const geoService = new GeolocationRadiusService();
@@ -34,7 +41,228 @@ function slugToPlanTier(slug: string): PlanTier {
   }
 }
 
+function expandEquivalentCategoryNames(categoryName: string): string[] {
+  const slug = slugifyTaxonomyTerm(categoryName);
+  const eqSlugs = CATEGORY_EQUIVALENCES[slug] || [slug];
+  const names = new Set<string>([categoryName.trim()]);
+  for (const s of eqSlugs) {
+    const found = INITIAL_TAXONOMY_CATEGORIES.find(
+      (c) => c.slug === s || c.legacySlug === s
+    );
+    if (found) {
+      names.add(found.nome);
+      if (found.legacySlug === 'eletricista') names.add('Eletricista');
+      if (found.legacySlug === 'encanador') names.add('Encanador');
+      if (found.legacySlug === 'diarista') names.add('Diarista');
+      if (found.legacySlug === 'pintor') names.add('Pintor');
+      if (found.legacySlug === 'tecnico-de-ar-condicionado')
+        names.add('Técnico de ar-condicionado');
+    }
+  }
+  return Array.from(names);
+}
+
 export class MarketplaceDataService {
+  /**
+   * Busca e ranking de prestadores compatíveis por categoria oficial, especialidades oficiais
+   * (incluindo sinônimos aprovados), tags livres aprovadas e raio de atendimento.
+   * Sugestões pendentes e tags não aprovadas NUNCA entram na busca ou no matching.
+   */
+  async findMatchingProviders(input: {
+    categoryName?: string;
+    searchText?: string;
+    neighborhood?: string;
+    city?: string;
+  }) {
+    await ensureSchemaAndSeed();
+
+    const params: unknown[] = [];
+    let catClause = '';
+    if (input.categoryName && input.categoryName !== 'Todas') {
+      const equivNames = expandEquivalentCategoryNames(input.categoryName);
+      params.push(equivNames);
+      catClause = `AND pp.category = ANY($1::text[])`;
+    }
+
+    const { rows: candidateRows } = await pool.query(
+      `SELECT pp.*,
+              COALESCE(
+                (SELECT json_agg(json_build_object('nome', s.nome, 'sinonimos', s.sinonimos))
+                 FROM provider_specialties ps
+                 JOIN specialties s ON s.id = ps.specialty_id
+                 WHERE ps.provider_profile_id = pp.id AND s.ativo = true AND s.oficial = true),
+                '[]'::json
+              ) AS official_specialties_json,
+              COALESCE(
+                (SELECT json_agg(pct.tag)
+                 FROM provider_custom_tags pct
+                 WHERE pct.provider_profile_id = pp.id AND pct.status = 'aprovado'),
+                '[]'::json
+              ) AS approved_tags_json
+       FROM provider_profiles pp
+       WHERE pp.deleted_at IS NULL
+         AND pp.verification_status = 'aprovado'
+         ${catClause}`,
+      params
+    );
+
+    const qNorm = normalizeTaxonomyTerm(input.searchText || '');
+    const qStem = normalizeTaxonomyStem(input.searchText || '');
+    const results: Array<{
+      provider: any;
+      priorityScore: number;
+      distanceKm: number;
+      matchedBy: string[];
+    }> = [];
+
+    for (const row of candidateRows) {
+      const officialSpecs: Array<{ nome: string; sinonimos?: string[] }> =
+        Array.isArray(row.official_specialties_json)
+          ? row.official_specialties_json
+          : [];
+      const approvedTags: string[] = Array.isArray(row.approved_tags_json)
+        ? row.approved_tags_json
+        : [];
+      const legacySpecialties: string[] = Array.isArray(row.specialties)
+        ? row.specialties
+        : [];
+
+      const matchedBy: string[] = [];
+      let textBonus = 0;
+
+      if (qNorm) {
+        const matchesOfficialSpec = officialSpecs.some((spec) => {
+          const n = normalizeTaxonomyTerm(spec.nome);
+          const st = normalizeTaxonomyStem(spec.nome);
+          const syns = Array.isArray(spec.sinonimos) ? spec.sinonimos : [];
+          return (
+            n.includes(qNorm) ||
+            st.includes(qStem) ||
+            syns.some((syn) => {
+              const sn = normalizeTaxonomyTerm(syn);
+              return sn.includes(qNorm) || qNorm.includes(sn);
+            })
+          );
+        });
+
+        const matchesLegacySpec = legacySpecialties.some((s) =>
+          normalizeTaxonomyTerm(s).includes(qNorm)
+        );
+
+        if (matchesOfficialSpec || matchesLegacySpec) {
+          textBonus += 25;
+          matchedBy.push('especialidade_oficial');
+        }
+
+        const matchesApprovedTag = approvedTags.some((t) => {
+          const tn = normalizeTaxonomyTerm(t);
+          return tn.includes(qNorm) || qNorm.includes(tn);
+        });
+        if (matchesApprovedTag) {
+          textBonus += 15;
+          matchedBy.push('tag_aprovada');
+        }
+
+        const matchesBioOrCat =
+          normalizeTaxonomyTerm(row.bio || '').includes(qNorm) ||
+          normalizeTaxonomyTerm(row.category || '').includes(qNorm) ||
+          normalizeTaxonomyTerm(row.name || '').includes(qNorm);
+        if (matchesBioOrCat) {
+          textBonus += 5;
+          matchedBy.push('perfil');
+        }
+
+        if (matchedBy.length === 0) {
+          continue;
+        }
+      }
+
+      const neighborhoods: string[] = Array.isArray(row.neighborhoods)
+        ? row.neighborhoods
+        : ['Pinheiros'];
+      const radiusCheck = input.neighborhood
+        ? await geoService.checkProviderRadius({
+            requestNeighborhood: input.neighborhood,
+            requestCity: input.city || row.city,
+            providerNeighborhoods: neighborhoods,
+            providerLat: row.latitude ? Number(row.latitude) : undefined,
+            providerLng: row.longitude ? Number(row.longitude) : undefined,
+            radiusKm: Number(row.radius_km || 10),
+          })
+        : { withinRadius: true, distanceKm: 1.5 };
+
+      if (!radiusCheck.withinRadius) {
+        continue;
+      }
+
+      const displayName = String(
+        row.professional_name || row.name || 'Profissional'
+      );
+      const initials = displayName
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() || '')
+        .join('');
+
+      const mappedProfile: ProviderProfile = {
+        id: row.id,
+        name: displayName,
+        initials: initials || 'PR',
+        category: row.category,
+        city: row.city,
+        neighborhoods,
+        yearsExperience: Number(row.years_experience || 5),
+        bio: row.bio || '',
+        specialties:
+          officialSpecs.length > 0
+            ? officialSpecs.map((s) => s.nome)
+            : legacySpecialties,
+        plan: slugToPlanTier(row.plan_slug),
+        ratingAvg: Number(row.rating_avg || 5),
+        reviewsCount: Number(row.reviews_count || 0),
+        completedJobs: Number(row.completed_jobs || 0),
+        responseTimeMinutes: Number(row.response_time_minutes || 12),
+        responseRatePercent: Number(row.response_rate_percent || 98),
+        attendanceRatePercent: Number(row.attendance_rate_percent || 100),
+        isVerified: Boolean(row.is_verified),
+        isTopRegion: Boolean(row.is_top_region),
+        isMentor: Boolean(row.is_mentor),
+        availableToday: Boolean(row.available_today),
+        profileCompletenessPercent: Number(
+          row.profile_completeness_percent || 90
+        ),
+        whatsapp: row.whatsapp,
+        trustedSubstitutesIds: [],
+        portfolio: [],
+        reviews: [],
+      };
+
+      const priority = getMatchingPriority(mappedProfile, {
+        locationQuery: input.neighborhood,
+      });
+
+      results.push({
+        provider: {
+          id: row.id,
+          slug: row.slug || row.id,
+          name: displayName,
+          category: row.category,
+          city: row.city,
+          neighborhoods,
+          rating_avg: row.rating_avg,
+          reviews_count: row.reviews_count,
+          officialSpecialties: officialSpecs.map((s) => s.nome),
+          approvedTags,
+        },
+        priorityScore: priority.priorityScore + textBonus,
+        distanceKm: radiusCheck.distanceKm,
+        matchedBy,
+      });
+    }
+
+    return results.sort((a, b) => b.priorityScore - a.priorityScore);
+  }
   /**
    * 1. Cria solicitação real persistida (RLS cliente) e dispara oportunidades reais
    * para prestadores compatíveis dentro do raio de atendimento e limite mensal do plano.
@@ -84,13 +312,14 @@ export class MarketplaceDataService {
       }
     );
 
-    // 2. Find active, approved providers in the requested category
+    // 2. Find active, approved providers in the requested category (including taxonomy equivalences)
+    const equivCategoryNames = expandEquivalentCategoryNames(input.categoryName);
     const { rows: candidateRows } = await pool.query(
       `SELECT * FROM provider_profiles
-       WHERE category = $1
+       WHERE category = ANY($1::text[])
          AND deleted_at IS NULL
          AND verification_status = 'aprovado'`,
-      [input.categoryName]
+      [equivCategoryNames]
     );
 
     const dispatchedOpportunities: any[] = [];

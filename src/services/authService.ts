@@ -584,8 +584,31 @@ export class AuthService {
     category?: string;
     bio?: string;
     yearsExperience?: number;
+    enforceOfficialSpecialties?: boolean;
   }) {
     await ensureSchemaAndSeed();
+
+    if (params.enforceOfficialSpecialties) {
+      const { rows: provRows } = await pool.query<{ id: string }>(
+        `SELECT id FROM provider_profiles WHERE user_id = $1::uuid LIMIT 1`,
+        [params.userId]
+      );
+      if (provRows.length > 0) {
+        const { rows: countRows } = await pool.query<{ total: string }>(
+          `SELECT COUNT(*)::text AS total
+           FROM provider_specialties
+           WHERE provider_profile_id = $1`,
+          [provRows[0].id]
+        );
+        const total = Number(countRows[0]?.total || 0);
+        if (total < 1 || total > 5) {
+          throw new Error(
+            'Escolha obrigatória: selecione e salve entre 1 e 5 especialidades oficiais antes de concluir o onboarding.'
+          );
+        }
+      }
+    }
+
     await pool.query(
       `UPDATE profiles
        SET phone = COALESCE($1, phone),

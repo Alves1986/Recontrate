@@ -7,6 +7,7 @@ import {
   sanitizeUserText,
 } from '../services/authService';
 import { MarketplaceDataService } from '../services/marketplaceDataService';
+import { SpecialtiesTaxonomyService } from '../services/specialtiesService';
 import {
   requireAuth,
   requireRole,
@@ -15,6 +16,7 @@ import {
 
 const authService = new AuthService();
 const marketplaceService = new MarketplaceDataService();
+const taxonomyService = new SpecialtiesTaxonomyService();
 
 // Basic rate limiter for auth endpoints
 const authRateMap = new Map<string, { count: number; resetAt: number }>();
@@ -74,6 +76,7 @@ const OnboardingSchema = z.object({
   category: z.string().optional(),
   bio: z.string().optional(),
   yearsExperience: z.number().int().min(0).optional(),
+  enforceOfficialSpecialties: z.boolean().optional(),
 });
 
 const SwitchRoleSchema = z.object({
@@ -198,13 +201,78 @@ export function createPhase1Router(): express.Router {
     }
   });
 
+  router.get('/taxonomy/categories', async (_req, res) => {
+    try {
+      const categories = await taxonomyService.listCategoriesWithSpecialties();
+      res.json({ ok: true, categories });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.get('/taxonomy/specialties', async (req, res) => {
+    try {
+      const categoryId = req.query.categoryId
+        ? String(req.query.categoryId)
+        : undefined;
+      const query = req.query.q ? String(req.query.q) : undefined;
+      const specialties = await taxonomyService.searchOfficialSpecialties({
+        categoryId,
+        query,
+      });
+      res.json({ ok: true, specialties });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.get('/taxonomy/similar', async (req, res) => {
+    try {
+      const q = req.query.q ? String(req.query.q) : '';
+      const categoryId = req.query.categoryId
+        ? String(req.query.categoryId)
+        : undefined;
+      if (!q.trim()) {
+        res.json({ ok: true, similar: [] });
+        return;
+      }
+      const similar = await taxonomyService.findSimilarOfficialSpecialties(
+        q,
+        categoryId
+      );
+      res.json({ ok: true, similar });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.get('/public/providers/match', async (req, res) => {
+    try {
+      const categoryName = req.query.category
+        ? String(req.query.category)
+        : undefined;
+      const searchText = req.query.q ? String(req.query.q) : undefined;
+      const neighborhood = req.query.neighborhood
+        ? String(req.query.neighborhood)
+        : undefined;
+      const matches = await marketplaceService.findMatchingProviders({
+        categoryName,
+        searchText,
+        neighborhood,
+      });
+      res.json({ ok: true, matches });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
   router.get('/public/providers/:slug', async (req, res) => {
     try {
       await ensureSchemaAndSeed();
       const { slug } = req.params;
       const { rows } = await pool.query(
         `SELECT id, COALESCE(slug, id) AS slug, name, category, city, neighborhoods,
-                years_experience, bio, plan_slug, rating_avg, reviews_count,
+                years_experience, bio, specialties, plan_slug, rating_avg, reviews_count,
                 completed_jobs, response_time_minutes, response_rate_percent,
                 is_verified, is_top_region, is_mentor, available_today
          FROM provider_profiles
@@ -220,20 +288,25 @@ export function createPhase1Router(): express.Router {
       }
 
       const provider = rows[0];
-      const { rows: reviewRows } = await pool.query(
-        `SELECT id, client_name_display, neighborhood, service_title, rating, comment, created_at
-         FROM reviews
-         WHERE provider_profile_id = $1
-         ORDER BY created_at DESC
-         LIMIT 20`,
-        [provider.id]
-      );
+      const [reviewRes, publicTaxonomy] = await Promise.all([
+        pool.query(
+          `SELECT id, client_name_display, neighborhood, service_title, rating, comment, created_at
+           FROM reviews
+           WHERE provider_profile_id = $1
+           ORDER BY created_at DESC
+           LIMIT 20`,
+          [provider.id]
+        ),
+        taxonomyService.getPublicProviderTaxonomy(provider.id),
+      ]);
 
       res.json({
         ok: true,
         provider: {
           ...provider,
-          reviews: reviewRows,
+          reviews: reviewRes.rows,
+          officialSpecialties: publicTaxonomy.officialSpecialties,
+          approvedTags: publicTaxonomy.approvedTags,
         },
       });
     } catch (err) {
@@ -797,6 +870,202 @@ export function createPhase1Router(): express.Router {
         res.json({ ok: true, documents });
       } catch (err) {
         res.status(403).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  // 3.2. Provider Taxonomy, Suggestions & Custom Tags (/api/app/prestador/*)
+  router.get(
+    '/app/prestador/taxonomy',
+    requireRole(['prestador', 'padrinho', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const providerProfileId =
+          req.authSession?.providerProfileId ||
+          (req.query.providerProfileId
+            ? String(req.query.providerProfileId)
+            : null);
+        if (!providerProfileId) {
+          throw new Error('Perfil de prestador não identificado.');
+        }
+        const overview = await taxonomyService.getProviderTaxonomyOverview(
+          providerProfileId
+        );
+        res.json({ ok: true, ...overview });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.put(
+    '/app/prestador/specialties',
+    requireRole(['prestador', 'padrinho', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const providerProfileId = req.authSession?.providerProfileId;
+        if (!providerProfileId) {
+          throw new Error('Perfil de prestador não identificado.');
+        }
+        const schema = z.object({
+          categoryId: z.string().uuid(),
+          specialtyIds: z.array(z.string().uuid()),
+          principalSpecialtyId: z.string().uuid().optional(),
+        });
+        const parsed = schema.parse(req.body || {});
+        const saved = await taxonomyService.setProviderOfficialSpecialties({
+          providerProfileId,
+          categoryId: parsed.categoryId,
+          specialtyIds: parsed.specialtyIds,
+          principalSpecialtyId: parsed.principalSpecialtyId,
+        });
+        res.json({ ok: true, ...saved });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post(
+    '/app/prestador/specialty-suggestions',
+    requireRole(['prestador', 'padrinho', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const providerProfileId = req.authSession?.providerProfileId;
+        if (!providerProfileId) {
+          throw new Error('Perfil de prestador não identificado.');
+        }
+        const schema = z.object({
+          categoryId: z.string().uuid(),
+          nomeSugerido: z.string().min(1),
+          descricao: z.string().optional(),
+        });
+        const parsed = schema.parse(req.body || {});
+        const created = await taxonomyService.createSpecialtySuggestion({
+          providerProfileId,
+          categoryId: parsed.categoryId,
+          nomeSugerido: parsed.nomeSugerido,
+          descricao: parsed.descricao,
+        });
+        res.status(201).json({ ok: true, ...created });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post(
+    '/app/prestador/custom-tags',
+    requireRole(['prestador', 'padrinho', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const providerProfileId = req.authSession?.providerProfileId;
+        if (!providerProfileId) {
+          throw new Error('Perfil de prestador não identificado.');
+        }
+        const schema = z.object({
+          tag: z.string().min(1),
+          requireHumanReview: z.boolean().optional(),
+        });
+        const parsed = schema.parse(req.body || {});
+        const created = await taxonomyService.addProviderCustomTag({
+          providerProfileId,
+          tag: parsed.tag,
+          requireHumanReview: parsed.requireHumanReview,
+        });
+        res.status(201).json({ ok: true, tag: created });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.delete(
+    '/app/prestador/custom-tags/:tagId',
+    requireRole(['prestador', 'padrinho', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const providerProfileId = req.authSession?.providerProfileId;
+        if (!providerProfileId) {
+          throw new Error('Perfil de prestador não identificado.');
+        }
+        const removed = await taxonomyService.removeProviderCustomTag(
+          providerProfileId,
+          req.params.tagId
+        );
+        res.json({ ok: true, tag: removed });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  // Admin Taxonomy Moderation Routes (/api/admin/taxonomy/*)
+  router.get(
+    '/admin/taxonomy/suggestions',
+    requireRole(['admin'], authService),
+    async (_req, res) => {
+      try {
+        const queue = await taxonomyService.listAdminModerationQueue();
+        res.json({ ok: true, ...queue });
+      } catch (err) {
+        res.status(500).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post(
+    '/admin/taxonomy/suggestions/:id/moderate',
+    requireRole(['admin'], authService),
+    async (req, res) => {
+      try {
+        const schema = z.object({
+          decision: z.enum([
+            'aprovar_nova',
+            'aprovar_sinonimo',
+            'mesclar',
+            'reprovar',
+            'solicitar_correcao',
+          ]),
+          targetSpecialtyId: z.string().uuid().optional(),
+          categoryId: z.string().uuid().optional(),
+          motivoRejeicao: z.string().optional(),
+        });
+        const parsed = schema.parse(req.body || {});
+        const result = await taxonomyService.moderateSuggestion({
+          suggestionId: req.params.id,
+          adminUserId: req.authSession?.userId || null,
+          decision: parsed.decision,
+          targetSpecialtyId: parsed.targetSpecialtyId,
+          categoryId: parsed.categoryId,
+          motivoRejeicao: parsed.motivoRejeicao,
+        });
+        res.json({ ok: true, ...result });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.patch(
+    '/admin/taxonomy/tags/:tagId',
+    requireRole(['admin'], authService),
+    async (req, res) => {
+      try {
+        const schema = z.object({
+          status: z.enum(['aprovado', 'reprovado', 'removido']),
+          motivo: z.string().optional(),
+        });
+        const parsed = schema.parse(req.body || {});
+        const updated = await taxonomyService.moderateCustomTag({
+          tagId: req.params.tagId,
+          adminUserId: req.authSession?.userId || null,
+          status: parsed.status,
+          motivo: parsed.motivo,
+        });
+        res.json({ ok: true, tag: updated });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
       }
     }
   );
