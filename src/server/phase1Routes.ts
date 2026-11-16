@@ -451,7 +451,7 @@ export function createPhase1Router(): express.Router {
           action: 'service_request_created',
           targetType: 'service_request',
           targetId: result.request.id,
-          metadataJson: { dispatchedCount: result.dispatchedCount },
+          metadata: { dispatchedCount: result.dispatchedCount },
           ipAddress: req.ip,
         });
 
@@ -497,7 +497,7 @@ export function createPhase1Router(): express.Router {
           action: 'review_submitted_reputation_updated',
           targetType: 'provider_profile',
           targetId: parsed.providerProfileId,
-          metadataJson: { rating: result.review.rating },
+          metadata: { rating: result.review.rating },
           ipAddress: req.ip,
         });
 

@@ -124,14 +124,21 @@ export class MarketplaceDataService {
         continue;
       }
 
+      const displayName = String(row.professional_name || row.name || 'Profissional');
+      const initials = displayName
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() || '')
+        .join('');
+
       const mappedProfile: ProviderProfile = {
         id: row.id,
-        name: row.name,
-        professionalName: row.professional_name || row.name,
+        name: displayName,
+        initials: initials || 'PR',
         category: row.category,
         city: row.city,
         neighborhoods,
-        radiusKm: Number(row.radius_km || 10),
         yearsExperience: Number(row.years_experience || 5),
         bio: row.bio || '',
         specialties: Array.isArray(row.specialties) ? row.specialties : [],
@@ -150,6 +157,7 @@ export class MarketplaceDataService {
           row.profile_completeness_percent || 90
         ),
         whatsapp: row.whatsapp,
+        trustedSubstitutesIds: [],
         portfolio: [],
         reviews: [],
       };

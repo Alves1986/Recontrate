@@ -31,11 +31,13 @@ import path from 'node:path';
 import { createPhase1Router } from './phase1Routes';
 import { extractBearerOrCookieToken } from './authMiddleware';
 import { AuthService } from '../services/authService';
+import { MonitoringAndBackupService } from '../services/monitoringAndBackupService';
 
 const lifecycleService = new SubscriptionLifecycleService();
 const limitService = new OpportunityLimitService();
 const adAndMetricsService = new AdAndMetricsService();
 const authService = new AuthService();
+const monitoringService = new MonitoringAndBackupService();
 
 // Simple in-memory rate limiter for checkout and webhook endpoints
 const rateLimitWindowMs = 60_000;
@@ -101,6 +103,25 @@ async function requireAdminRole(
     error: 'Acesso negado: permissão de administrador obrigatória.',
   });
 }
+
+async function requireAdminInProd(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  if (process.env.NODE_ENV !== 'production') {
+    next();
+    return;
+  }
+  await requireAdminRole(req, res, next);
+}
+
+const MonitoringAlertSchema = z.object({
+  source: z.string().min(2),
+  message: z.string().min(3),
+  severity: z.enum(['warning', 'critical']).default('warning'),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
 
 const CheckoutSchema = z.object({
   providerProfileId: z.string().min(1),
@@ -172,6 +193,21 @@ export function createApiRouter(): express.Router {
 
   // Standard JSON parser for all other routes
   router.use(express.json());
+
+  // 1.5. Public Uptime / Availability Healthcheck
+  router.get('/health', async (_req, res) => {
+    try {
+      const health = await monitoringService.getSystemHealth();
+      res.status(200).json({ ok: true, ...health });
+    } catch (err) {
+      res.status(503).json({
+        ok: false,
+        status: 'degraded',
+        error: (err as Error).message,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
 
   // Mount Phase 1 Public, Auth, and Role-Protected Routes
   router.use(createPhase1Router());
@@ -474,8 +510,75 @@ export function createApiRouter(): express.Router {
     }
   });
 
-  // 6. Neon Services E2E Verification Routes
-  router.get('/neon/postgres', async (_req, res) => {
+  // 5.5. Admin System Health, Backups & Error Alerts
+  router.get('/admin/system-health', requireAdminRole, async (_req, res) => {
+    try {
+      const health = await monitoringService.getSystemHealth();
+      res.json({
+        ok: true,
+        ...health,
+        integrations: {
+          emailConfigured: Boolean(
+            process.env.RESEND_API_KEY &&
+              !process.env.RESEND_API_KEY.startsWith('YOUR_')
+          ),
+          whatsappConfigured: Boolean(
+            process.env.WHATSAPP_BUSINESS_TOKEN &&
+              process.env.WHATSAPP_PHONE_NUMBER_ID &&
+              !process.env.WHATSAPP_BUSINESS_TOKEN.startsWith('YOUR_')
+          ),
+          googleMapsConfigured: Boolean(
+            process.env.GOOGLE_MAPS_API_KEY &&
+              !process.env.GOOGLE_MAPS_API_KEY.startsWith('YOUR_')
+          ),
+          asaasConfigured: Boolean(
+            process.env.ASAAS_API_KEY &&
+              !process.env.ASAAS_API_KEY.startsWith('YOUR_')
+          ),
+        },
+      });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.post(
+    '/admin/backups/snapshot',
+    requireAdminRole,
+    async (req, res) => {
+      try {
+        const snapshot = await monitoringService.createDatabaseBackupSnapshot(
+          req.authSession?.userId
+        );
+        res.status(201).json({ ok: true, backup: snapshot });
+      } catch (err) {
+        res.status(500).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post(
+    '/admin/monitoring/alerts',
+    requireAdminRole,
+    async (req, res) => {
+      try {
+        const parsed = MonitoringAlertSchema.parse(req.body || {});
+        const result = await monitoringService.recordErrorAlert({
+          source: parsed.source,
+          message: parsed.message,
+          severity: parsed.severity,
+          metadata: parsed.metadata,
+          actorUserId: req.authSession?.userId,
+        });
+        res.status(201).json({ ok: true, alert: result });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  // 6. Neon Services E2E Verification Routes (protected as admin in production)
+  router.get('/neon/postgres', requireAdminInProd, async (_req, res) => {
     try {
       res.json(await testPostgresService());
     } catch (err) {
@@ -483,7 +586,7 @@ export function createApiRouter(): express.Router {
     }
   });
 
-  router.post('/neon/auth', async (_req, res) => {
+  router.post('/neon/auth', requireAdminInProd, async (_req, res) => {
     try {
       res.json(await testAuthService());
     } catch (err) {
@@ -491,7 +594,7 @@ export function createApiRouter(): express.Router {
     }
   });
 
-  router.post('/neon/storage', async (req, res) => {
+  router.post('/neon/storage', requireAdminInProd, async (req, res) => {
     try {
       res.json(await testObjectStorageService(req.body?.title));
     } catch (err) {
@@ -499,7 +602,7 @@ export function createApiRouter(): express.Router {
     }
   });
 
-  router.post('/neon/ai-gateway', async (req, res) => {
+  router.post('/neon/ai-gateway', requireAdminInProd, async (req, res) => {
     try {
       res.json(await testAiGatewayService(req.body?.prompt));
     } catch (err) {
@@ -507,7 +610,7 @@ export function createApiRouter(): express.Router {
     }
   });
 
-  router.get('/neon/functions', async (_req, res) => {
+  router.get('/neon/functions', requireAdminInProd, async (_req, res) => {
     try {
       res.json(await testFunctionsService());
     } catch (err) {
@@ -515,7 +618,7 @@ export function createApiRouter(): express.Router {
     }
   });
 
-  router.post('/neon/realtime/seal', async (req, res) => {
+  router.post('/neon/realtime/seal', requireAdminInProd, async (req, res) => {
     try {
       const providerId = req.body?.providerId || 'prov-joao';
       res.json(await sealProviderNotificationsQuery(providerId));
@@ -524,7 +627,7 @@ export function createApiRouter(): express.Router {
     }
   });
 
-  router.post('/neon/realtime/test', async (req, res) => {
+  router.post('/neon/realtime/test', requireAdminInProd, async (req, res) => {
     try {
       const providerId = req.body?.providerId || 'prov-joao';
       res.json(await testRealtimeService(providerId));
@@ -533,7 +636,7 @@ export function createApiRouter(): express.Router {
     }
   });
 
-  router.get('/neon/verify-all', async (_req, res) => {
+  router.get('/neon/verify-all', requireAdminInProd, async (_req, res) => {
     try {
       const [postgres, auth, storage, aiGateway, functions, realtime] =
         await Promise.all([

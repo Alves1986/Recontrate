@@ -19,6 +19,10 @@ export const AdminMonetizationScreen: React.FC = () => {
   const [adsReport, setAdsReport] = useState<any>(null);
   const [plansList, setPlansList] = useState<any[]>([]);
   const [providersRegistry, setProvidersRegistry] = useState<any[]>([]);
+  const [systemHealth, setSystemHealth] = useState<any>(null);
+  const [backupResult, setBackupResult] = useState<any>(null);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupError, setBackupError] = useState('');
   const [loading, setLoading] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
@@ -53,7 +57,7 @@ export const AdminMonetizationScreen: React.FC = () => {
     setLoading(true);
     try {
       const headers = { 'x-user-role': 'admin' };
-      const [mRes, sRes, aRes, pRes, provRes] = await Promise.all([
+      const [mRes, sRes, aRes, pRes, provRes, healthRes] = await Promise.all([
         fetch('/api/admin/metrics', { headers }).then((r) => r.json()),
         fetch('/api/admin/subscriptions', { headers }).then((r) => r.json()),
         fetch('/api/admin/ads', { headers }).then((r) => r.json()),
@@ -61,10 +65,14 @@ export const AdminMonetizationScreen: React.FC = () => {
         fetch('/api/admin/providers', { headers })
           .then((r) => (r.ok ? r.json() : { ok: false }))
           .catch(() => ({ ok: false })),
+        fetch('/api/admin/system-health', { headers })
+          .then((r) => (r.ok ? r.json() : fetch('/api/health').then((h) => h.json())))
+          .catch(() => ({ ok: false })),
       ]);
       if (mRes.ok) setMetrics(mRes.metrics);
       if (sRes.ok) setAdminData(sRes);
       if (provRes?.ok) setProvidersRegistry(provRes.providers || []);
+      if (healthRes?.ok) setSystemHealth(healthRes);
       if (aRes.ok) {
         setAdsReport(aRes);
         if (aRes.googleAdSense) {
@@ -789,6 +797,101 @@ export const AdminMonetizationScreen: React.FC = () => {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* 5. Infraestrutura de Produção: Disponibilidade, Backups e Alertas */}
+      <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-semibold text-[#1D6FE0]">
+              5. Infraestrutura de Produção · Neon Lakebase + Object Storage
+            </p>
+            <h2 className="font-display font-bold text-lg text-[#0A2540]">
+              Disponibilidade, Backups e Alertas
+            </h2>
+          </div>
+
+          <button
+            type="button"
+            disabled={backupLoading}
+            onClick={async () => {
+              setBackupLoading(true);
+              setBackupError('');
+              try {
+                const res = await fetch('/api/admin/backups/snapshot', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'x-user-role': 'admin',
+                  },
+                });
+                const body = await res.json();
+                if (!res.ok || !body.ok) {
+                  setBackupError(body.error || 'Falha ao gerar backup.');
+                } else {
+                  setBackupResult(body.backup);
+                }
+              } catch (err) {
+                setBackupError((err as Error).message);
+              } finally {
+                setBackupLoading(false);
+              }
+            }}
+            className="min-h-[40px] px-4 py-2 rounded-xl bg-[#0A2540] hover:bg-[#13385d] text-white text-xs font-semibold cursor-pointer disabled:opacity-60"
+          >
+            {backupLoading
+              ? 'Gerando Snapshot...'
+              : 'Gerar Backup Agora (Neon Object Storage)'}
+          </button>
+        </div>
+
+        {systemHealth && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
+              <p className="text-[#0A2540]/65">Status (/api/health)</p>
+              <p className="font-bold text-emerald-700 mt-1 uppercase">
+                {systemHealth.status}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
+              <p className="text-[#0A2540]/65">Latência PostgreSQL</p>
+              <p className="font-mono font-bold text-[#0A2540] mt-1">
+                {systemHealth.dbLatencyMs} ms
+              </p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
+              <p className="text-[#0A2540]/65">Tabelas com RLS Ativo</p>
+              <p className="font-mono font-bold text-[#0A2540] mt-1">
+                {systemHealth.rlsProtectedTablesCount}/
+                {systemHealth.expectedRlsTablesCount}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
+              <p className="text-[#0A2540]/65">Ambiente / Branch</p>
+              <p className="font-mono font-bold text-[#0A2540] mt-1">
+                {systemHealth.environment} ({systemHealth.branch})
+              </p>
+            </div>
+          </div>
+        )}
+
+        {backupError && (
+          <p className="p-3 rounded-xl bg-red-50 text-red-800 text-xs font-medium">
+            {backupError}
+          </p>
+        )}
+
+        {backupResult && (
+          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs space-y-1">
+            <p className="font-semibold">
+              ✓ Backup snapshot armazenado no bucket privado Neon Object Storage
+            </p>
+            <p className="font-mono">
+              Object Key: {backupResult.objectKey} · Tamanho:{' '}
+              {backupResult.sizeBytes} bytes
+            </p>
+          </div>
+        )}
       </section>
     </div>
   );
