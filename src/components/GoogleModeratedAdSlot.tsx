@@ -22,10 +22,12 @@ export const GoogleModeratedAdSlot: React.FC<GoogleModeratedAdSlotProps> = ({
   const googleCfg = sponsoredAd?.googleAdSense;
   const clientId: string =
     googleCfg?.clientId ||
-    import.meta.env.VITE_GOOGLE_ADSENSE_CLIENT_ID ||
+    (import.meta as any).env?.VITE_GOOGLE_ADSENSE_CLIENT_ID ||
     'ca-pub-0000000000000000';
   const slotId: string =
-    googleCfg?.slotId || import.meta.env.VITE_GOOGLE_ADSENSE_SLOT_ID || '1234567890';
+    googleCfg?.slotId ||
+    (import.meta as any).env?.VITE_GOOGLE_ADSENSE_SLOT_ID ||
+    '1234567890';
   const isLivePublisherId =
     Boolean(clientId) &&
     clientId.startsWith('ca-pub-') &&

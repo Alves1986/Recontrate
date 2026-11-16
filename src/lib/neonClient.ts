@@ -4,11 +4,11 @@ import { createRealtimeClient, type SealedLiveQuery } from '@neon/realtime/clien
 import { drizzleParsers } from '@neon/realtime-drizzle/client';
 
 const authUrl =
-  import.meta.env.VITE_NEON_AUTH_URL ||
+  (import.meta as any).env?.VITE_NEON_AUTH_URL ||
   'https://ep-small-bread-bdnj9nge.neonauth.c-8.us-east-2.aws.neon.tech/neondb/auth';
 
 const realtimeUrl =
-  import.meta.env.VITE_NEON_REALTIME_URL ||
+  (import.meta as any).env?.VITE_NEON_REALTIME_URL ||
   'https://ep-small-bread-bdnj9nge.rt.c-8.us-east-2.aws.neon.tech/';
 
 export const authClient = createAuthClient(authUrl, {

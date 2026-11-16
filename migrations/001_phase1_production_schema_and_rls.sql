@@ -293,6 +293,7 @@ BEGIN
 END
 $$;
 
+GRANT confiare_rls_user TO CURRENT_USER;
 GRANT USAGE ON SCHEMA public TO confiare_rls_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO confiare_rls_user;
 
