@@ -7,7 +7,7 @@
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
     "start": "tsx src/server/index.ts",
-    "test": "tsx --test src/server/neonServices.test.ts src/utils/marketplaceRules.test.ts",
+    "test": "tsx --test src/db/plansSeed.test.ts src/services/billingProvider.test.ts src/services/subscriptionLifecycle.test.ts src/services/opportunityLimit.test.ts src/services/adAndMetrics.test.ts src/utils/marketplaceRules.test.ts src/server/neonServices.test.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"

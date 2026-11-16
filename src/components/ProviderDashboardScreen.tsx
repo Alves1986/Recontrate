@@ -26,6 +26,7 @@ import {
   createRealtimeNotification,
 } from '../utils/marketplaceRules';
 import { ProviderRealtimeNotifications } from './ProviderRealtimeNotifications';
+import { NeonServicesPanel } from './NeonServicesPanel';
 
 interface ProviderDashboardScreenProps {
   activeProvider: ProviderProfile;
@@ -42,53 +43,92 @@ interface ProviderDashboardScreenProps {
 
 const PLANS_CONFIG: {
   tier: PlanTier;
+  slug: string;
   audience: string;
   priceMonthly: string;
+  priceAnnual: string;
+  monthlyLimit: number;
   limitLabel: string;
+  badge?: string;
+  showsAds: boolean;
   features: string[];
 }[] = [
   {
-    tier: 'Essencial',
-    audience: 'Para iniciantes na plataforma',
-    priceMonthly: 'R$ 49/mês',
-    limitLabel: 'Até 10 oportunidades/mês',
+    tier: 'Gratuito',
+    slug: 'gratuito',
+    audience: 'Entrada sem custo fixo',
+    priceMonthly: 'R$ 0,00/mês',
+    priceAnnual: 'R$ 0,00/ano',
+    monthlyLimit: 5,
+    limitLabel: 'Até 5 oportunidades/mês',
+    showsAds: true,
     features: [
-      'Perfil público otimizado para busca local',
-      'Notificações de pedidos no WhatsApp',
-      'Avaliações verificadas e área de cobertura',
+      'Perfil público básico e contato por WhatsApp',
+      'Avaliações visíveis para clientes',
+      'Exibição moderada de anúncios relevantes no painel',
+    ],
+  },
+  {
+    tier: 'Essencial',
+    slug: 'essencial',
+    audience: 'Para iniciantes na plataforma',
+    priceMonthly: 'R$ 29,90/mês',
+    priceAnnual: 'R$ 299,00/ano',
+    monthlyLimit: 15,
+    limitLabel: 'Até 15 oportunidades/mês',
+    showsAds: false,
+    features: [
+      'Prioridade leve justa no matching (+2 pts)',
+      'Perfil profissional completo e portfólio até 10 fotos',
+      'Relatório mensal básico e painel sem anúncios',
     ],
   },
   {
     tier: 'Profissional',
+    slug: 'profissional',
     audience: 'Para prestadores ativos',
-    priceMonthly: 'R$ 89/mês',
+    priceMonthly: 'R$ 59,90/mês',
+    priceAnnual: 'R$ 599,00/ano',
+    monthlyLimit: 40,
     limitLabel: 'Até 40 oportunidades/mês',
+    badge: 'Profissional Confiare',
+    showsAds: false,
     features: [
-      'Prioridade média justa no raio de cobertura',
-      'Portfólio ampliado com Antes / Depois',
-      'Estatísticas de resposta e recontratação',
+      'Prioridade média justa no matching (+5 pts)',
+      'Destaque em buscas locais e portfólio ilimitado',
+      'Estatísticas de conversão e selo Profissional Confiare',
     ],
   },
   {
     tier: 'Premium',
+    slug: 'premium',
     audience: 'Para profissionais estabelecidos',
-    priceMonthly: 'R$ 139/mês',
-    limitLabel: 'Oportunidades ilimitadas no raio',
+    priceMonthly: 'R$ 99,90/mês',
+    priceAnnual: 'R$ 999,00/ano',
+    monthlyLimit: 100,
+    limitLabel: 'Até 100 oportunidades/mês',
+    badge: 'Top Confiare',
+    showsAds: false,
     features: [
-      'Prioridade alta combinada com reputação',
+      'Prioridade alta justa sem monopolizar a fila (+8 pts)',
       'Destaque regional e relatórios avançados',
-      'Suporte prioritário e modelos de orçamento',
+      'Suporte prioritário, agenda/follow-up e selo Top Confiare',
     ],
   },
   {
     tier: 'Padrinho',
-    audience: 'Mestres com nota ≥ 4.6 e 6+ meses',
-    priceMonthly: 'R$ 109/mês (Desconto Mentor)',
-    limitLabel: 'Ilimitado + Rede de Apadrinhamento',
+    slug: 'padrinho',
+    audience: 'Mentores verificados da rede',
+    priceMonthly: 'R$ 99,90/mês',
+    priceAnnual: 'R$ 999,00/ano',
+    monthlyLimit: 100,
+    limitLabel: 'Até 100 oportunidades/mês',
+    badge: 'Padrinho Verificado',
+    showsAds: false,
     features: [
-      'Todos os recursos do plano Premium',
+      'Todos os recursos do plano Premium (+9 pts)',
       'Selo Padrinho Verificado na vitrine pública',
-      'Ferramentas para indicar e acompanhar iniciantes',
+      'Ferramentas de indicação e acompanhamento de apadrinhados',
     ],
   },
 ];
@@ -105,10 +145,48 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   const [activeTab, setActiveTab] = useState<
     'oportunidades' | 'reputacao' | 'plano'
   >('oportunidades');
+  const [billingCycle, setBillingCycle] = useState<'mensal' | 'anual'>('mensal');
+  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'cartao' | 'boleto'>('pix');
+  const [checkoutNotice, setCheckoutNotice] = useState<string>('');
   const [copiedQuoteTemplate, setCopiedQuoteTemplate] = useState(false);
   const [realtimeNotifications, setRealtimeNotifications] = useState<
     ProviderRealtimeNotification[]
   >(INITIAL_PROVIDER_NOTIFICATIONS);
+
+  const currentPlanConfig =
+    PLANS_CONFIG.find((p) => p.tier === activeProvider.plan) || PLANS_CONFIG[0];
+  const opportunitiesUsedInCycle = Math.min(
+    opportunities.length,
+    currentPlanConfig.monthlyLimit
+  );
+  const opportunitiesRemainingInCycle = Math.max(
+    0,
+    currentPlanConfig.monthlyLimit - opportunitiesUsedInCycle
+  );
+
+  const handleSelectPlanWithAsaas = async (planItem: (typeof PLANS_CONFIG)[number]) => {
+    onChangeProviderPlan(activeProvider.id, planItem.tier);
+    setCheckoutNotice(
+      `Plano ${planItem.tier} (${billingCycle} via ${paymentMethod.toUpperCase()}) configurado no gateway Asaas — novo limite de ${planItem.monthlyLimit} oportunidades/mês ativo.`
+    );
+    try {
+      await fetch('/api/subscriptions/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          providerProfileId: activeProvider.id,
+          providerName: activeProvider.name,
+          providerEmail: `${activeProvider.id}@confiare.com.br`,
+          providerPhone: activeProvider.whatsapp,
+          planSlug: planItem.slug,
+          cycle: billingCycle,
+          paymentMethod,
+        }),
+      });
+    } catch {
+      // Offline preview fallback
+    }
+  };
 
   const scoreBreakdown = calculateCompositeScore(activeProvider);
   const pendingCount = opportunities.filter((o) => o.status === 'pendente').length;
@@ -225,6 +303,9 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
           </div>
         </div>
       </div>
+
+      {/* PAINEL DE SERVIÇOS NEON CLOUD (POSTGRES, AUTH, STORAGE, AI GATEWAY, FUNCTIONS, REALTIME) */}
+      <NeonServicesPanel providerId={activeProvider.id} />
 
       {/* COMPONENTE DE NOTIFICAÇÕES DE STATUS EM TEMPO REAL */}
       <ProviderRealtimeNotifications
@@ -506,49 +587,107 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       {/* TAB 3: PLANOS E ASSINATURA */}
       {activeTab === 'plano' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
+          <div className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="space-y-1">
               <p className="text-xs font-semibold text-[#1D6FE0]">
-                Previsibilidade de Custo Mensal · Cancelamento Livre sem Multa
+                Previsibilidade de Custo Mensal · Asaas Recorrente (Pix, Cartão, Boleto) · Cancelamento Livre sem Multa
               </p>
               <h2 className="font-display font-bold text-xl text-[#0A2540]">
-                Planos de assinatura para o prestador
+                Planos de assinatura para o prestador (0% comissão)
               </h2>
-              <p className="text-xs text-[#0A2540]/70 mt-1">
-                A plataforma garante oportunidades compatíveis, ferramentas e visibilidade — sem cobrar comissão sobre os serviços fechados.
+              <p className="text-xs text-[#0A2540]/70">
+                Consumo no ciclo atual: <strong>{opportunitiesUsedInCycle} utilizada(s)</strong> de{' '}
+                <strong>{currentPlanConfig.monthlyLimit}</strong> ({opportunitiesRemainingInCycle} restante(s)). Estrelas e reputação nunca podem ser compradas.
               </p>
             </div>
-            <span className="text-xs font-mono font-semibold text-[#0A2540] bg-[#F4F2EF] px-3.5 py-2 rounded-xl shrink-0">
-              Plano Ativo: {activeProvider.plan}
-            </span>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setBillingCycle('mensal')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
+                  billingCycle === 'mensal'
+                    ? 'bg-[#0A2540] text-white'
+                    : 'bg-[#F4F2EF] text-[#0A2540]'
+                }`}
+              >
+                Ciclo Mensal
+              </button>
+              <button
+                type="button"
+                onClick={() => setBillingCycle('anual')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
+                  billingCycle === 'anual'
+                    ? 'bg-[#FF6A00] text-white'
+                    : 'bg-[#F4F2EF] text-[#0A2540]'
+                }`}
+              >
+                Anual (2 meses grátis)
+              </button>
+              <select
+                aria-label="Método de pagamento Asaas"
+                value={paymentMethod}
+                onChange={(e) =>
+                  setPaymentMethod(
+                    e.target.value as 'pix' | 'cartao' | 'boleto'
+                  )
+                }
+                className="px-3 py-2 rounded-xl border border-[#0A2540]/15 text-xs font-semibold bg-white text-[#0A2540]"
+              >
+                <option value="pix">Pagamento: Pix</option>
+                <option value="cartao">Pagamento: Cartão</option>
+                <option value="boleto">Pagamento: Boleto</option>
+              </select>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {checkoutNotice && (
+            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold">
+              ✓ {checkoutNotice}
+            </div>
+          )}
+
+          {opportunitiesRemainingInCycle === 0 && (
+            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <span>
+                <strong>Limite mensal atingido ({currentPlanConfig.monthlyLimit} oportunidades):</strong> Seu perfil público permanece visível, mas faça upgrade para continuar recebendo novas oportunidades neste ciclo.
+              </span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {PLANS_CONFIG.map((planItem) => {
               const isCurrent = activeProvider.plan === planItem.tier;
               return (
                 <div
                   key={planItem.tier}
-                  className={`rounded-3xl p-6 border flex flex-col justify-between gap-6 transition-all ${
+                  className={`rounded-3xl p-5 border flex flex-col justify-between gap-5 transition-all ${
                     isCurrent
                       ? 'bg-[#0A2540] text-white border-[#0A2540]'
                       : 'bg-white text-[#0A2540] border-[#0A2540]/10'
                   }`}
                 >
-                  <div className="space-y-4">
+                  <div className="space-y-3.5">
                     <div>
                       <p
-                        className={`text-xs font-semibold ${
+                        className={`text-[11px] font-semibold ${
                           isCurrent ? 'text-[#FF6A00]' : 'text-[#1D6FE0]'
                         }`}
                       >
                         {planItem.audience}
                       </p>
-                      <h3 className="font-display font-bold text-xl mt-1">
+                      <h3 className="font-display font-bold text-lg mt-1">
                         {planItem.tier}
                       </h3>
-                      <p className="font-mono font-bold text-lg mt-2">
-                        {planItem.priceMonthly}
+                      {planItem.badge && (
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-[#FF6A00]/20 text-[#FF6A00] text-[10px] font-bold">
+                          Selo: {planItem.badge}
+                        </span>
+                      )}
+                      <p className="font-mono font-bold text-base mt-2">
+                        {billingCycle === 'anual'
+                          ? planItem.priceAnnual
+                          : planItem.priceMonthly}
                       </p>
                       <p
                         className={`text-xs mt-1 ${
@@ -559,7 +698,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                       </p>
                     </div>
 
-                    <ul className="space-y-2.5 text-xs">
+                    <ul className="space-y-2 text-xs">
                       {planItem.features.map((feat) => (
                         <li key={feat} className="flex items-start gap-2">
                           <CheckCircle2
@@ -575,24 +714,51 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
 
                   <button
                     type="button"
-                    onClick={() =>
-                      onChangeProviderPlan(activeProvider.id, planItem.tier)
-                    }
-                    className={`w-full min-h-[42px] px-4 py-2 rounded-xl text-xs font-display font-semibold transition-colors cursor-pointer ${
+                    onClick={() => handleSelectPlanWithAsaas(planItem)}
+                    className={`w-full min-h-[42px] px-3 py-2 rounded-xl text-xs font-display font-semibold transition-colors cursor-pointer ${
                       isCurrent
                         ? 'bg-[#FF6A00] text-white'
                         : 'bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540]'
                     }`}
                   >
                     {isCurrent
-                      ? '✓ Plano Atual Selecionado'
-                      : `Mudar para ${planItem.tier}`}
+                      ? '✓ Plano Atual'
+                      : `Assinar ${planItem.tier}`}
                   </button>
                 </div>
               );
             })}
           </div>
         </div>
+      )}
+
+      {/* ESPAÇO PUBLICITÁRIO MODERADO — EXIBIDO EXCLUSIVAMENTE NO PLANO GRATUITO NO PAINEL DO PRESTADOR */}
+      {activeProvider.plan === 'Gratuito' && (
+        <aside
+          aria-label="Oferta Patrocinada para Prestadores"
+          className="bg-white rounded-2xl p-4 border border-[#0A2540]/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs"
+        >
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded bg-[#0A2540]/10 text-[#0A2540] font-mono text-[10px] font-bold uppercase">
+                Patrocinado
+              </span>
+              <span className="font-semibold text-[#1D6FE0]">
+                Ferramentas & EPIs Certificados NR-10 (Máx. 1 banner/sessão · 3/dia)
+              </span>
+            </div>
+            <p className="text-[#0A2540]/80">
+              Kit Alicate Amperímetro True RMS e EPIs com 15% de desconto para autônomos cadastrados na Confiare. (Mude para o plano Essencial para remover anúncios).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('plano')}
+            className="px-3.5 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold whitespace-nowrap cursor-pointer"
+          >
+            Remover anúncios (Upgrade)
+          </button>
+        </aside>
       )}
     </div>
   );

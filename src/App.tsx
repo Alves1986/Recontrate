@@ -41,6 +41,7 @@ import {
   SubstituteReferralScreen,
 } from './components/SubstituteAndReviewScreens';
 import { ProviderDashboardScreen } from './components/ProviderDashboardScreen';
+import { AdminMonetizationScreen } from './components/AdminMonetizationScreen';
 
 const PROTOTYPE_SCREENS: { id: ScreenId; label: string; shortLabel: string }[] = [
   { id: 'home', label: 'Início (Home)', shortLabel: 'Home' },
@@ -88,6 +89,11 @@ const PROTOTYPE_SCREENS: { id: ScreenId; label: string; shortLabel: string }[] =
     id: 'painel-prestador',
     label: '9. Painel do prestador',
     shortLabel: '9. Painel',
+  },
+  {
+    id: 'painel-admin',
+    label: '10. Admin Billing & Métricas',
+    shortLabel: '10. Admin Billing',
   },
 ];
 
@@ -504,6 +510,8 @@ export default function App() {
             onNavigate={handleNavigate}
           />
         )}
+
+        {currentScreen === 'painel-admin' && <AdminMonetizationScreen />}
       </main>
 
       {/* QUIET FOOTER */}

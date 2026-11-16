@@ -29,7 +29,8 @@ export type ScreenId =
   | 'solicitar-novamente'
   | 'indicacao-substituto'
   | 'avaliacao-pos-atendimento'
-  | 'painel-prestador';
+  | 'painel-prestador'
+  | 'painel-admin';
 
 export interface PortfolioItem {
   id: string;
