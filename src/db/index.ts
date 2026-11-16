@@ -311,22 +311,31 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       );
     `);
 
-    const phase1MigrationPath = path.resolve(
-      process.cwd(),
-      'migrations/001_phase1_production_schema_and_rls.sql'
+    const { rows: migCheck } = await directPool.query(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'storage_assets'
+         AND column_name = 'visibility'`
     );
-    if (existsSync(phase1MigrationPath)) {
-      const migrationSql = readFileSync(phase1MigrationPath, 'utf-8');
-      await directPool.query(migrationSql);
-    }
 
-    const phase2MigrationPath = path.resolve(
-      process.cwd(),
-      'migrations/002_phase2_marketplace_rls_and_documents.sql'
-    );
-    if (existsSync(phase2MigrationPath)) {
-      const migration2Sql = readFileSync(phase2MigrationPath, 'utf-8');
-      await directPool.query(migration2Sql);
+    if (migCheck.length === 0) {
+      const phase1MigrationPath = path.resolve(
+        process.cwd(),
+        'migrations/001_phase1_production_schema_and_rls.sql'
+      );
+      if (existsSync(phase1MigrationPath)) {
+        const migrationSql = readFileSync(phase1MigrationPath, 'utf-8');
+        await directPool.query(migrationSql);
+      }
+
+      const phase2MigrationPath = path.resolve(
+        process.cwd(),
+        'migrations/002_phase2_marketplace_rls_and_documents.sql'
+      );
+      if (existsSync(phase2MigrationPath)) {
+        const migration2Sql = readFileSync(phase2MigrationPath, 'utf-8');
+        await directPool.query(migration2Sql);
+      }
     }
 
     const structuralCategories = [
