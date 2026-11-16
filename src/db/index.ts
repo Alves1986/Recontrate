@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { attachDatabasePool } from '@neon/functions';
@@ -310,6 +311,70 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       );
     `);
 
+    const phase1MigrationPath = path.resolve(
+      process.cwd(),
+      'migrations/001_phase1_production_schema_and_rls.sql'
+    );
+    if (existsSync(phase1MigrationPath)) {
+      const migrationSql = readFileSync(phase1MigrationPath, 'utf-8');
+      await directPool.query(migrationSql);
+    }
+
+    const structuralCategories = [
+      {
+        slug: 'eletricista',
+        name: 'Eletricista',
+        shortDesc:
+          'Quadros elétricos, disjuntores, tomadas 20A, chuveiros e iluminação.',
+        avgResponseMin: 11,
+        verifiedCount: 42,
+      },
+      {
+        slug: 'encanador',
+        name: 'Encanador',
+        shortDesc:
+          'Caça-vazamentos, registros, válvulas Hydra, sifões e pressurizadores.',
+        avgResponseMin: 14,
+        verifiedCount: 35,
+      },
+      {
+        slug: 'diarista',
+        name: 'Diarista',
+        shortDesc:
+          'Limpeza residencial detalhada, pós-mudança e organização de ambientes.',
+        avgResponseMin: 16,
+        verifiedCount: 58,
+      },
+      {
+        slug: 'pintor',
+        name: 'Pintor',
+        shortDesc:
+          'Pintura acrílica fina, massa corrida, tratamento de trincas e umidade.',
+        avgResponseMin: 19,
+        verifiedCount: 29,
+      },
+      {
+        slug: 'tecnico-de-ar-condicionado',
+        name: 'Técnico de ar-condicionado',
+        shortDesc:
+          'Instalação Split Inverter, higienização profunda, carga de gás e dreno.',
+        avgResponseMin: 13,
+        verifiedCount: 24,
+      },
+    ];
+
+    for (const c of structuralCategories) {
+      await directPool.query(
+        `INSERT INTO categories (slug, name, short_desc, avg_response_min, verified_count, active)
+         VALUES ($1, $2, $3, $4, $5, true)
+         ON CONFLICT (slug) DO UPDATE SET
+           name = EXCLUDED.name,
+           short_desc = EXCLUDED.short_desc,
+           avg_response_min = EXCLUDED.avg_response_min`,
+        [c.slug, c.name, c.shortDesc, c.avgResponseMin, c.verifiedCount]
+      );
+    }
+
     for (const p of INITIAL_PLANS_SEED) {
       await directPool.query(
         `INSERT INTO plans (
@@ -350,47 +415,50 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       );
     }
 
-    await directPool.query(
-      `INSERT INTO provider_profiles (
-        id, name, category, city, plan_slug, rating_avg, reviews_count, completed_jobs,
-        response_time_minutes, response_rate_percent, attendance_rate_percent, is_verified, available_today, whatsapp
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-      ON CONFLICT (id) DO NOTHING`,
-      [
-        'prov-joao',
-        'João Batista Silva',
-        'Eletricista',
-        'São Paulo, SP',
-        'padrinho',
-        '4.96',
-        94,
-        128,
-        9,
-        98,
-        100,
-        true,
-        true,
-        '(11) 99812-4401',
-      ]
-    );
+    if (process.env.NODE_ENV !== 'production') {
+      await directPool.query(
+        `INSERT INTO provider_profiles (
+          id, slug, name, category, city, plan_slug, rating_avg, reviews_count, completed_jobs,
+          response_time_minutes, response_rate_percent, attendance_rate_percent, is_verified, available_today, whatsapp
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        ON CONFLICT (id) DO UPDATE SET slug = EXCLUDED.slug`,
+        [
+          'prov-joao',
+          'joao-batista-silva',
+          'João Batista Silva',
+          'Eletricista',
+          'São Paulo, SP',
+          'padrinho',
+          '4.96',
+          94,
+          128,
+          9,
+          98,
+          100,
+          true,
+          true,
+          '(11) 99812-4401',
+        ]
+      );
 
-    await directPool.query(
-      `INSERT INTO realtime_notifications (
-        id, provider_id, type, title, message, client_name, neighborhood, urgency_or_scope, read
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-      ON CONFLICT (id) DO NOTHING`,
-      [
-        'notif-seed-1',
-        'prov-joao',
-        'nova_oportunidade',
-        'Nova oportunidade compatível em Pinheiros',
-        'Disjuntor do chuveiro desarmando e revisão de tomada 20A',
-        'Mariana Souza',
-        'Pinheiros (1.1 km)',
-        'Urgência: Hoje · Tarde (13h–18h)',
-        false,
-      ]
-    );
+      await directPool.query(
+        `INSERT INTO realtime_notifications (
+          id, provider_id, type, title, message, client_name, neighborhood, urgency_or_scope, read
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ON CONFLICT (id) DO NOTHING`,
+        [
+          'notif-seed-1',
+          'prov-joao',
+          'nova_oportunidade',
+          'Nova oportunidade compatível em Pinheiros',
+          'Disjuntor do chuveiro desarmando e revisão de tomada 20A',
+          'Mariana Souza',
+          'Pinheiros (1.1 km)',
+          'Urgência: Hoje · Tarde (13h–18h)',
+          false,
+        ]
+      );
+    }
 
     schemaInitialized = true;
   } finally {
