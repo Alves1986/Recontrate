@@ -28,10 +28,14 @@ import {
 } from '../services/adAndMetricsService';
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { createPhase1Router } from './phase1Routes';
+import { extractBearerOrCookieToken } from './authMiddleware';
+import { AuthService } from '../services/authService';
 
 const lifecycleService = new SubscriptionLifecycleService();
 const limitService = new OpportunityLimitService();
 const adAndMetricsService = new AdAndMetricsService();
+const authService = new AuthService();
 
 // Simple in-memory rate limiter for checkout and webhook endpoints
 const rateLimitWindowMs = 60_000;
@@ -59,20 +63,43 @@ function rateLimit(maxRequestsPerMinute: number): express.RequestHandler {
   };
 }
 
-function requireAdminRole(
+async function requireAdminRole(
   req: express.Request,
   res: express.Response,
   next: express.NextFunction
 ) {
+  const token = extractBearerOrCookieToken(req);
+  if (token) {
+    try {
+      const session = await authService.verifySessionToken(token);
+      if (session.activeRole === 'admin' || session.roles.includes('admin')) {
+        req.authSession = session;
+        next();
+        return;
+      }
+      res.status(403).json({
+        ok: false,
+        error: 'Acesso negado: permissão de administrador obrigatória.',
+      });
+      return;
+    } catch {
+      res.status(401).json({
+        ok: false,
+        error: 'Sessão administrativa inválida.',
+      });
+      return;
+    }
+  }
+
   const role = req.headers['x-user-role'];
-  if (role !== 'admin') {
-    res.status(403).json({
-      ok: false,
-      error: 'Acesso negado: permissão de administrador obrigatória.',
-    });
+  if (process.env.NODE_ENV !== 'production' && role === 'admin') {
+    next();
     return;
   }
-  next();
+  res.status(403).json({
+    ok: false,
+    error: 'Acesso negado: permissão de administrador obrigatória.',
+  });
 }
 
 const CheckoutSchema = z.object({
@@ -145,6 +172,9 @@ export function createApiRouter(): express.Router {
 
   // Standard JSON parser for all other routes
   router.use(express.json());
+
+  // Mount Phase 1 Public, Auth, and Role-Protected Routes
+  router.use(createPhase1Router());
 
   // 2. Plans & Provider Subscription Routes
   router.get('/plans', async (_req, res) => {
