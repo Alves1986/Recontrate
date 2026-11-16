@@ -6,6 +6,7 @@ import {
   AuthService,
   sanitizeUserText,
 } from '../services/authService';
+import { MarketplaceDataService } from '../services/marketplaceDataService';
 import {
   requireAuth,
   requireRole,
@@ -13,6 +14,7 @@ import {
 } from './authMiddleware';
 
 const authService = new AuthService();
+const marketplaceService = new MarketplaceDataService();
 
 // Basic rate limiter for auth endpoints
 const authRateMap = new Map<string, { count: number; resetAt: number }>();
@@ -89,6 +91,59 @@ const CreateServiceRequestSchema = z.object({
   preferredTime: z.string().default('Comercial'),
   estimatedBudget: z.string().optional(),
   lgpdContactConsent: z.boolean().default(true),
+  customerPhone: z.string().optional(),
+});
+
+const SubmitReviewSchema = z.object({
+  providerProfileId: z.string().min(2),
+  serviceRequestId: z.string().uuid().optional(),
+  neighborhood: z.string().default('Pinheiros'),
+  serviceTitle: z.string().min(3),
+  qualidade: z.number().int().min(1).max(5),
+  pontualidade: z.number().int().min(1).max(5),
+  comunicacao: z.number().int().min(1).max(5),
+  organizacao: z.number().int().min(1).max(5),
+  wouldRecommend: z.boolean().default(true),
+  comment: z.string().min(4),
+});
+
+const RepeatRequestSchema = z.object({
+  providerProfileId: z.string().min(2),
+  categoryName: z.string().min(2),
+  serviceType: z.string().min(3),
+  desiredDate: z.string().min(2),
+  urgency: z.string().default('Esta semana'),
+  notes: z.string().optional(),
+  lgpdShareConsent: z.boolean().default(true),
+  customerPhone: z.string().optional(),
+});
+
+const SubstituteReferralSchema = z.object({
+  customerUserId: z.string().uuid(),
+  repeatRequestId: z.string().uuid().optional(),
+  substituteProviderIds: z.array(z.string().min(2)),
+  reasonCategory: z.string().min(3),
+  customNote: z.string().min(4),
+  serviceContext: z.string().min(3),
+  neighborhood: z.string().default('Pinheiros'),
+  urgency: z.string().default('Hoje'),
+  clientConsentShared: z.boolean(),
+});
+
+const MentorshipSchema = z.object({
+  menteeProviderId: z.string().min(2),
+  mentorCode: z.string().min(3),
+});
+
+const UploadVerificationDocSchema = z.object({
+  documentType: z.enum([
+    'rg_cnh',
+    'comprovante_endereco',
+    'certificado_tecnico',
+  ]),
+  label: z.string().min(3),
+  contentBase64OrText: z.string().min(4),
+  contentType: z.string().optional(),
 });
 
 export function createPhase1Router(): express.Router {
@@ -375,50 +430,133 @@ export function createPhase1Router(): express.Router {
         const session = req.authSession!;
         const parsed = CreateServiceRequestSchema.parse(req.body);
 
-        const created = await withRlsContext(
-          {
-            userId: session.userId,
-            role: 'cliente',
-          },
-          async (client) => {
-            const q = await client.query(
-              `INSERT INTO service_requests (
-                customer_user_id, category_name, problem_title, description,
-                neighborhood, city, urgency, preferred_time, estimated_budget,
-                lgpd_contact_consent, status
-              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'em_matching')
-              RETURNING *`,
-              [
-                session.userId,
-                sanitizeUserText(parsed.categoryName),
-                sanitizeUserText(parsed.problemTitle),
-                sanitizeUserText(parsed.description),
-                sanitizeUserText(parsed.neighborhood),
-                sanitizeUserText(parsed.city),
-                parsed.urgency,
-                sanitizeUserText(parsed.preferredTime),
-                parsed.estimatedBudget
-                  ? sanitizeUserText(parsed.estimatedBudget)
-                  : null,
-                parsed.lgpdContactConsent,
-              ]
-            );
-            return q.rows[0];
-          }
-        );
+        const result = await marketplaceService.createServiceRequestAndDispatch({
+          customerUserId: session.userId,
+          customerName: session.fullName,
+          customerPhone: parsed.customerPhone || '(11) 99000-0000',
+          categoryName: parsed.categoryName,
+          problemTitle: parsed.problemTitle,
+          description: parsed.description,
+          neighborhood: parsed.neighborhood,
+          city: parsed.city,
+          urgency: parsed.urgency,
+          preferredTime: parsed.preferredTime,
+          estimatedBudget: parsed.estimatedBudget,
+          lgpdContactConsent: parsed.lgpdContactConsent,
+        });
 
         await authService.logAudit({
           actorUserId: session.userId,
           actorRole: 'cliente',
           action: 'service_request_created',
           targetType: 'service_request',
+          targetId: result.request.id,
+          metadataJson: { dispatchedCount: result.dispatchedCount },
+          ipAddress: req.ip,
+        });
+
+        res.status(201).json({
+          ok: true,
+          request: result.request,
+          dispatchedCount: result.dispatchedCount,
+          opportunities: result.opportunities,
+        });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post(
+    '/app/cliente/reviews',
+    requireRole(['cliente', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        const parsed = SubmitReviewSchema.parse(req.body);
+
+        const result =
+          await marketplaceService.submitReviewAndRecalculateReputation({
+            customerUserId: session.userId,
+            customerName: session.fullName,
+            providerProfileId: parsed.providerProfileId,
+            serviceRequestId: parsed.serviceRequestId,
+            neighborhood: parsed.neighborhood,
+            serviceTitle: parsed.serviceTitle,
+            qualidade: parsed.qualidade,
+            pontualidade: parsed.pontualidade,
+            comunicacao: parsed.comunicacao,
+            organizacao: parsed.organizacao,
+            wouldRecommend: parsed.wouldRecommend,
+            comment: parsed.comment,
+          });
+
+        await authService.logAudit({
+          actorUserId: session.userId,
+          actorRole: 'cliente',
+          action: 'review_submitted_reputation_updated',
+          targetType: 'provider_profile',
+          targetId: parsed.providerProfileId,
+          metadataJson: { rating: result.review.rating },
+          ipAddress: req.ip,
+        });
+
+        res.status(201).json({ ok: true, ...result });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post(
+    '/app/cliente/repeat-requests',
+    requireRole(['cliente', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        const parsed = RepeatRequestSchema.parse(req.body);
+
+        const created = await marketplaceService.createRepeatRequest({
+          customerUserId: session.userId,
+          customerName: session.fullName,
+          customerPhone: parsed.customerPhone || '(11) 99000-0000',
+          providerProfileId: parsed.providerProfileId,
+          categoryName: parsed.categoryName,
+          serviceType: parsed.serviceType,
+          desiredDate: parsed.desiredDate,
+          urgency: parsed.urgency,
+          notes: parsed.notes,
+          lgpdShareConsent: parsed.lgpdShareConsent,
+        });
+
+        await authService.logAudit({
+          actorUserId: session.userId,
+          actorRole: 'cliente',
+          action: 'repeat_request_created',
+          targetType: 'repeat_request',
           targetId: created.id,
           ipAddress: req.ip,
         });
 
-        res.status(201).json({ ok: true, request: created });
+        res.status(201).json({ ok: true, repeatRequest: created });
       } catch (err) {
         res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.get(
+    '/app/cliente/trust-list',
+    requireRole(['cliente', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        const rows = await marketplaceService.getCustomerTrustList(
+          session.userId
+        );
+        res.json({ ok: true, trustList: rows });
+      } catch (err) {
+        res.status(500).json({ ok: false, error: (err as Error).message });
       }
     }
   );
@@ -549,6 +687,120 @@ export function createPhase1Router(): express.Router {
     }
   );
 
+  router.post(
+    '/app/prestador/substitute-referrals',
+    requireRole(['prestador', 'padrinho', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        if (!session.providerProfileId) {
+          throw new Error('Perfil de prestador não identificado.');
+        }
+        const parsed = SubstituteReferralSchema.parse(req.body);
+        const referral = await marketplaceService.createSubstituteReferral({
+          originalProviderId: session.providerProfileId,
+          customerUserId: parsed.customerUserId,
+          repeatRequestId: parsed.repeatRequestId,
+          substituteProviderIds: parsed.substituteProviderIds,
+          reasonCategory: parsed.reasonCategory,
+          customNote: parsed.customNote,
+          serviceContext: parsed.serviceContext,
+          neighborhood: parsed.neighborhood,
+          urgency: parsed.urgency,
+          clientConsentShared: parsed.clientConsentShared,
+        });
+
+        res.status(201).json({ ok: true, referral });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.get(
+    '/app/substitute-referrals',
+    requireAuth(authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        const referrals =
+          await marketplaceService.getSubstituteReferralsForActor({
+            userId: session.userId,
+            role: session.activeRole,
+            providerProfileId: session.providerProfileId,
+          });
+        res.json({ ok: true, referrals });
+      } catch (err) {
+        res.status(500).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post(
+    '/app/prestador/verification-documents',
+    requireRole(['prestador', 'padrinho', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        if (!session.providerProfileId) {
+          throw new Error('Perfil de prestador não encontrado para upload.');
+        }
+        const parsed = UploadVerificationDocSchema.parse(req.body);
+        const doc = await marketplaceService.uploadVerificationDocument({
+          actorUserId: session.userId,
+          actorRole:
+            session.activeRole === 'admin'
+              ? 'admin'
+              : session.activeRole === 'padrinho'
+                ? 'padrinho'
+                : 'prestador',
+          providerProfileId: session.providerProfileId,
+          documentType: parsed.documentType,
+          label: parsed.label,
+          contentBase64OrText: parsed.contentBase64OrText,
+          contentType: parsed.contentType,
+        });
+
+        await authService.logAudit({
+          actorUserId: session.userId,
+          actorRole: session.activeRole,
+          action: 'verification_document_uploaded',
+          targetType: 'storage_asset',
+          targetId: doc.id,
+          ipAddress: req.ip,
+        });
+
+        res.status(201).json({ ok: true, document: doc });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.get(
+    '/app/prestador/verification-documents',
+    requireAuth(authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        const targetProviderProfileId = req.query.providerProfileId
+          ? String(req.query.providerProfileId)
+          : undefined;
+
+        const documents = await marketplaceService.getVerificationDocuments({
+          userId: session.userId,
+          role: session.activeRole,
+          providerProfileId: session.providerProfileId,
+          targetProviderProfileId,
+        });
+
+        res.json({ ok: true, documents });
+      } catch (err) {
+        res.status(403).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
   // 3.3. Padrinho Routes (/api/app/padrinho/*)
   router.get(
     '/app/padrinho/mentees',
@@ -579,7 +831,82 @@ export function createPhase1Router(): express.Router {
     }
   );
 
-  // 3.4. Admin User Management & Audit Logs (/api/admin/*)
+  router.post(
+    '/app/padrinho/mentorships',
+    requireRole(['padrinho', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        if (!session.providerProfileId) {
+          throw new Error('Perfil de padrinho não vinculado.');
+        }
+        const parsed = MentorshipSchema.parse(req.body);
+        const mentorship = await marketplaceService.createMentorship({
+          mentorProviderId: session.providerProfileId,
+          menteeProviderId: parsed.menteeProviderId,
+          mentorCode: parsed.mentorCode,
+          actorUserId: session.userId,
+          actorRole: session.activeRole === 'admin' ? 'admin' : 'padrinho',
+        });
+
+        await authService.logAudit({
+          actorUserId: session.userId,
+          actorRole: session.activeRole,
+          action: 'mentorship_created',
+          targetType: 'mentorship',
+          targetId: mentorship.id,
+          ipAddress: req.ip,
+        });
+
+        res.status(201).json({ ok: true, mentorship });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  // 3.4. Admin User & Provider Management & Audit Logs (/api/admin/*)
+  router.get(
+    '/admin/providers',
+    requireRole(['admin'], authService),
+    async (_req, res) => {
+      try {
+        const { rows } = await pool.query(
+          `SELECT id, slug, name, category, city, plan_slug, rating_avg,
+                  reviews_count, completed_jobs, verification_status, is_verified, created_at
+           FROM provider_profiles
+           WHERE deleted_at IS NULL
+           ORDER BY created_at DESC`
+        );
+        res.json({ ok: true, providers: rows });
+      } catch (err) {
+        res.status(500).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.patch(
+    '/admin/providers/:providerId/verify',
+    requireRole(['admin'], authService),
+    async (req, res) => {
+      try {
+        const decision = z
+          .enum(['aprovado', 'rejeitado'])
+          .parse(req.body?.decision);
+        const updated =
+          await marketplaceService.adminVerifyProviderRegistration({
+            adminUserId: req.authSession!.userId,
+            providerProfileId: req.params.providerId,
+            decision,
+            notes: req.body?.notes,
+          });
+        res.json({ ok: true, provider: updated });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
   router.get(
     '/admin/audit-logs',
     requireRole(['admin'], authService),

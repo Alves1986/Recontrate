@@ -320,6 +320,15 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       await directPool.query(migrationSql);
     }
 
+    const phase2MigrationPath = path.resolve(
+      process.cwd(),
+      'migrations/002_phase2_marketplace_rls_and_documents.sql'
+    );
+    if (existsSync(phase2MigrationPath)) {
+      const migration2Sql = readFileSync(phase2MigrationPath, 'utf-8');
+      await directPool.query(migration2Sql);
+    }
+
     const structuralCategories = [
       {
         slug: 'eletricista',
@@ -416,12 +425,7 @@ export async function ensureSchemaAndSeed(): Promise<void> {
     }
 
     if (process.env.NODE_ENV !== 'production') {
-      await directPool.query(
-        `INSERT INTO provider_profiles (
-          id, slug, name, category, city, plan_slug, rating_avg, reviews_count, completed_jobs,
-          response_time_minutes, response_rate_percent, attendance_rate_percent, is_verified, available_today, whatsapp
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-        ON CONFLICT (id) DO UPDATE SET slug = EXCLUDED.slug`,
+      const devProviders = [
         [
           'prov-joao',
           'joao-batista-silva',
@@ -438,8 +442,63 @@ export async function ensureSchemaAndSeed(): Promise<void> {
           true,
           true,
           '(11) 99812-4401',
-        ]
-      );
+          ['Pinheiros', 'Vila Madalena', 'Itaim Bibi', 'Jardins'],
+          true,
+        ],
+        [
+          'prov-carlos',
+          'carlos-eduardo-mendes',
+          'Carlos Eduardo Mendes',
+          'Eletricista',
+          'São Paulo, SP',
+          'profissional',
+          '4.89',
+          52,
+          76,
+          12,
+          96,
+          99,
+          true,
+          true,
+          '(11) 99451-8830',
+          ['Pinheiros', 'Perdizes', 'Butantã'],
+          false,
+        ],
+        [
+          'prov-ana',
+          'ana-paula-ribeiro',
+          'Ana Paula Ribeiro',
+          'Diarista',
+          'São Paulo, SP',
+          'premium',
+          '4.98',
+          112,
+          164,
+          11,
+          99,
+          100,
+          true,
+          true,
+          '(11) 99104-2290',
+          ['Pinheiros', 'Itaim Bibi', 'Moema'],
+          false,
+        ],
+      ];
+
+      for (const dp of devProviders) {
+        await directPool.query(
+          `INSERT INTO provider_profiles (
+            id, slug, name, category, city, plan_slug, rating_avg, reviews_count, completed_jobs,
+            response_time_minutes, response_rate_percent, attendance_rate_percent, is_verified, available_today,
+            whatsapp, neighborhoods, is_mentor, verification_status
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'aprovado')
+          ON CONFLICT (id) DO UPDATE SET
+            slug = EXCLUDED.slug,
+            neighborhoods = EXCLUDED.neighborhoods,
+            is_mentor = EXCLUDED.is_mentor`,
+          dp
+        );
+      }
 
       await directPool.query(
         `INSERT INTO realtime_notifications (
