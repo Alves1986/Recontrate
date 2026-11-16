@@ -36,6 +36,38 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
 }) => {
   const [whatsappUnlocked, setWhatsappUnlocked] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [publicOfficialSpecs, setPublicOfficialSpecs] = useState<string[] | null>(null);
+  const [publicApprovedTags, setPublicApprovedTags] = useState<string[]>([]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/public/providers/${encodeURIComponent(provider.id)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (cancelled || !body?.ok || !body.provider) return;
+        const specs = Array.isArray(body.provider.officialSpecialties)
+          ? body.provider.officialSpecialties.map((s: any) => s.nome)
+          : null;
+        if (specs && specs.length > 0) {
+          setPublicOfficialSpecs(specs);
+        } else {
+          setPublicOfficialSpecs(null);
+        }
+        const tags = Array.isArray(body.provider.approvedTags)
+          ? body.provider.approvedTags.map((t: any) => t.tag)
+          : [];
+        setPublicApprovedTags(tags);
+      })
+      .catch(() => null);
+    return () => {
+      cancelled = true;
+    };
+  }, [provider.id]);
+
+  const displayedSpecialties =
+    publicOfficialSpecs && publicOfficialSpecs.length > 0
+      ? publicOfficialSpecs
+      : provider.specialties;
 
   const scoreBreakdown = calculateCompositeScore(provider);
 
@@ -217,10 +249,10 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
 
           <div className="space-y-2">
             <p className="text-xs font-semibold text-[#0A2540]/70">
-              Especialidades técnicas verificadas:
+              Especialidades técnicas oficiais:
             </p>
             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {provider.specialties.map((spec) => (
+              {displayedSpecialties.map((spec) => (
                 <li
                   key={spec}
                   className="flex items-center gap-2 text-xs text-[#0A2540] bg-[#F4F2EF]/60 px-3.5 py-2.5 rounded-xl"
@@ -230,6 +262,21 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
                 </li>
               ))}
             </ul>
+            {publicApprovedTags.length > 0 && (
+              <div className="pt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-semibold text-[#0A2540]/65">
+                  Atuação complementar:
+                </span>
+                {publicApprovedTags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-2.5 py-0.5 rounded-full bg-[#F4F2EF] text-[11px] text-[#0A2540]/80"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="pt-3 border-t border-[#0A2540]/10 flex flex-wrap items-center justify-between gap-2 text-xs text-[#0A2540]/75">

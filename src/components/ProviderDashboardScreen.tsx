@@ -28,6 +28,7 @@ import {
 import { ProviderRealtimeNotifications } from './ProviderRealtimeNotifications';
 import { NeonServicesPanel } from './NeonServicesPanel';
 import { GoogleModeratedAdSlot } from './GoogleModeratedAdSlot';
+import { ProviderSpecialtiesManager } from './ProviderSpecialtiesManager';
 
 interface ProviderDashboardScreenProps {
   activeProvider: ProviderProfile;
@@ -647,6 +648,10 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                 <span className="font-mono text-[#FF6A00]">Ativo</span>
               </div>
             </div>
+          </div>
+
+          <div className="lg:col-span-12">
+            <ProviderSpecialtiesManager providerProfileId={activeProvider.id} />
           </div>
         </div>
       )}

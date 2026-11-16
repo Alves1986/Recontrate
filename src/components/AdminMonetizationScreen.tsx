@@ -22,6 +22,14 @@ export const AdminMonetizationScreen: React.FC = () => {
   const [systemHealth, setSystemHealth] = useState<any>(null);
   const [promoAnalytics, setPromoAnalytics] = useState<any>(null);
   const [promoFeedback, setPromoFeedback] = useState('');
+  const [taxonomyQueue, setTaxonomyQueue] = useState<any>({
+    suggestions: [],
+    customTags: [],
+  });
+  const [officialSpecialtiesCatalog, setOfficialSpecialtiesCatalog] = useState<any[]>([]);
+  const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
+  const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({});
+  const [taxonomyFeedback, setTaxonomyFeedback] = useState('');
   const [backupResult, setBackupResult] = useState<any>(null);
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupError, setBackupError] = useState('');
@@ -59,7 +67,7 @@ export const AdminMonetizationScreen: React.FC = () => {
     setLoading(true);
     try {
       const headers = { 'x-user-role': 'admin' };
-      const [mRes, sRes, aRes, pRes, provRes, healthRes, promoRes] = await Promise.all([
+      const [mRes, sRes, aRes, pRes, provRes, healthRes, promoRes, taxRes, specsRes] = await Promise.all([
         fetch('/api/admin/metrics', { headers }).then((r) => r.json()),
         fetch('/api/admin/subscriptions', { headers }).then((r) => r.json()),
         fetch('/api/admin/ads', { headers }).then((r) => r.json()),
@@ -73,12 +81,27 @@ export const AdminMonetizationScreen: React.FC = () => {
         fetch('/api/admin/promotions', { headers })
           .then((r) => (r.ok ? r.json() : { ok: false }))
           .catch(() => ({ ok: false })),
+        fetch('/api/admin/taxonomy/suggestions', { headers })
+          .then((r) => (r.ok ? r.json() : { ok: false }))
+          .catch(() => ({ ok: false })),
+        fetch('/api/taxonomy/specialties')
+          .then((r) => (r.ok ? r.json() : { ok: false }))
+          .catch(() => ({ ok: false })),
       ]);
       if (mRes.ok) setMetrics(mRes.metrics);
       if (sRes.ok) setAdminData(sRes);
       if (provRes?.ok) setProvidersRegistry(provRes.providers || []);
       if (healthRes?.ok) setSystemHealth(healthRes);
       if (promoRes?.ok) setPromoAnalytics(promoRes);
+      if (taxRes?.ok) {
+        setTaxonomyQueue({
+          suggestions: taxRes.suggestions || [],
+          customTags: taxRes.customTags || [],
+        });
+      }
+      if (specsRes?.ok) {
+        setOfficialSpecialtiesCatalog(specsRes.specialties || []);
+      }
       if (aRes.ok) {
         setAdsReport(aRes);
         if (aRes.googleAdSense) {
@@ -1042,6 +1065,194 @@ export const AdminMonetizationScreen: React.FC = () => {
           </div>
         </section>
       )}
+
+      {/* 7. Moderação de Especialidades Sugeridas & Tags Livres */}
+      <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-5 text-xs">
+        <div>
+          <p className="font-semibold text-[#1D6FE0]">
+            7. Governança de Taxonomia · Catálogo Oficial
+          </p>
+          <h2 className="font-display font-bold text-lg text-[#0A2540]">
+            Moderação de Especialidades Sugeridas ({taxonomyQueue.suggestions.length})
+          </h2>
+        </div>
+
+        {taxonomyFeedback && (
+          <p className="p-3 rounded-xl bg-emerald-50 text-emerald-900 font-medium">
+            {taxonomyFeedback}
+          </p>
+        )}
+
+        {taxonomyQueue.suggestions.length === 0 ? (
+          <p className="text-[#0A2540]/60">
+            Nenhuma sugestão de especialidade registrada no momento.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {taxonomyQueue.suggestions.map((sug: any) => (
+              <div
+                key={sug.id}
+                className="p-4 rounded-2xl bg-[#F4F2EF]/50 border border-[#0A2540]/10 space-y-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-bold text-sm text-[#0A2540]">
+                      {sug.nome_sugerido}
+                    </p>
+                    <p className="text-[#0A2540]/70">
+                      Prestador: <strong>{sug.provider_name}</strong> · Categoria:{' '}
+                      <strong>{sug.category_name}</strong> · Frequência:{' '}
+                      <strong>{sug.similar_frequency} pedido(s)</strong>
+                    </p>
+                    {sug.descricao && (
+                      <p className="text-[#0A2540]/75 italic mt-1">
+                        “{sug.descricao}”
+                      </p>
+                    )}
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full bg-white border border-[#0A2540]/10 font-mono font-semibold">
+                    {sug.status}
+                  </span>
+                </div>
+
+                {sug.status === 'pendente' && (
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#0A2540]/10">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setTaxonomyFeedback('');
+                        const res = await fetch(
+                          `/api/admin/taxonomy/suggestions/${sug.id}/moderate`,
+                          {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'x-user-role': 'admin',
+                            },
+                            body: JSON.stringify({ decision: 'aprovar_nova' }),
+                          }
+                        );
+                        const body = await res.json();
+                        if (res.ok && body.ok) {
+                          setTaxonomyFeedback(
+                            `"${sug.nome_sugerido}" aprovada como nova especialidade oficial!`
+                          );
+                          loadAdminDashboard();
+                        } else {
+                          setTaxonomyFeedback(body.error || 'Erro ao aprovar.');
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-semibold cursor-pointer"
+                    >
+                      Aprovar como Nova Oficial
+                    </button>
+
+                    <select
+                      value={
+                        mergeTargets[sug.id] ||
+                        officialSpecialtiesCatalog[0]?.id ||
+                        ''
+                      }
+                      onChange={(e) =>
+                        setMergeTargets((prev) => ({
+                          ...prev,
+                          [sug.id]: e.target.value,
+                        }))
+                      }
+                      className="px-2.5 py-1.5 rounded-lg border border-[#0A2540]/15 bg-white"
+                    >
+                      {officialSpecialtiesCatalog.map((sp: any) => (
+                        <option key={sp.id} value={sp.id}>
+                          {sp.nome} ({sp.category_name})
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setTaxonomyFeedback('');
+                        const targetId =
+                          mergeTargets[sug.id] ||
+                          officialSpecialtiesCatalog[0]?.id;
+                        const res = await fetch(
+                          `/api/admin/taxonomy/suggestions/${sug.id}/moderate`,
+                          {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'x-user-role': 'admin',
+                            },
+                            body: JSON.stringify({
+                              decision: 'aprovar_sinonimo',
+                              targetSpecialtyId: targetId,
+                            }),
+                          }
+                        );
+                        if (res.ok) {
+                          setTaxonomyFeedback(
+                            `"${sug.nome_sugerido}" vinculada como sinônimo oficial.`
+                          );
+                          loadAdminDashboard();
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-[#1D6FE0] text-white font-semibold cursor-pointer"
+                    >
+                      Mesclar / Sinônimo
+                    </button>
+
+                    <input
+                      type="text"
+                      placeholder="Motivo da reprovação/correção..."
+                      value={rejectionReasons[sug.id] || ''}
+                      onChange={(e) =>
+                        setRejectionReasons((prev) => ({
+                          ...prev,
+                          [sug.id]: e.target.value,
+                        }))
+                      }
+                      className="px-2.5 py-1.5 rounded-lg border border-[#0A2540]/15 bg-white"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setTaxonomyFeedback('');
+                        const reason =
+                          rejectionReasons[sug.id] ||
+                          'Fora do padrão da categoria informada.';
+                        const res = await fetch(
+                          `/api/admin/taxonomy/suggestions/${sug.id}/moderate`,
+                          {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json',
+                              'x-user-role': 'admin',
+                            },
+                            body: JSON.stringify({
+                              decision: 'reprovar',
+                              motivoRejeicao: reason,
+                            }),
+                          }
+                        );
+                        if (res.ok) {
+                          setTaxonomyFeedback(
+                            `Sugestão "${sug.nome_sugerido}" reprovada com aviso ao prestador.`
+                          );
+                          loadAdminDashboard();
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-red-50 text-red-700 border border-red-200 font-semibold cursor-pointer"
+                    >
+                      Reprovar
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 };

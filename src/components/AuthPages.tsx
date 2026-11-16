@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { authClient } from '../lib/neonClient';
 import type { AuthenticatedUserSession } from '../services/authService';
+import { ProviderSpecialtiesManager } from './ProviderSpecialtiesManager';
 
 export const LoginPage: React.FC<{
   onAuthenticated: (
@@ -634,15 +635,28 @@ export const OnboardingPage: React.FC<{
   token: string;
   onComplete: (redirectTo: string) => void;
 }> = ({ user, token, onComplete }) => {
+  const isProviderOnboarding = Boolean(
+    user.roles.includes('prestador') && user.providerProfileId
+  );
   const [neighborhood, setNeighborhood] = useState('Pinheiros');
   const [city, setCity] = useState('São Paulo, SP');
   const [bio, setBio] = useState(
     'Profissional autônomo dedicado a atendimentos pontuais e seguros.'
   );
+  const [officialSpecialtiesCount, setOfficialSpecialtiesCount] = useState(0);
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleFinish = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+    if (isProviderOnboarding && officialSpecialtiesCount < 1) {
+      setError(
+        'Selecione e salve entre 1 e 5 especialidades oficiais antes de concluir o onboarding.'
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch('/api/auth/onboarding', {
@@ -655,77 +669,120 @@ export const OnboardingPage: React.FC<{
           city,
           neighborhood,
           bio,
+          enforceOfficialSpecialties: isProviderOnboarding,
         }),
       });
       const body = await res.json();
+      if (!res.ok || !body.ok) {
+        setError(body.error || 'Não foi possível concluir o onboarding.');
+        return;
+      }
       onComplete(body.redirectTo || '/app');
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 border border-[#0A2540]/10 space-y-6 my-6 text-xs">
-      <div className="space-y-1">
-        <p className="text-xs font-semibold text-[#FF6A00]">
-          Onboarding Obrigatório de Primeiro Acesso
-        </p>
-        <h1 className="font-display font-bold text-2xl text-[#0A2540]">
-          Bem-vindo(a), {user.fullName}!
-        </h1>
-        <p className="text-[#0A2540]/70">
-          Papel ativo: <strong>{user.activeRole.toUpperCase()}</strong>. Confirme seus dados locais para liberar o acesso ao painel.
-        </p>
-      </div>
-
-      <form onSubmit={handleFinish} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">Cidade</label>
-            <input
-              type="text"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">
-              Bairro de referência
-            </label>
-            <input
-              type="text"
-              value={neighborhood}
-              onChange={(e) => setNeighborhood(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15"
-            />
-          </div>
+    <div
+      className={`${
+        isProviderOnboarding ? 'max-w-3xl' : 'max-w-lg'
+      } mx-auto space-y-6 my-6 text-xs`}
+    >
+      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#0A2540]/10 space-y-6">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-[#FF6A00]">
+            Onboarding Obrigatório de Primeiro Acesso
+          </p>
+          <h1 className="font-display font-bold text-2xl text-[#0A2540]">
+            Bem-vindo(a), {user.fullName}!
+          </h1>
+          <p className="text-[#0A2540]/70">
+            Papel ativo: <strong>{user.activeRole.toUpperCase()}</strong>. Confirme seus dados locais
+            {isProviderOnboarding
+              ? ' e escolha de 1 a 5 especialidades oficiais para liberar o acesso ao painel.'
+              : ' para liberar o acesso ao painel.'}
+          </p>
         </div>
 
-        {user.roles.includes('prestador') && (
-          <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">
-              Resumo profissional (Vitrine Pública)
-            </label>
-            <textarea
-              rows={2}
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15"
-            />
+        {error && (
+          <div
+            role="alert"
+            className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-medium"
+          >
+            {error}
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold cursor-pointer"
-        >
-          {loading
-            ? 'Salvando configurações...'
-            : 'Concluir Onboarding e Ir para o Painel →'}
-        </button>
-      </form>
+        <form onSubmit={handleFinish} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="font-semibold text-[#0A2540]">Cidade</label>
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="font-semibold text-[#0A2540]">
+                Bairro de referência
+              </label>
+              <input
+                type="text"
+                value={neighborhood}
+                onChange={(e) => setNeighborhood(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15"
+              />
+            </div>
+          </div>
+
+          {user.roles.includes('prestador') && (
+            <div className="space-y-1">
+              <label className="font-semibold text-[#0A2540]">
+                Resumo profissional (Vitrine Pública)
+              </label>
+              <textarea
+                rows={2}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15"
+              />
+            </div>
+          )}
+
+          {isProviderOnboarding && officialSpecialtiesCount < 1 && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 font-medium">
+              Abaixo, selecione 1 categoria principal e salve entre 1 e 5 especialidades oficiais para habilitar a conclusão do seu cadastro.
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={
+              loading || (isProviderOnboarding && officialSpecialtiesCount < 1)
+            }
+            className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold cursor-pointer disabled:opacity-50"
+          >
+            {loading
+              ? 'Salvando configurações...'
+              : isProviderOnboarding && officialSpecialtiesCount < 1
+                ? 'Salve ao menos 1 especialidade oficial abaixo para continuar'
+                : 'Concluir Onboarding e Ir para o Painel →'}
+          </button>
+        </form>
+      </div>
+
+      {isProviderOnboarding && user.providerProfileId && (
+        <ProviderSpecialtiesManager
+          providerProfileId={user.providerProfileId}
+          authToken={token}
+          onOfficialSpecialtiesChange={setOfficialSpecialtiesCount}
+        />
+      )}
     </div>
   );
 };
