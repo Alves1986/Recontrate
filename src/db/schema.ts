@@ -24,6 +24,10 @@ export const plans = pgTable('plans', {
     .notNull()
     .default(false),
   exibeAnuncios: boolean('exibe_anuncios').notNull().default(false),
+  selo: text('selo'),
+  suportePrioritario: boolean('suporte_prioritario').notNull().default(false),
+  limiteFotosPortfolio: integer('limite_fotos_portfolio'),
+  prioridadeLabel: text('prioridade_label').notNull().default('Baixa'),
   ativo: boolean('ativo').notNull().default(true),
   ordemExibicao: integer('ordem_exibicao').notNull().default(1),
   criadoEm: timestamp('criado_em', { withTimezone: true }).notNull().defaultNow(),

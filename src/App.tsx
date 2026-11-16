@@ -42,6 +42,7 @@ import {
   PublicLandingPage,
   TermsAndPrivacyPage,
 } from './components/PublicPages';
+import { PlansPricingPage } from './components/PlansPricingPage';
 import {
   ForgotAndResetPasswordPage,
   LoginPage,
@@ -451,7 +452,23 @@ export default function App() {
         )}
 
         {pathname === '/planos' && (
-          <ForProvidersPage onNavigateUrl={navigateUrl} />
+          <PlansPricingPage
+            onNavigateUrl={navigateUrl}
+            isLoggedProvider={Boolean(
+              authUser &&
+                (authUser.activeRole === 'prestador' ||
+                  authUser.roles.includes('prestador'))
+            )}
+            providerContext={
+              authUser?.providerProfileId
+                ? {
+                    providerProfileId: authUser.providerProfileId,
+                    fullName: authUser.fullName,
+                    email: authUser.email,
+                  }
+                : null
+            }
+          />
         )}
 
         {pathname === '/encontrar-profissional' && (

@@ -46,14 +46,18 @@ export const INITIAL_PLANS_SEED = [
     slug: 'gratuito',
     nome: 'Gratuito',
     descricao:
-      'Perfil público básico, contato por WhatsApp e até 5 oportunidades por mês com exibição moderada de anúncios no painel.',
+      'Perfil público básico, contato por WhatsApp, avaliações visíveis e até 5 oportunidades por mês com anúncios moderados no painel.',
     precoMensalCentavos: 0,
     precoAnualCentavos: 0,
     limiteOportunidadesMensal: 5,
     prioridadeMatching: 0,
+    prioridadeLabel: 'Baixa',
     permiteDestaque: false,
     permiteRelatoriosAvancados: false,
     permitePortfolioIlimitado: false,
+    limiteFotosPortfolio: 5,
+    suportePrioritario: false,
+    selo: null as string | null,
     exibeAnuncios: true,
     ativo: true,
     ordemExibicao: 1,
@@ -63,14 +67,18 @@ export const INITIAL_PLANS_SEED = [
     slug: 'essencial',
     nome: 'Essencial',
     descricao:
-      'Perfil profissional completo, portfólio até 10 fotos, prioridade leve no matching, relatório mensal básico e sem anúncios.',
+      'Perfil profissional completo, portfólio com até 10 fotos, prioridade leve no matching, relatório mensal básico e sem anúncios.',
     precoMensalCentavos: 2990,
     precoAnualCentavos: 29900,
     limiteOportunidadesMensal: 15,
     prioridadeMatching: 2,
+    prioridadeLabel: 'Leve',
     permiteDestaque: false,
     permiteRelatoriosAvancados: false,
     permitePortfolioIlimitado: false,
+    limiteFotosPortfolio: 10,
+    suportePrioritario: false,
+    selo: 'Essencial',
     exibeAnuncios: false,
     ativo: true,
     ordemExibicao: 2,
@@ -80,14 +88,18 @@ export const INITIAL_PLANS_SEED = [
     slug: 'profissional',
     nome: 'Profissional',
     descricao:
-      'Prioridade média no matching, destaque em buscas locais, portfólio ilimitado, estatísticas de conversão e selo Profissional Confiare.',
+      'Prioridade média no matching, destaque em buscas locais, portfólio ilimitado, estatísticas de resposta e conversão e selo Profissional Confiare.',
     precoMensalCentavos: 5990,
     precoAnualCentavos: 59900,
     limiteOportunidadesMensal: 40,
     prioridadeMatching: 5,
+    prioridadeLabel: 'Média',
     permiteDestaque: true,
     permiteRelatoriosAvancados: false,
     permitePortfolioIlimitado: true,
+    limiteFotosPortfolio: null as number | null,
+    suportePrioritario: false,
+    selo: 'Profissional Confiare',
     exibeAnuncios: false,
     ativo: true,
     ordemExibicao: 3,
@@ -97,14 +109,18 @@ export const INITIAL_PLANS_SEED = [
     slug: 'premium',
     nome: 'Premium',
     descricao:
-      'Prioridade alta justa no matching, destaque regional e por categoria, relatórios avançados, suporte prioritário e selo Top Confiare.',
+      'Prioridade alta no matching, destaque regional e por categoria, relatórios avançados, portfólio ilimitado, suporte prioritário e selo Top Confiare.',
     precoMensalCentavos: 9990,
     precoAnualCentavos: 99900,
     limiteOportunidadesMensal: 100,
     prioridadeMatching: 8,
+    prioridadeLabel: 'Alta',
     permiteDestaque: true,
     permiteRelatoriosAvancados: true,
     permitePortfolioIlimitado: true,
+    limiteFotosPortfolio: null as number | null,
+    suportePrioritario: true,
+    selo: 'Top Confiare',
     exibeAnuncios: false,
     ativo: true,
     ordemExibicao: 4,
@@ -114,14 +130,18 @@ export const INITIAL_PLANS_SEED = [
     slug: 'padrinho',
     nome: 'Padrinho',
     descricao:
-      'Mesmos recursos do Premium, selo Padrinho Verificado e ferramentas de indicação e acompanhamento de apadrinhados.',
+      'Todos os recursos do Premium, selo Padrinho Verificado e ferramentas de indicação, acompanhamento de apadrinhados e painel de reputação.',
     precoMensalCentavos: 9990,
     precoAnualCentavos: 99900,
     limiteOportunidadesMensal: 100,
     prioridadeMatching: 9,
+    prioridadeLabel: 'Alta',
     permiteDestaque: true,
     permiteRelatoriosAvancados: true,
     permitePortfolioIlimitado: true,
+    limiteFotosPortfolio: null as number | null,
+    suportePrioritario: true,
+    selo: 'Padrinho Verificado',
     exibeAnuncios: false,
     ativo: true,
     ordemExibicao: 5,
@@ -338,6 +358,23 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       }
     }
 
+    const { rows: mig3Check } = await directPool.query(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'plans'
+         AND column_name = 'selo'`
+    );
+    if (mig3Check.length === 0) {
+      const phase3PlansMigrationPath = path.resolve(
+        process.cwd(),
+        'migrations/003_plans_display_metadata.sql'
+      );
+      if (existsSync(phase3PlansMigrationPath)) {
+        const migration3Sql = readFileSync(phase3PlansMigrationPath, 'utf-8');
+        await directPool.query(migration3Sql);
+      }
+    }
+
     const structuralCategories = [
       {
         slug: 'eletricista',
@@ -397,10 +434,10 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       await directPool.query(
         `INSERT INTO plans (
           id, slug, nome, descricao, preco_mensal_centavos, preco_anual_centavos,
-          limite_oportunidades_mensal, prioridade_matching, permite_destaque,
-          permite_relatorios_avancados, permite_portfolio_ilimitado, exibe_anuncios,
-          ativo, ordem_exibicao
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+          limite_oportunidades_mensal, prioridade_matching, prioridade_label, permite_destaque,
+          permite_relatorios_avancados, permite_portfolio_ilimitado, limite_fotos_portfolio,
+          suporte_prioritario, selo, exibe_anuncios, ativo, ordem_exibicao
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
         ON CONFLICT (slug) DO UPDATE SET
           nome = EXCLUDED.nome,
           descricao = EXCLUDED.descricao,
@@ -408,9 +445,13 @@ export async function ensureSchemaAndSeed(): Promise<void> {
           preco_anual_centavos = EXCLUDED.preco_anual_centavos,
           limite_oportunidades_mensal = EXCLUDED.limite_oportunidades_mensal,
           prioridade_matching = EXCLUDED.prioridade_matching,
+          prioridade_label = EXCLUDED.prioridade_label,
           permite_destaque = EXCLUDED.permite_destaque,
           permite_relatorios_avancados = EXCLUDED.permite_relatorios_avancados,
           permite_portfolio_ilimitado = EXCLUDED.permite_portfolio_ilimitado,
+          limite_fotos_portfolio = EXCLUDED.limite_fotos_portfolio,
+          suporte_prioritario = EXCLUDED.suporte_prioritario,
+          selo = EXCLUDED.selo,
           exibe_anuncios = EXCLUDED.exibe_anuncios,
           ordem_exibicao = EXCLUDED.ordem_exibicao,
           atualizado_em = NOW()`,
@@ -423,9 +464,13 @@ export async function ensureSchemaAndSeed(): Promise<void> {
           p.precoAnualCentavos,
           p.limiteOportunidadesMensal,
           p.prioridadeMatching,
+          p.prioridadeLabel,
           p.permiteDestaque,
           p.permiteRelatoriosAvancados,
           p.permitePortfolioIlimitado,
+          p.limiteFotosPortfolio,
+          p.suportePrioritario,
+          p.selo,
           p.exibeAnuncios,
           p.ativo,
           p.ordemExibicao,
