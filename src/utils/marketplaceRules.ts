@@ -87,12 +87,123 @@ export interface RankedProviderResult {
   matchReasons: string[];
 }
 
-const PLAN_PRIORITY_BONUS: Record<PlanTier, number> = {
+export const PLAN_PRIORITY_BONUS: Record<PlanTier, number> = {
+  Gratuito: 0,
   Essencial: 2,
   Profissional: 5,
   Premium: 8,
   Padrinho: 9,
 };
+
+export const PLAN_MONTHLY_OPPORTUNITY_LIMITS: Record<PlanTier, number> = {
+  Gratuito: 5,
+  Essencial: 15,
+  Profissional: 40,
+  Premium: 100,
+  Padrinho: 100,
+};
+
+export interface MatchingPriorityContext {
+  locationQuery?: string;
+  customPlanBonus?: number;
+  cancellationCount?: number;
+}
+
+export interface MatchingPriorityBreakdown {
+  priorityScore: number;
+  compositeScore: number;
+  compatibilityPoints: number;
+  availabilityPoints: number;
+  reputationPoints: number;
+  planBonusPoints: number;
+  penaltyPoints: number;
+  matchReasons: string[];
+}
+
+/**
+ * Função central de prioridade de matching da Confiare.
+ *
+ * REGRA ÉTICA E DE NEGÓCIO INVIOLÁVEL:
+ * - O plano NUNCA pode comprar reputação, estrelas ou nota composta.
+ * - A prioridade combina:
+ *   1. Compatibilidade com a solicitação e área/distância de atendimento (0–40 pts)
+ *   2. Disponibilidade (0–20 pts)
+ *   3. Reputação e taxa de resposta via Nota Composta (0–35 pts)
+ *   4. Bônus moderado e configurável do plano (0–9 pts)
+ *   5. Penalidades por histórico de cancelamentos / baixa taxa de comparecimento
+ * - Como Compatibilidade + Disponibilidade + Reputação somam até 95 pontos e o bônus
+ *   máximo de plano é de apenas 9 pontos, um plano pago jamais substitui compatibilidade,
+ *   disponibilidade ou reputação nem monopoliza a fila.
+ */
+export function getMatchingPriority(
+  providerProfile: ProviderProfile,
+  context: MatchingPriorityContext = {}
+): MatchingPriorityBreakdown {
+  const composite = calculateCompositeScore(providerProfile).totalScore;
+  const normalizedLocation = (context.locationQuery || '').trim().toLowerCase();
+  const reasons: string[] = [];
+
+  // 1. Compatibilidade e distância/área de atendimento (0-40)
+  let compatibility = 32;
+  if (
+    normalizedLocation &&
+    providerProfile.neighborhoods.some((b) =>
+      b.toLowerCase().includes(normalizedLocation)
+    )
+  ) {
+    compatibility += 8;
+    reasons.push(`Atende em ${providerProfile.neighborhoods[0]}`);
+  } else if (providerProfile.neighborhoods.length > 0) {
+    reasons.push(
+      `Cobertura em ${providerProfile.neighborhoods.slice(0, 2).join(', ')}`
+    );
+  }
+
+  if (providerProfile.previouslyHiredByCurrentUser) {
+    compatibility += 6;
+    reasons.push('Já atendeu você com sucesso');
+  }
+
+  // 2. Disponibilidade (0-20)
+  const availability = providerProfile.availableToday ? 20 : 12;
+  if (providerProfile.availableToday) {
+    reasons.push(`Responde em ~${providerProfile.responseTimeMinutes} min`);
+  }
+
+  // 3. Reputação e taxa de resposta (0-35) — peso dominante sobre o bônus do plano
+  const reputationPoints = (composite / 5) * 35;
+
+  // 4. Bônus moderado e configurável do plano (0-9)
+  const planBonus =
+    context.customPlanBonus !== undefined
+      ? Math.max(0, Math.min(12, context.customPlanBonus))
+      : PLAN_PRIORITY_BONUS[providerProfile.plan] ?? 0;
+
+  // 5. Penalidades por baixa taxa de comparecimento ou histórico de cancelamentos
+  const attendancePenalty =
+    providerProfile.attendanceRatePercent < 95
+      ? (95 - providerProfile.attendanceRatePercent) * 1.5
+      : 0;
+  const cancellationPenalty = (context.cancellationCount || 0) * 3;
+  const penalty = attendancePenalty + cancellationPenalty;
+
+  const priorityScore =
+    Math.round(
+      (compatibility + availability + reputationPoints + planBonus - penalty) *
+        10
+    ) / 10;
+
+  return {
+    priorityScore,
+    compositeScore: composite,
+    compatibilityPoints: compatibility,
+    availabilityPoints: availability,
+    reputationPoints: Math.round(reputationPoints * 10) / 10,
+    planBonusPoints: planBonus,
+    penaltyPoints: Math.round(penalty * 10) / 10,
+    matchReasons: reasons,
+  };
+}
 
 /**
  * Motor de Matching Justo da Confiare:
@@ -137,60 +248,21 @@ export function rankCompatibleProviders(
       return true;
     })
     .map((provider) => {
-      const composite = calculateCompositeScore(provider).totalScore;
-      const reasons: string[] = [];
-
-      // 1. Compatibilidade (0-40)
-      let compatibility = 32;
-      if (
-        normalizedLocation &&
-        provider.neighborhoods.some((b) => b.toLowerCase().includes(normalizedLocation))
-      ) {
-        compatibility += 8;
-        reasons.push(`Atende em ${provider.neighborhoods[0]}`);
-      } else {
-        reasons.push(`Cobertura em ${provider.neighborhoods.slice(0, 2).join(', ')}`);
-      }
-
-      if (provider.previouslyHiredByCurrentUser) {
-        compatibility += 6;
-        reasons.push('Já atendeu você com sucesso');
-      }
-
-      // 2. Disponibilidade (0-20)
-      const availability = provider.availableToday ? 20 : 12;
-      if (provider.availableToday) {
-        reasons.push(`Responde em ~${provider.responseTimeMinutes} min`);
-      }
-
-      // 3. Reputação (0-35) — peso dominante sobre o bônus do plano
-      const reputationPoints = (composite / 5) * 35;
-
-      // 4. Bônus moderado do plano (2-9)
-      const planBonus = PLAN_PRIORITY_BONUS[provider.plan] || 2;
-
-      // 5. Penalidades por baixa taxa de comparecimento ou resposta
-      const penalty =
-        provider.attendanceRatePercent < 95
-          ? (95 - provider.attendanceRatePercent) * 1.5
-          : 0;
-
-      const priorityScore =
-        Math.round(
-          (compatibility + availability + reputationPoints + planBonus - penalty) * 10
-        ) / 10;
+      const breakdown = getMatchingPriority(provider, {
+        locationQuery: normalizedLocation,
+      });
 
       const matchPercentage = Math.min(
         99,
-        Math.max(78, Math.round(priorityScore))
+        Math.max(78, Math.round(breakdown.priorityScore))
       );
 
       return {
         provider,
         matchPercentage,
-        priorityScore,
-        compositeScore: composite,
-        matchReasons: reasons,
+        priorityScore: breakdown.priorityScore,
+        compositeScore: breakdown.compositeScore,
+        matchReasons: breakdown.matchReasons,
       };
     })
     .sort((a, b) => b.priorityScore - a.priorityScore);

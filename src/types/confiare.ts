@@ -5,7 +5,19 @@ export type CategoryName =
   | 'Pintor'
   | 'Técnico de ar-condicionado';
 
-export type PlanTier = 'Essencial' | 'Profissional' | 'Premium' | 'Padrinho';
+export type PlanTier =
+  | 'Gratuito'
+  | 'Essencial'
+  | 'Profissional'
+  | 'Premium'
+  | 'Padrinho';
+
+export type PlanSlug =
+  | 'gratuito'
+  | 'essencial'
+  | 'profissional'
+  | 'premium'
+  | 'padrinho';
 
 export type ScreenId =
   | 'home'
