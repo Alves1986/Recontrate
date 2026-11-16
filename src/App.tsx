@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   CategoryName,
   ClientRegistration,
@@ -23,11 +23,6 @@ import {
 } from './data/seedData';
 import { applyNewReviewToProvider } from './utils/marketplaceRules';
 import { ConfiareLogo } from './components/ConfiareLogo';
-import { HomeScreen } from './components/HomeScreen';
-import {
-  ClientRegistrationScreen,
-  ProviderRegistrationScreen,
-} from './components/AuthRegistrationScreens';
 import {
   CompatibleProvidersListScreen,
   CreateServiceRequestScreen,
@@ -42,65 +37,85 @@ import {
 } from './components/SubstituteAndReviewScreens';
 import { ProviderDashboardScreen } from './components/ProviderDashboardScreen';
 import { AdminMonetizationScreen } from './components/AdminMonetizationScreen';
+import {
+  ForProvidersPage,
+  PublicLandingPage,
+  TermsAndPrivacyPage,
+} from './components/PublicPages';
+import {
+  ForgotAndResetPasswordPage,
+  LoginPage,
+  OnboardingPage,
+  PadrinhoDashboardPage,
+  SignupPage,
+} from './components/AuthPages';
+import type {
+  AuthenticatedUserSession,
+  UserRole,
+} from './services/authService';
 
-const PROTOTYPE_SCREENS: { id: ScreenId; label: string; shortLabel: string }[] = [
-  { id: 'home', label: 'Início (Home)', shortLabel: 'Home' },
-  {
-    id: 'cadastro-cliente',
-    label: '1. Cadastro de cliente',
-    shortLabel: '1. Cad. Cliente',
-  },
-  {
-    id: 'cadastro-prestador',
-    label: '2. Cadastro de prestador',
-    shortLabel: '2. Cad. Prestador',
-  },
-  {
-    id: 'criar-solicitacao',
-    label: '3. Criação de solicitação',
-    shortLabel: '3. Solicitação',
-  },
-  {
-    id: 'profissionais-compativeis',
-    label: '4. Profissionais compatíveis',
-    shortLabel: '4. Compatíveis',
-  },
-  {
-    id: 'perfil-prestador',
-    label: '5. Perfil do prestador',
-    shortLabel: '5. Perfil',
-  },
-  {
-    id: 'solicitar-novamente',
-    label: '6. Solicitar novamente',
-    shortLabel: '6. Recontratar',
-  },
-  {
-    id: 'indicacao-substituto',
-    label: '7. Indicação de substituto',
-    shortLabel: '7. Substituto',
-  },
-  {
-    id: 'avaliacao-pos-atendimento',
-    label: '8. Avaliação pós-atendimento',
-    shortLabel: '8. Avaliação',
-  },
-  {
-    id: 'painel-prestador',
-    label: '9. Painel do prestador',
-    shortLabel: '9. Painel',
-  },
-  {
-    id: 'painel-admin',
-    label: '10. Admin Billing & Métricas',
-    shortLabel: '10. Admin Billing',
-  },
-];
+export function isProtectedRoutePath(pathname: string): boolean {
+  return (
+    pathname === '/app' ||
+    pathname.startsWith('/app/') ||
+    pathname === '/admin' ||
+    pathname.startsWith('/admin/')
+  );
+}
+
+export function canUserAccessRoute(
+  pathname: string,
+  user: AuthenticatedUserSession | null
+): { allowed: boolean; redirectTo?: string } {
+  if (!isProtectedRoutePath(pathname)) {
+    return { allowed: true };
+  }
+  if (!user) {
+    return { allowed: false, redirectTo: '/entrar' };
+  }
+  if (!user.onboardingCompleted && pathname !== '/app/onboarding') {
+    return { allowed: false, redirectTo: '/app/onboarding' };
+  }
+  if (pathname === '/admin' || pathname.startsWith('/admin/')) {
+    if (user.activeRole !== 'admin' && !user.roles.includes('admin')) {
+      return { allowed: false, redirectTo: user.redirectTo };
+    }
+  }
+  if (pathname.startsWith('/app/padrinho')) {
+    if (
+      user.activeRole !== 'padrinho' &&
+      user.activeRole !== 'admin' &&
+      !user.roles.includes('padrinho')
+    ) {
+      return { allowed: false, redirectTo: user.redirectTo };
+    }
+  }
+  if (pathname.startsWith('/app/prestador')) {
+    if (
+      user.activeRole !== 'prestador' &&
+      user.activeRole !== 'padrinho' &&
+      user.activeRole !== 'admin' &&
+      !user.roles.includes('prestador')
+    ) {
+      return { allowed: false, redirectTo: user.redirectTo };
+    }
+  }
+  return { allowed: true };
+}
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<ScreenId>('home');
-  const [providers, setProviders] = useState<ProviderProfile[]>(INITIAL_PROVIDERS);
-  const [selectedProviderId, setSelectedProviderId] = useState<string>('prov-joao');
+  const [pathname, setPathname] = useState<string>(
+    typeof window !== 'undefined' ? window.location.pathname : '/'
+  );
+  const [authUser, setAuthUser] = useState<AuthenticatedUserSession | null>(
+    null
+  );
+  const [authToken, setAuthToken] = useState<string>('');
+
+  const [providers, setProviders] =
+    useState<ProviderProfile[]>(INITIAL_PROVIDERS);
+  const [selectedProviderId, setSelectedProviderId] =
+    useState<string>('prov-joao');
 
   // Filter & Search state
   const [activeCategory, setActiveCategory] = useState<CategoryName | 'Todas'>(
@@ -113,18 +128,16 @@ export default function App() {
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>(
     INITIAL_SERVICE_REQUESTS
   );
-  const [repeatRequests, setRepeatRequests] = useState<RepeatServiceRequest[]>([]);
-  const [substituteReferral, setSubstituteReferral] = useState<SubstituteReferral>(
-    INITIAL_SUBSTITUTE_REFERRAL
+  const [repeatRequests, setRepeatRequests] = useState<RepeatServiceRequest[]>(
+    []
   );
-
-  // Provider opportunities state
+  const [substituteReferral, setSubstituteReferral] =
+    useState<SubstituteReferral>(INITIAL_SUBSTITUTE_REFERRAL);
   const [opportunities, setOpportunities] = useState<ProviderOpportunity[]>(
     INITIAL_PROVIDER_OPPORTUNITIES
   );
 
-  // Client Registration state
-  const [clientProfile, setClientProfile] = useState<ClientRegistration>({
+  const [clientProfile] = useState<ClientRegistration>({
     name: 'Mariana Souza',
     phone: '(11) 99204-6612',
     email: 'mariana.souza@email.com.br',
@@ -135,12 +148,61 @@ export default function App() {
     lgpdConsent: true,
   });
 
-  const handleNavigate = (screen: ScreenId, providerId?: string) => {
+  const navigateUrl = useCallback((nextPath: string) => {
+    const cleanPath = nextPath.split('?')[0] || '/';
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', nextPath);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    setPathname(cleanPath);
+  }, []);
+
+  useEffect(() => {
+    const onPopState = () => {
+      setPathname(window.location.pathname);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  // Restore session on mount if cookie exists
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (body?.ok && body.user) {
+          setAuthUser(body.user);
+        }
+      })
+      .catch(() => null);
+  }, []);
+
+  // Client-side route protection guard
+  useEffect(() => {
+    const check = canUserAccessRoute(pathname, authUser);
+    if (!check.allowed && check.redirectTo && check.redirectTo !== pathname) {
+      navigateUrl(check.redirectTo);
+    }
+  }, [pathname, authUser, navigateUrl]);
+
+  const handleLegacyScreenNavigate = (screen: ScreenId, providerId?: string) => {
     if (providerId) {
       setSelectedProviderId(providerId);
     }
-    setCurrentScreen(screen);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const mapScreenToUrl: Record<ScreenId, string> = {
+      home: '/',
+      'cadastro-cliente': '/criar-conta',
+      'cadastro-prestador': '/para-prestadores',
+      'criar-solicitacao': authUser ? '/app/cliente/nova-solicitacao' : '/encontrar-profissional',
+      'profissionais-compativeis': '/encontrar-profissional',
+      'perfil-prestador': `/profissionais/${providerId || selectedProviderId}`,
+      'solicitar-novamente': authUser ? '/app/cliente/recontratar' : '/entrar',
+      'indicacao-substituto': authUser ? '/app/cliente/substituto' : '/como-funciona',
+      'avaliacao-pos-atendimento': authUser ? '/app/cliente/avaliar' : '/entrar',
+      'painel-prestador': authUser ? '/app/prestador' : '/entrar',
+      'painel-admin': authUser ? '/admin' : '/entrar',
+    };
+    navigateUrl(mapScreenToUrl[screen] || '/');
   };
 
   const handleStartSearchFromHome = (
@@ -150,20 +212,14 @@ export default function App() {
   ) => {
     setSearchQuery(query);
     setLocationQuery(location.split(',')[0]?.trim() || location);
-    if (category) {
-      setActiveCategory(category);
-    } else {
-      setActiveCategory('Todas');
-    }
-    setCurrentScreen('profissionais-compativeis');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setActiveCategory(category || 'Todas');
+    navigateUrl('/encontrar-profissional');
   };
 
   const handleSelectCategoryFromHome = (category: CategoryName) => {
     setActiveCategory(category);
     setSearchQuery('');
-    setCurrentScreen('profissionais-compativeis');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    navigateUrl('/encontrar-profissional');
   };
 
   const handleCreateServiceRequest = (newReq: ServiceRequest) => {
@@ -172,7 +228,6 @@ export default function App() {
     setLocationQuery(newReq.neighborhood);
     setSearchQuery('');
 
-    // Also add as a new opportunity in the Provider Dashboard
     const newOpp: ProviderOpportunity = {
       id: `opp-${Date.now()}`,
       category: newReq.category,
@@ -182,8 +237,8 @@ export default function App() {
       distanceKm: 1.2,
       urgency: newReq.urgency,
       preferredTime: newReq.preferredTime,
-      clientNameMasked: `${clientProfile.name.split(' ')[0]} (Cliente Verificado)`,
-      clientNameFull: clientProfile.name,
+      clientNameMasked: `${(authUser?.fullName || clientProfile.name).split(' ')[0]} (Cliente Verificado)`,
+      clientNameFull: authUser?.fullName || clientProfile.name,
       clientWhatsapp: clientProfile.phone,
       origin: newReq.preferredPreviousProviderId
         ? 'Recontratação Direta'
@@ -193,256 +248,191 @@ export default function App() {
       status: 'pendente',
     };
     setOpportunities((prev) => [newOpp, ...prev]);
-    setCurrentScreen('profissionais-compativeis');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    navigateUrl('/encontrar-profissional');
   };
 
-  const handleRegisterNewProvider = (newProvider: ProviderProfile) => {
-    setProviders((prev) => [newProvider, ...prev]);
-    setSelectedProviderId(newProvider.id);
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => null);
+    setAuthUser(null);
+    setAuthToken('');
+    navigateUrl('/entrar');
   };
 
-  const handleCreateRepeatRequest = (newRepeat: RepeatServiceRequest) => {
-    setRepeatRequests((prev) => [newRepeat, ...prev]);
-  };
-
-  const handleTriggerSubstituteFlow = (
-    providerId: string,
-    serviceSummary: string
-  ) => {
-    const prov = providers.find((p) => p.id === providerId) || providers[0];
-    const subIds =
-      prov.trustedSubstitutesIds.length > 0
-        ? prov.trustedSubstitutesIds.slice(0, 2)
-        : ['prov-carlos', 'prov-marcos'];
-
-    setSubstituteReferral({
-      id: `sub-${Date.now()}`,
-      originalProviderId: prov.id,
-      substituteProviderIds: subIds,
-      reasonCategory: 'Agenda cheia na data',
-      customNote: `Estou em outro atendimento técnico na data solicitada, mas indico com total confiança meus colegas verificados da rede Confiare para resolver "${serviceSummary}".`,
-      serviceContext: serviceSummary,
-      neighborhood: clientProfile.neighborhood || 'Pinheiros',
-      urgency: 'Hoje / Esta semana',
-      createdAt: 'Agora mesmo',
+  const handleSwitchRole = async (targetRole: UserRole) => {
+    if (!authToken && !authUser) return;
+    const res = await fetch('/api/auth/switch-role', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      },
+      body: JSON.stringify({ targetRole, enableIfMissing: true }),
     });
-    setCurrentScreen('indicacao-substituto');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleAcceptSubstitute = (substituteProviderId: string) => {
-    setSubstituteReferral((prev) => ({
-      ...prev,
-      clientAcceptedProviderId: substituteProviderId,
-    }));
-    setSelectedProviderId(substituteProviderId);
-  };
-
-  const handleSubmitReview = (
-    providerId: string,
-    reviewData: {
-      clientName: string;
-      neighborhood: string;
-      serviceTitle: string;
-      qualidade: number;
-      pontualidade: number;
-      comunicacao: number;
-      organizacao: number;
-      wouldRecommend: boolean;
-      comment: string;
+    const body = await res.json();
+    if (res.ok && body.ok) {
+      setAuthUser(body.user);
+      setAuthToken(body.token);
+      navigateUrl(body.redirectTo);
     }
-  ) => {
-    setProviders((prev) =>
-      prev.map((p) =>
-        p.id === providerId ? applyNewReviewToProvider(p, reviewData) : p
-      )
-    );
   };
 
-  const handleUpdateOpportunityStatus = (
-    oppId: string,
-    status: ProviderOpportunity['status']
-  ) => {
-    setOpportunities((prev) =>
-      prev.map((o) => (o.id === oppId ? { ...o, status } : o))
-    );
-  };
-
-  const handleChangeProviderPlan = (providerId: string, newPlan: PlanTier) => {
-    setProviders((prev) =>
-      prev.map((p) => (p.id === providerId ? { ...p, plan: newPlan } : p))
-    );
-  };
-
-  const handleToggleProviderAvailability = (providerId: string) => {
-    setProviders((prev) =>
-      prev.map((p) =>
-        p.id === providerId ? { ...p, availableToday: !p.availableToday } : p
-      )
-    );
-  };
-
+  const slugFromProfileRoute = pathname.startsWith('/profissionais/')
+    ? pathname.replace('/profissionais/', '')
+    : null;
   const activeProvider =
-    providers.find((p) => p.id === selectedProviderId) || providers[0];
+    providers.find(
+      (p) => p.id === (slugFromProfileRoute || selectedProviderId)
+    ) || providers[0];
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F4F2EF] text-[#0A2540] overflow-x-hidden">
-      {/* TOP BAR CONTRACT: 1 row, 3 zones separated by gap-8 on desktop, compact on mobile */}
+      {/* HEADER PÚBLICO / AUTENTICADO */}
       <header className="bg-white border-b border-[#0A2540]/10">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 sm:gap-8 px-3.5 sm:px-6 lg:px-8 py-3.5 sm:py-4">
-          {/* Zone 1: Single brand wordmark */}
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-4">
           <button
             type="button"
-            onClick={() => handleNavigate('home')}
-            className="text-left focus:outline-none cursor-pointer whitespace-nowrap shrink-0"
+            onClick={() => navigateUrl('/')}
+            className="text-left focus:outline-none cursor-pointer shrink-0"
             aria-label="Confiare Início"
           >
             <ConfiareLogo variant="dark-text" size="sm" />
           </button>
 
-          {/* Zone 2: 5 concise single-line navigation links */}
           <nav
             aria-label="Navegação Principal"
             className="hidden md:flex items-center gap-6 text-sm font-medium text-[#0A2540]/80"
           >
             <button
               type="button"
-              onClick={() => handleNavigate('home')}
-              className={`hover:text-[#0A2540] transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                currentScreen === 'home'
+              onClick={() => navigateUrl('/como-funciona')}
+              className={`hover:text-[#0A2540] cursor-pointer ${
+                pathname === '/como-funciona'
                   ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
                   : ''
               }`}
             >
-              Início
+              Como funciona
             </button>
             <button
               type="button"
-              onClick={() => handleNavigate('criar-solicitacao')}
-              className={`hover:text-[#0A2540] transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                currentScreen === 'criar-solicitacao'
+              onClick={() => navigateUrl('/para-prestadores')}
+              className={`hover:text-[#0A2540] cursor-pointer ${
+                pathname === '/para-prestadores'
                   ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
                   : ''
               }`}
             >
-              Solicitar Serviço
+              Para prestadores
             </button>
             <button
               type="button"
-              onClick={() => handleNavigate('profissionais-compativeis')}
-              className={`hover:text-[#0A2540] transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                currentScreen === 'profissionais-compativeis'
+              onClick={() => navigateUrl('/encontrar-profissional')}
+              className={`hover:text-[#0A2540] cursor-pointer ${
+                pathname === '/encontrar-profissional'
                   ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
                   : ''
               }`}
             >
-              Profissionais
+              Encontrar profissional
             </button>
             <button
               type="button"
-              onClick={() => handleNavigate('solicitar-novamente')}
-              className={`hover:text-[#0A2540] transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                currentScreen === 'solicitar-novamente'
+              onClick={() => navigateUrl('/planos')}
+              className={`hover:text-[#0A2540] cursor-pointer ${
+                pathname === '/planos'
                   ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
                   : ''
               }`}
             >
-              Recontratar
-            </button>
-            <button
-              type="button"
-              onClick={() => handleNavigate('painel-prestador')}
-              className={`hover:text-[#0A2540] transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                currentScreen === 'painel-prestador'
-                  ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
-                  : ''
-              }`}
-            >
-              Painel Prestador
+              Planos
             </button>
           </nav>
 
-          {/* Zone 3: 1 primary action */}
-          <div className="flex items-center shrink-0">
-            <button
-              type="button"
-              onClick={() => handleNavigate('criar-solicitacao')}
-              className="min-h-[40px] sm:min-h-[42px] px-3 sm:px-4 py-2 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-xs sm:text-sm transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              Encontrar um profissional
-            </button>
+          {/* Ações de Autenticação / Sessão */}
+          <div className="flex items-center gap-2.5 shrink-0">
+            {!authUser ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigateUrl('/entrar')}
+                  className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-display font-semibold text-xs sm:text-sm cursor-pointer"
+                >
+                  Entrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigateUrl('/criar-conta')}
+                  className="min-h-[40px] px-4 py-2 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-xs sm:text-sm cursor-pointer"
+                >
+                  Criar conta
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => navigateUrl(authUser.redirectTo)}
+                  className="px-3 py-2 rounded-xl bg-[#0A2540] text-white font-semibold cursor-pointer"
+                >
+                  Painel ({authUser.activeRole})
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleSwitchRole(
+                      authUser.activeRole === 'cliente'
+                        ? 'prestador'
+                        : 'cliente'
+                    )
+                  }
+                  className="px-3 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold cursor-pointer"
+                >
+                  Alternar para{' '}
+                  {authUser.activeRole === 'cliente' ? 'Prestador' : 'Cliente'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="px-3 py-2 rounded-xl border border-[#0A2540]/15 text-[#0A2540] hover:bg-red-50 cursor-pointer"
+                >
+                  Sair
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </header>
 
-      {/* WORKSPACE PROTOTYPE JOURNEY SWITCHER (Below the fold / outside header) */}
-      <div className="bg-[#0A2540]/5 border-b border-[#0A2540]/10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] font-semibold text-[#0A2540]/65 whitespace-nowrap shrink-0 mr-1">
-            Fluxos do Protótipo:
-          </span>
-          {PROTOTYPE_SCREENS.map((item) => {
-            const active = currentScreen === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => handleNavigate(item.id)}
-                className={`min-h-[34px] px-3 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                  active
-                    ? 'bg-[#0A2540] text-white font-semibold'
-                    : 'bg-white text-[#0A2540]/80 hover:bg-white hover:text-[#0A2540] border border-[#0A2540]/10'
-                }`}
-              >
-                {item.shortLabel}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* MAIN CONTENT VIEWPORT */}
+      {/* MAIN ROUTER VIEWPORT */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
-        {currentScreen === 'home' && (
-          <HomeScreen
+        {/* ÁREA PÚBLICA */}
+        {pathname === '/' && (
+          <PublicLandingPage
             providers={providers}
             onStartSearch={handleStartSearchFromHome}
             onSelectCategory={handleSelectCategoryFromHome}
-            onNavigate={handleNavigate}
+            onNavigateUrl={navigateUrl}
           />
         )}
 
-        {currentScreen === 'cadastro-cliente' && (
-          <ClientRegistrationScreen
-            savedClient={clientProfile}
-            onSaveClient={setClientProfile}
-            onNavigate={handleNavigate}
-          />
+        {pathname === '/para-prestadores' && (
+          <ForProvidersPage onNavigateUrl={navigateUrl} />
         )}
 
-        {currentScreen === 'cadastro-prestador' && (
-          <ProviderRegistrationScreen
-            onRegisterProvider={handleRegisterNewProvider}
-            onNavigate={handleNavigate}
-          />
-        )}
-
-        {currentScreen === 'criar-solicitacao' && (
-          <CreateServiceRequestScreen
-            initialCategory={
-              activeCategory !== 'Todas' ? activeCategory : 'Eletricista'
-            }
-            initialQuery={searchQuery}
-            initialLocation={locationQuery}
+        {pathname === '/como-funciona' && (
+          <PublicLandingPage
             providers={providers}
-            requests={serviceRequests}
-            onCreateRequest={handleCreateServiceRequest}
-            onNavigate={handleNavigate}
+            onStartSearch={handleStartSearchFromHome}
+            onSelectCategory={handleSelectCategoryFromHome}
+            onNavigateUrl={navigateUrl}
           />
         )}
 
-        {currentScreen === 'profissionais-compativeis' && (
+        {pathname === '/planos' && (
+          <ForProvidersPage onNavigateUrl={navigateUrl} />
+        )}
+
+        {pathname === '/encontrar-profissional' && (
           <CompatibleProvidersListScreen
             providers={providers}
             activeCategory={activeCategory}
@@ -452,92 +442,226 @@ export default function App() {
             onChangeCategory={setActiveCategory}
             onChangeSearch={setSearchQuery}
             onChangeLocation={setLocationQuery}
-            onSelectProvider={(id) => handleNavigate('perfil-prestador', id)}
-            onRepeatProvider={(id) => handleNavigate('solicitar-novamente', id)}
-            onNavigate={handleNavigate}
+            onSelectProvider={(id) => navigateUrl(`/profissionais/${id}`)}
+            onRepeatProvider={() =>
+              navigateUrl(authUser ? '/app/cliente/recontratar' : '/entrar')
+            }
+            onNavigate={handleLegacyScreenNavigate}
           />
         )}
 
-        {currentScreen === 'perfil-prestador' && (
+        {pathname.startsWith('/profissionais/') && (
           <ProviderProfileScreen
             provider={activeProvider}
             allProviders={providers}
-            onSelectProvider={setSelectedProviderId}
-            onNavigate={handleNavigate}
+            onSelectProvider={(id) => navigateUrl(`/profissionais/${id}`)}
+            onNavigate={handleLegacyScreenNavigate}
           />
         )}
 
-        {currentScreen === 'solicitar-novamente' && (
+        {pathname === '/entrar' && (
+          <LoginPage
+            onAuthenticated={(user, token, redirectTo) => {
+              setAuthUser(user);
+              setAuthToken(token);
+              navigateUrl(redirectTo);
+            }}
+            onNavigateUrl={navigateUrl}
+          />
+        )}
+
+        {pathname === '/criar-conta' && (
+          <SignupPage
+            onAuthenticated={(user, token, redirectTo) => {
+              setAuthUser(user);
+              setAuthToken(token);
+              navigateUrl(redirectTo);
+            }}
+            onNavigateUrl={navigateUrl}
+          />
+        )}
+
+        {pathname === '/recuperar-senha' && (
+          <ForgotAndResetPasswordPage onNavigateUrl={navigateUrl} />
+        )}
+
+        {pathname === '/termos' && <TermsAndPrivacyPage mode="termos" />}
+        {pathname === '/privacidade' && (
+          <TermsAndPrivacyPage mode="privacidade" />
+        )}
+
+        {/* ÁREA AUTENTICADA PROTEGIDA */}
+        {authUser && pathname === '/app/onboarding' && (
+          <OnboardingPage
+            user={authUser}
+            token={authToken}
+            onComplete={(redirectTo) => {
+              setAuthUser((prev) =>
+                prev ? { ...prev, onboardingCompleted: true } : prev
+              );
+              navigateUrl(redirectTo);
+            }}
+          />
+        )}
+
+        {authUser &&
+          (pathname === '/app' ||
+            pathname === '/app/cliente' ||
+            pathname === '/app/cliente/nova-solicitacao') && (
+            <div className="space-y-6">
+              <div className="bg-white rounded-2xl p-4 border border-[#0A2540]/10 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-semibold text-[#0A2540]">
+                  Área Autenticada do Cliente — Olá, {authUser.fullName}
+                </span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => navigateUrl('/app/cliente/nova-solicitacao')}
+                    className="px-3 py-1.5 rounded-lg bg-[#0A2540] text-white font-semibold cursor-pointer"
+                  >
+                    Nova Solicitação
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateUrl('/app/cliente/recontratar')}
+                    className="px-3 py-1.5 rounded-lg bg-[#F4F2EF] text-[#0A2540] font-semibold cursor-pointer"
+                  >
+                    Recontratar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateUrl('/app/cliente/avaliar')}
+                    className="px-3 py-1.5 rounded-lg bg-[#F4F2EF] text-[#0A2540] font-semibold cursor-pointer"
+                  >
+                    Avaliar Atendimento
+                  </button>
+                </div>
+              </div>
+
+              <CreateServiceRequestScreen
+                initialCategory={
+                  activeCategory !== 'Todas' ? activeCategory : 'Eletricista'
+                }
+                initialQuery={searchQuery}
+                initialLocation={locationQuery}
+                providers={providers}
+                requests={serviceRequests}
+                onCreateRequest={handleCreateServiceRequest}
+                onNavigate={handleLegacyScreenNavigate}
+              />
+            </div>
+          )}
+
+        {authUser && pathname === '/app/cliente/recontratar' && (
           <RepeatRequestScreen
             providers={providers}
             selectedProviderId={selectedProviderId}
             repeatRequests={repeatRequests}
-            onCreateRepeatRequest={handleCreateRepeatRequest}
-            onTriggerSubstituteFlow={handleTriggerSubstituteFlow}
-            onNavigate={handleNavigate}
+            onCreateRepeatRequest={(newRepeat) =>
+              setRepeatRequests((prev) => [newRepeat, ...prev])
+            }
+            onTriggerSubstituteFlow={() => navigateUrl('/app/cliente/substituto')}
+            onNavigate={handleLegacyScreenNavigate}
           />
         )}
 
-        {currentScreen === 'indicacao-substituto' && (
+        {authUser && pathname === '/app/cliente/substituto' && (
           <SubstituteReferralScreen
             providers={providers}
             currentReferral={substituteReferral}
             onUpdateReferral={setSubstituteReferral}
-            onAcceptSubstitute={handleAcceptSubstitute}
-            onNavigate={handleNavigate}
+            onAcceptSubstitute={(id) => setSelectedProviderId(id)}
+            onNavigate={handleLegacyScreenNavigate}
           />
         )}
 
-        {currentScreen === 'avaliacao-pos-atendimento' && (
+        {authUser && pathname === '/app/cliente/avaliar' && (
           <PostServiceReviewScreen
             providers={providers}
             selectedProviderId={selectedProviderId}
-            onSubmitReview={handleSubmitReview}
-            onNavigate={handleNavigate}
+            onSubmitReview={(providerId, reviewData) =>
+              setProviders((prev) =>
+                prev.map((p) =>
+                  p.id === providerId ? applyNewReviewToProvider(p, reviewData) : p
+                )
+              )
+            }
+            onNavigate={handleLegacyScreenNavigate}
           />
         )}
 
-        {currentScreen === 'painel-prestador' && (
+        {authUser && pathname.startsWith('/app/prestador') && (
           <ProviderDashboardScreen
             activeProvider={activeProvider}
             opportunities={opportunities}
             onAddRealtimeOpportunity={(newOpp) =>
               setOpportunities((prev) => [newOpp, ...prev])
             }
-            onUpdateOpportunityStatus={handleUpdateOpportunityStatus}
-            onChangeProviderPlan={handleChangeProviderPlan}
-            onToggleProviderAvailability={handleToggleProviderAvailability}
-            onNavigate={handleNavigate}
+            onUpdateOpportunityStatus={(oppId, status) =>
+              setOpportunities((prev) =>
+                prev.map((o) => (o.id === oppId ? { ...o, status } : o))
+              )
+            }
+            onChangeProviderPlan={(providerId: string, newPlan: PlanTier) =>
+              setProviders((prev) =>
+                prev.map((p) =>
+                  p.id === providerId ? { ...p, plan: newPlan } : p
+                )
+              )
+            }
+            onToggleProviderAvailability={(providerId: string) =>
+              setProviders((prev) =>
+                prev.map((p) =>
+                  p.id === providerId
+                    ? { ...p, availableToday: !p.availableToday }
+                    : p
+                )
+              )
+            }
+            onNavigate={handleLegacyScreenNavigate}
           />
         )}
 
-        {currentScreen === 'painel-admin' && <AdminMonetizationScreen />}
+        {authUser && pathname.startsWith('/app/padrinho') && (
+          <PadrinhoDashboardPage user={authUser} />
+        )}
+
+        {authUser && pathname.startsWith('/admin') && (
+          <AdminMonetizationScreen />
+        )}
       </main>
 
-      {/* QUIET FOOTER */}
+      {/* FOOTER COM TERMOS, PRIVACIDADE, CONTATO E REDES SOCIAIS */}
       <footer className="bg-white border-t border-[#0A2540]/10 mt-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#0A2540]/70">
           <div className="flex items-center gap-3">
             <ConfiareLogo variant="dark-text" size="sm" />
             <span>·</span>
-            <span>Protótipo de Validação de Experiência (Cliente & Prestador)</span>
+            <span>Marketplace Brasileiro de Serviços Locais de Confiança</span>
           </div>
           <div className="flex flex-wrap items-center gap-4">
             <button
               type="button"
-              onClick={() => handleNavigate('cadastro-cliente')}
+              onClick={() => navigateUrl('/termos')}
+              className="hover:text-[#0A2540] cursor-pointer"
+            >
+              Termos de Uso
+            </button>
+            <button
+              type="button"
+              onClick={() => navigateUrl('/privacidade')}
               className="hover:text-[#0A2540] cursor-pointer"
             >
               Privacidade LGPD
             </button>
             <button
               type="button"
-              onClick={() => handleNavigate('painel-prestador')}
+              onClick={() => navigateUrl('/para-prestadores')}
               className="hover:text-[#0A2540] cursor-pointer"
             >
-              Planos para Prestadores
+              Para Prestadores
             </button>
-            <span>Sem intermediação de pagamento no MVP</span>
+            <span>contato@confiare.com.br · @confiare.br</span>
           </div>
         </div>
       </footer>
