@@ -145,6 +145,22 @@ export interface ProviderOpportunity {
   declineReason?: string;
 }
 
+export type ProviderNotificationType = 'nova_oportunidade' | 'aceite_orcamento';
+
+export interface ProviderRealtimeNotification {
+  id: string;
+  type: ProviderNotificationType;
+  title: string;
+  message: string;
+  clientName: string;
+  neighborhood: string;
+  urgencyOrScope: string;
+  timestamp: string;
+  read: boolean;
+  opportunityId?: string;
+  clientWhatsapp?: string;
+}
+
 export interface ClientRegistration {
   name: string;
   phone: string;

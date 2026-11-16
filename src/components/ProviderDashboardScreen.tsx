@@ -17,13 +17,20 @@ import {
   PlanTier,
   ProviderOpportunity,
   ProviderProfile,
+  ProviderRealtimeNotification,
   ScreenId,
 } from '../types/confiare';
-import { calculateCompositeScore } from '../utils/marketplaceRules';
+import { INITIAL_PROVIDER_NOTIFICATIONS } from '../data/seedData';
+import {
+  calculateCompositeScore,
+  createRealtimeNotification,
+} from '../utils/marketplaceRules';
+import { ProviderRealtimeNotifications } from './ProviderRealtimeNotifications';
 
 interface ProviderDashboardScreenProps {
   activeProvider: ProviderProfile;
   opportunities: ProviderOpportunity[];
+  onAddRealtimeOpportunity?: (newOpp: ProviderOpportunity) => void;
   onUpdateOpportunityStatus: (
     oppId: string,
     status: ProviderOpportunity['status']
@@ -89,6 +96,7 @@ const PLANS_CONFIG: {
 export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = ({
   activeProvider,
   opportunities,
+  onAddRealtimeOpportunity,
   onUpdateOpportunityStatus,
   onChangeProviderPlan,
   onToggleProviderAvailability,
@@ -98,6 +106,9 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
     'oportunidades' | 'reputacao' | 'plano'
   >('oportunidades');
   const [copiedQuoteTemplate, setCopiedQuoteTemplate] = useState(false);
+  const [realtimeNotifications, setRealtimeNotifications] = useState<
+    ProviderRealtimeNotification[]
+  >(INITIAL_PROVIDER_NOTIFICATIONS);
 
   const scoreBreakdown = calculateCompositeScore(activeProvider);
   const pendingCount = opportunities.filter((o) => o.status === 'pendente').length;
@@ -106,6 +117,23 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   const handleCopyQuoteTemplate = () => {
     setCopiedQuoteTemplate(true);
     setTimeout(() => setCopiedQuoteTemplate(false), 3000);
+  };
+
+  const handleAcceptOpportunityWithNotification = (opp: ProviderOpportunity) => {
+    onUpdateOpportunityStatus(opp.id, 'aceita');
+    const acceptanceNotif = createRealtimeNotification({
+      id: `notif-acc-${Date.now()}`,
+      type: 'aceite_orcamento',
+      title: 'Interesse confirmado e contato liberado para orçamento!',
+      message: `Contato de ${opp.clientNameFull} liberado para "${opp.title}".`,
+      clientName: opp.clientNameFull,
+      neighborhood: `${opp.neighborhood} (${opp.distanceKm} km)`,
+      urgencyOrScope: `Urgência: ${opp.urgency} · ${opp.preferredTime}`,
+      timestamp: 'Agora mesmo',
+      opportunityId: opp.id,
+      clientWhatsapp: opp.clientWhatsapp,
+    });
+    setRealtimeNotifications((prev) => [acceptanceNotif, ...prev]);
   };
 
   return (
@@ -197,6 +225,19 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
           </div>
         </div>
       </div>
+
+      {/* COMPONENTE DE NOTIFICAÇÕES DE STATUS EM TEMPO REAL */}
+      <ProviderRealtimeNotifications
+        activeProvider={activeProvider}
+        notifications={realtimeNotifications}
+        onUpdateNotifications={setRealtimeNotifications}
+        onAddRealtimeOpportunity={(newOpp) => {
+          if (onAddRealtimeOpportunity) {
+            onAddRealtimeOpportunity(newOpp);
+          }
+        }}
+        onFocusOpportunityTab={() => setActiveTab('oportunidades')}
+      />
 
       {/* Sub-navigation Tabs for the 3 Core Pillars of Screen 9 */}
       <div className="w-full sm:w-fit flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 p-1.5 bg-white rounded-2xl border border-[#0A2540]/10">
@@ -317,7 +358,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                     <>
                       <button
                         type="button"
-                        onClick={() => onUpdateOpportunityStatus(opp.id, 'aceita')}
+                        onClick={() => handleAcceptOpportunityWithNotification(opp)}
                         className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-xs transition-colors cursor-pointer"
                       >
                         Aceitar interesse e liberar WhatsApp

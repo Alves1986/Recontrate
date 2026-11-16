@@ -495,6 +495,9 @@ export default function App() {
           <ProviderDashboardScreen
             activeProvider={activeProvider}
             opportunities={opportunities}
+            onAddRealtimeOpportunity={(newOpp) =>
+              setOpportunities((prev) => [newOpp, ...prev])
+            }
             onUpdateOpportunityStatus={handleUpdateOpportunityStatus}
             onChangeProviderPlan={handleChangeProviderPlan}
             onToggleProviderAvailability={handleToggleProviderAvailability}

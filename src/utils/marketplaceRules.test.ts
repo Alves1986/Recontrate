@@ -5,6 +5,9 @@ import {
   rankCompatibleProviders,
   validateSubstituteSelection,
   applyNewReviewToProvider,
+  filterProviderNotifications,
+  markProviderNotificationsRead,
+  createRealtimeNotification,
 } from './marketplaceRules';
 import { ProviderProfile } from '../types/confiare';
 
@@ -113,3 +116,38 @@ test('applyNewReviewToProvider updates review list, increments completedJobs and
   assert.equal(updated.reviews[0].clientName, 'Marina Costa');
   assert.equal(updated.previouslyHiredByCurrentUser, true);
 });
+
+test('realtime provider notifications creation, filtering and read status management', () => {
+  const notifOpp = createRealtimeNotification({
+    id: 'n-1',
+    type: 'nova_oportunidade',
+    title: 'Nova oportunidade compatível em Pinheiros',
+    message: 'Revisão de quadro bifásico e disjuntor DR',
+    clientName: 'Mariana S.',
+    neighborhood: 'Pinheiros',
+    urgencyOrScope: 'Urgência: Hoje · Tarde (13h–18h)',
+  });
+
+  const notifQuote = createRealtimeNotification({
+    id: 'n-2',
+    type: 'aceite_orcamento',
+    title: 'Orçamento aceito pelo cliente!',
+    message: 'Troca de disjuntor DR 32A e tomada 20A confirmada',
+    clientName: 'Helena Vasconcelos',
+    neighborhood: 'Pinheiros',
+    urgencyOrScope: 'Escopo aprovado · Atendimento agendado',
+  });
+
+  const list = [notifOpp, notifQuote];
+  assert.equal(filterProviderNotifications(list, 'todas').length, 2);
+  assert.equal(filterProviderNotifications(list, 'nova_oportunidade').length, 1);
+  assert.equal(filterProviderNotifications(list, 'aceite_orcamento').length, 1);
+
+  const afterSingleRead = markProviderNotificationsRead(list, 'n-1');
+  assert.equal(afterSingleRead[0].read, true);
+  assert.equal(afterSingleRead[1].read, false);
+
+  const afterAllRead = markProviderNotificationsRead(afterSingleRead);
+  assert.equal(afterAllRead.every((n) => n.read), true);
+});
+

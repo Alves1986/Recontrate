@@ -2,6 +2,7 @@ import {
   CategoryName,
   ProviderOpportunity,
   ProviderProfile,
+  ProviderRealtimeNotification,
   ServiceRequest,
   SubstituteReferral,
 } from '../types/confiare';
@@ -649,3 +650,61 @@ export const INITIAL_SUBSTITUTE_REFERRAL: SubstituteReferral = {
   urgency: 'Hoje · Tarde (13h–18h)',
   createdAt: 'Há 8 minutos',
 };
+
+export const INITIAL_PROVIDER_NOTIFICATIONS: ProviderRealtimeNotification[] = [
+  {
+    id: 'notif-201',
+    type: 'nova_oportunidade',
+    title: 'Nova oportunidade compatível · Recontratação Direta',
+    message:
+      'Disjuntor do chuveiro desarmando e revisão de tomada 20A solicitada diretamente para você.',
+    clientName: 'Mariana Souza',
+    neighborhood: 'Pinheiros (1.4 km)',
+    urgencyOrScope: 'Urgência: Hoje · Tarde (13h–18h)',
+    timestamp: 'Há 2 min',
+    read: false,
+    opportunityId: 'opp-101',
+    clientWhatsapp: '(11) 99204-6612',
+  },
+  {
+    id: 'notif-202',
+    type: 'aceite_orcamento',
+    title: 'Orçamento aceito pelo cliente no WhatsApp!',
+    message:
+      'Helena Vasconcelos aprovou o orçamento técnico para modernização de circuito 20A e proteção DR.',
+    clientName: 'Helena Vasconcelos',
+    neighborhood: 'Pinheiros',
+    urgencyOrScope: 'Escopo aprovado · Atendimento confirmado',
+    timestamp: 'Há 11 min',
+    read: false,
+    clientWhatsapp: '(11) 99418-2201',
+  },
+  {
+    id: 'notif-203',
+    type: 'nova_oportunidade',
+    title: 'Nova oportunidade no seu raio · Matching Local',
+    message:
+      'Instalação de 4 luminárias de sobrepor e troca de interruptor paralelo.',
+    clientName: 'Eduardo K. (Cliente Verificado)',
+    neighborhood: 'Vila Madalena (2.1 km)',
+    urgencyOrScope: 'Urgência: Amanhã · Manhã (08h–12h)',
+    timestamp: 'Há 18 min',
+    read: true,
+    opportunityId: 'opp-102',
+    clientWhatsapp: '(11) 98841-1029',
+  },
+  {
+    id: 'notif-204',
+    type: 'aceite_orcamento',
+    title: 'Orçamento aceito · Recontratação confirmada!',
+    message:
+      'Ricardo Albuquerque confirmou o orçamento para instalação de chuveiro pressurizado 220V.',
+    clientName: 'Ricardo Albuquerque',
+    neighborhood: 'Perdizes',
+    urgencyOrScope: 'Escopo aprovado · Garantia técnica registrada',
+    timestamp: 'Há 42 min',
+    read: true,
+    clientWhatsapp: '(11) 99105-7740',
+  },
+];
+

@@ -1,7 +1,9 @@
 import {
   CategoryName,
   PlanTier,
+  ProviderNotificationType,
   ProviderProfile,
+  ProviderRealtimeNotification,
   ReviewItem,
 } from '../types/confiare';
 
@@ -288,3 +290,62 @@ export function applyNewReviewToProvider(
     reviews: [newReview, ...provider.reviews],
   };
 }
+
+/**
+ * Filtra notificações em tempo real do Painel do Prestador por tipo (Todas, Novas Oportunidades, Aceites de Orçamento).
+ */
+export function filterProviderNotifications(
+  notifications: ProviderRealtimeNotification[],
+  filterType: 'todas' | ProviderNotificationType
+): ProviderRealtimeNotification[] {
+  if (filterType === 'todas') {
+    return notifications;
+  }
+  return notifications.filter((item) => item.type === filterType);
+}
+
+/**
+ * Marca uma notificação específica ou todas as notificações como lidas.
+ */
+export function markProviderNotificationsRead(
+  notifications: ProviderRealtimeNotification[],
+  notificationId?: string
+): ProviderRealtimeNotification[] {
+  return notifications.map((item) => {
+    if (!notificationId || item.id === notificationId) {
+      return { ...item, read: true };
+    }
+    return item;
+  });
+}
+
+/**
+ * Cria uma nova notificação de status em tempo real para o prestador.
+ */
+export function createRealtimeNotification(input: {
+  id?: string;
+  type: ProviderNotificationType;
+  title: string;
+  message: string;
+  clientName: string;
+  neighborhood: string;
+  urgencyOrScope: string;
+  timestamp?: string;
+  opportunityId?: string;
+  clientWhatsapp?: string;
+}): ProviderRealtimeNotification {
+  return {
+    id: input.id || `notif-${Date.now()}`,
+    type: input.type,
+    title: input.title,
+    message: input.message,
+    clientName: input.clientName,
+    neighborhood: input.neighborhood,
+    urgencyOrScope: input.urgencyOrScope,
+    timestamp: input.timestamp || 'Agora mesmo',
+    read: false,
+    opportunityId: input.opportunityId,
+    clientWhatsapp: input.clientWhatsapp,
+  };
+}
+
