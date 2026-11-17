@@ -139,8 +139,8 @@ export const INITIAL_PLANS_SEED = [
     nome: 'Padrinho',
     descricao:
       'Todos os recursos do Premium, selo Padrinho Verificado e ferramentas de indicação, acompanhamento de apadrinhados e painel de reputação.',
-    precoMensalCentavos: 9990,
-    precoAnualCentavos: 99900,
+    precoMensalCentavos: 10990,
+    precoAnualCentavos: 109900,
     limiteOportunidadesMensal: 100,
     prioridadeMatching: 9,
     prioridadeLabel: 'Alta',
@@ -613,15 +613,18 @@ export async function ensureSchemaAndSeed(): Promise<void> {
         50,
         3,
         '["essencial","profissional","premium","padrinho"]'::jsonb,
-        '{"essencial":2990,"profissional":5990,"premium":9990,"padrinho":9990}'::jsonb,
-        '{"essencial":1495,"profissional":2995,"premium":4995,"padrinho":4995}'::jsonb,
+        '{"essencial":2990,"profissional":5990,"premium":9990,"padrinho":10990}'::jsonb,
+        '{"essencial":1495,"profissional":2995,"premium":4995,"padrinho":5495}'::jsonb,
         NOW() - INTERVAL '1 day',
         NOW() + INTERVAL '180 days',
         10000,
         1,
         'ativo'
       )
-      ON CONFLICT (slug) DO NOTHING`
+      ON CONFLICT (slug) DO UPDATE SET
+        preco_cheio_json = EXCLUDED.preco_cheio_json,
+        preco_promocional_json = EXCLUDED.preco_promocional_json,
+        atualizado_em = NOW()`
     );
 
     if (!isProductionEnvironment() && isDemoModeEnabled()) {

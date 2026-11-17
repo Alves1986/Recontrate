@@ -49,9 +49,9 @@ test('Plans seed: all 5 Confiare plans use integer centavos, exact opportunity l
   assert.equal(bySlug.premium.permiteRelatoriosAvancados, true);
   assert.equal(bySlug.premium.exibeAnuncios, false);
 
-  // 5. Padrinho: R$ 99,90/mês (9990) | R$ 999/ano (99900) | 100 oportunidades | prioridade 9
-  assert.equal(bySlug.padrinho.precoMensalCentavos, 9990);
-  assert.equal(bySlug.padrinho.precoAnualCentavos, 99900);
+  // 5. Padrinho: R$ 109,90/mês (10990) | R$ 1.099/ano (109900) | 100 oportunidades | prioridade 9
+  assert.equal(bySlug.padrinho.precoMensalCentavos, 10990);
+  assert.equal(bySlug.padrinho.precoAnualCentavos, 109900);
   assert.equal(bySlug.padrinho.limiteOportunidadesMensal, 100);
   assert.equal(bySlug.padrinho.prioridadeMatching, 9);
   assert.equal(bySlug.padrinho.permiteDestaque, true);

@@ -24,7 +24,7 @@ export const LAUNCH_OFFER_PRICES_CENTAVOS: Record<
   essencial: { full: 2990, promo: 1495 },
   profissional: { full: 5990, promo: 2995 },
   premium: { full: 9990, promo: 4995 },
-  padrinho: { full: 9990, promo: 4995 },
+  padrinho: { full: 10990, promo: 5495 },
 };
 
 export interface LaunchOfferUserInput {
@@ -148,13 +148,13 @@ export async function checkLaunchOfferEligibility(
         essencial: 2990,
         profissional: 5990,
         premium: 9990,
-        padrinho: 9990,
+        padrinho: 10990,
       },
       promoPricesCentavos: {
         essencial: 1495,
         profissional: 2995,
         premium: 4995,
-        padrinho: 4995,
+        padrinho: 5495,
       },
     };
   }
@@ -168,14 +168,14 @@ export async function checkLaunchOfferEligibility(
       essencial: 2990,
       profissional: 5990,
       premium: 9990,
-      padrinho: 9990,
+      padrinho: 10990,
     };
   const promoPrices: Record<string, number> =
     camp.preco_promocional_json || {
       essencial: 1495,
       profissional: 2995,
       premium: 4995,
-      padrinho: 4995,
+      padrinho: 5495,
     };
 
   const emailNorm = normalizeEmail(user.email);

@@ -608,7 +608,7 @@ export const DemoShowcasePage: React.FC<{
             <div className="bg-white rounded-2xl p-5 border border-[#0A2540]/10">
               <p className="text-[#0A2540]/60">[DEMO] Oferta 50% OFF (3 meses)</p>
               <p className="font-display font-bold text-2xl text-[#FF6A00] mt-1">
-                R$ 14,95 – R$ 49,95
+                R$ 14,95 – R$ 54,95
               </p>
             </div>
             <div className="bg-white rounded-2xl p-5 border border-[#0A2540]/10">

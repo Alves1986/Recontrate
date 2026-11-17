@@ -87,8 +87,8 @@ test('1. API GET /api/plans retorna os 5 planos com valores exatos em centavos, 
   assert.equal(bySlug.premium.selo, 'Top Confiare');
 
   // Padrinho
-  assert.equal(bySlug.padrinho.precoMensalCentavos, 9990);
-  assert.equal(bySlug.padrinho.precoAnualCentavos, 99900);
+  assert.equal(bySlug.padrinho.precoMensalCentavos, 10990);
+  assert.equal(bySlug.padrinho.precoAnualCentavos, 109900);
   assert.equal(bySlug.padrinho.limiteOportunidadesMensal, 100);
   assert.equal(bySlug.padrinho.prioridadeLabel, 'Alta');
   assert.equal(bySlug.padrinho.permiteRelatoriosAvancados, true);
@@ -117,9 +117,15 @@ test('2. Cálculos do Toggle Mensal/Anual: equivalente mensal exato e economia d
   assert.ok(formatCentavosBRL(4992).includes('49,92'));
   assert.ok(formatCentavosBRL(11980).includes('119,80'));
 
-  // Premium e Padrinho: R$ 99,90/mês | R$ 999,00/ano -> R$ 83,25/mês | economia R$ 199,80
+  // Premium: R$ 99,90/mês | R$ 999,00/ano -> R$ 83,25/mês | economia R$ 199,80
   assert.equal(calculateAnnualMonthlyEquivalentCentavos(99900), 8325);
   assert.equal(calculateAnnualSavingsCentavos(9990, 99900), 19980);
   assert.ok(formatCentavosBRL(8325).includes('83,25'));
   assert.ok(formatCentavosBRL(19980).includes('199,80'));
+
+  // Padrinho: R$ 109,90/mês | R$ 1.099,00/ano -> R$ 91,58/mês | economia R$ 219,80
+  assert.equal(calculateAnnualMonthlyEquivalentCentavos(109900), 9158);
+  assert.equal(calculateAnnualSavingsCentavos(10990, 109900), 21980);
+  assert.ok(formatCentavosBRL(9158).includes('91,58'));
+  assert.ok(formatCentavosBRL(21980).includes('219,80'));
 });

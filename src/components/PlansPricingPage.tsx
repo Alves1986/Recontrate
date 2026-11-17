@@ -102,8 +102,8 @@ const DEFAULT_OFFICIAL_PLANS: PlanPricingDisplay[] = [
     nome: 'Padrinho',
     descricao:
       'Todos os recursos do Premium, selo Padrinho Verificado e ferramentas de indicação e acompanhamento de apadrinhados.',
-    precoMensalCentavos: 9990,
-    precoAnualCentavos: 99900,
+    precoMensalCentavos: 10990,
+    precoAnualCentavos: 109900,
     limiteOportunidadesMensal: 100,
     prioridadeMatching: 9,
     prioridadeLabel: 'Alta',

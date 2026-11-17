@@ -52,7 +52,7 @@ test('1. Valores exatos da campanha em centavos e exclusão de Gratuito e Anual'
     essencial: { full: 2990, promo: 1495 },
     profissional: { full: 5990, promo: 2995 },
     premium: { full: 9990, promo: 4995 },
-    padrinho: { full: 9990, promo: 4995 },
+    padrinho: { full: 10990, promo: 5495 },
   });
 
   const ts = Date.now();
