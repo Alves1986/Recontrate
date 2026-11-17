@@ -1,15 +1,15 @@
 {
-  "name": "Confiare — Rede de Profissionais de Confiança",
-  "short_name": "Confiare",
-  "description": "Acesse sua conta Confiare para contratar profissionais de confiança ou gerenciar seus atendimentos.",
+  "name": "Recontrate — Profissionais para contar de novo",
+  "short_name": "Recontrate",
+  "description": "Encontre profissionais para sua casa e volte a contratar quem já fez um bom trabalho.",
   "lang": "pt-BR",
   "dir": "ltr",
   "start_url": "/entrar",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "theme_color": "#0A2540",
-  "background_color": "#F4F2EF",
+  "theme_color": "#123B3A",
+  "background_color": "#F6F1E8",
   "categories": ["business", "lifestyle", "productivity"],
   "icons": [
     {

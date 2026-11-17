@@ -93,12 +93,12 @@ const PLANS_CONFIG: {
     priceAnnual: 'R$ 599,00/ano',
     monthlyLimit: 40,
     limitLabel: 'Até 40 oportunidades/mês',
-    badge: 'Profissional Confiare',
+    badge: 'Profissional Recontrate',
     showsAds: false,
     features: [
       'Prioridade média justa no matching (+5 pts)',
       'Destaque em buscas locais e portfólio ilimitado',
-      'Estatísticas de conversão e selo Profissional Confiare',
+      'Estatísticas de conversão e selo Profissional Recontrate',
     ],
   },
   {
@@ -109,12 +109,12 @@ const PLANS_CONFIG: {
     priceAnnual: 'R$ 999,00/ano',
     monthlyLimit: 100,
     limitLabel: 'Até 100 oportunidades/mês',
-    badge: 'Top Confiare',
+    badge: 'Top Recontrate',
     showsAds: false,
     features: [
       'Prioridade alta justa sem monopolizar a fila (+8 pts)',
       'Destaque regional e relatórios avançados',
-      'Suporte prioritário, agenda/follow-up e selo Top Confiare',
+      'Suporte prioritário, agenda/follow-up e selo Top Recontrate',
     ],
   },
   {
@@ -180,23 +180,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
           setSessionBannersShown(1);
         }
       })
-      .catch(() => {
-        if (!cancelled) {
-          setSponsoredAd({
-            id: 'ad-ferramentas-1',
-            badge: 'Patrocinado',
-            nome: 'Kit Alicate Amperímetro Digital True RMS + EPI NR-10',
-            categoria: 'ferramentas',
-            anunciante: 'Casa do Eletricista & Ferramentas SP',
-            texto:
-              'Desconto de 15% para autônomos verificados em instrumentos de medição, EPIs certificados e materiais elétricos.',
-            linkDestino: 'https://fornecedores.confiare.com.br/ferramentas-nr10',
-            dailyImpressionsUsed: 1,
-            dailyImpressionsLimit: 3,
-          });
-          setSessionBannersShown(1);
-        }
-      });
+      .catch(() => null);
 
     return () => {
       cancelled = true;
@@ -257,6 +241,12 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   };
 
   const scoreBreakdown = calculateCompositeScore(activeProvider);
+  const hasCompositeData =
+    activeProvider.reviewsCount > 0 &&
+    activeProvider.ratingAvg > 0 &&
+    activeProvider.responseTimeMinutes > 0 &&
+    activeProvider.responseRatePercent > 0 &&
+    activeProvider.profileCompletenessPercent > 0;
   const pendingCount = opportunities.filter((o) => o.status === 'pendente').length;
   const acceptedCount = opportunities.filter((o) => o.status === 'aceita').length;
 
@@ -285,10 +275,10 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   return (
     <div className="space-y-8 pb-12">
       {/* Header do Painel */}
-      <div className="bg-[#0A2540] text-white rounded-3xl p-6 sm:p-8">
+      <div className="bg-brand-primary text-white rounded-3xl p-6 sm:p-8">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-[#FF6A00] font-semibold">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-brand-accent-contrast font-semibold">
               <span>Tela 09 · Central de Comando do Prestador</span>
               <span aria-hidden="true">·</span>
               <span>Plano Atual: {activeProvider.plan}</span>
@@ -309,7 +299,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
               onClick={() => onToggleProviderAvailability(activeProvider.id)}
               className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-semibold transition-colors text-center cursor-pointer ${
                 activeProvider.availableToday
-                  ? 'bg-[#1D6FE0] text-white'
+                  ? 'bg-brand-link text-white'
                   : 'bg-white/15 text-white/85'
               }`}
             >
@@ -321,7 +311,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
             <button
               type="button"
               onClick={() => onNavigate('perfil-prestador', activeProvider.id)}
-              className="min-h-[42px] px-4 py-2 rounded-xl bg-white text-[#0A2540] text-xs font-semibold hover:bg-white/90 transition-colors text-center cursor-pointer"
+              className="min-h-[42px] px-4 py-2 rounded-xl bg-white text-brand-ink text-xs font-semibold hover:bg-white/90 transition-colors text-center cursor-pointer"
             >
               Ver minha vitrine pública
             </button>
@@ -335,7 +325,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
             <p className="text-base sm:text-2xl font-bold text-white mt-1">
               {pendingCount} pendentes
             </p>
-            <p className="text-[11px] font-sans text-[#FF6A00] mt-0.5">
+            <p className="text-[11px] font-sans text-brand-accent-contrast mt-0.5">
               {acceptedCount} contato(s) liberado(s) hoje
             </p>
           </div>
@@ -343,26 +333,32 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
           <div className="bg-white/10 rounded-2xl p-3.5 sm:p-4 min-w-0">
             <p className="text-xs font-sans text-white/75">Nota Composta</p>
             <p className="text-base sm:text-2xl font-bold text-white mt-1">
-              ★ {scoreBreakdown.totalScore.toFixed(2)}
+              {hasCompositeData ? `★ ${scoreBreakdown.totalScore.toFixed(2)}` : 'Em formação'}
             </p>
             <p className="text-[11px] font-sans text-white/70 mt-0.5">
-              {activeProvider.reviewsCount} avaliações reais
+              {activeProvider.reviewsCount > 0
+                ? `${activeProvider.reviewsCount} avaliações registradas`
+                : 'Nenhuma avaliação registrada'}
             </p>
           </div>
 
           <div className="bg-white/10 rounded-2xl p-3.5 sm:p-4 min-w-0">
             <p className="text-xs font-sans text-white/75">Tempo de Resposta</p>
             <p className="text-base sm:text-2xl font-bold text-white mt-1">
-              {activeProvider.responseTimeMinutes} min
+              {activeProvider.responseTimeMinutes > 0
+                ? `${activeProvider.responseTimeMinutes} min`
+                : 'Sem dados'}
             </p>
             <p className="text-[11px] font-sans text-white/70 mt-0.5">
-              Taxa de resposta: {activeProvider.responseRatePercent}%
+              {activeProvider.responseRatePercent > 0
+                ? `Taxa de resposta: ${activeProvider.responseRatePercent}%`
+                : 'Taxa de resposta sem dados'}
             </p>
           </div>
 
           <div className="bg-white/10 rounded-2xl p-3.5 sm:p-4 min-w-0">
             <p className="text-xs font-sans text-white/75">Plano e Prioridade</p>
-            <p className="text-base sm:text-2xl font-bold text-[#FF6A00] mt-1">
+            <p className="text-base sm:text-2xl font-bold text-brand-accent-contrast mt-1">
               {activeProvider.plan}
             </p>
             <p className="text-[11px] font-sans text-white/70 mt-0.5">
@@ -389,14 +385,14 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       />
 
       {/* Sub-navigation Tabs for the 3 Core Pillars of Screen 9 */}
-      <div className="w-full sm:w-fit flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 p-1.5 bg-white rounded-2xl border border-[#0A2540]/10">
+      <div className="w-full sm:w-fit flex flex-col sm:flex-row items-stretch sm:items-center gap-1.5 p-1.5 bg-white rounded-2xl border border-brand-primary/10">
         <button
           type="button"
           onClick={() => setActiveTab('oportunidades')}
           className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-semibold transition-colors text-center cursor-pointer ${
             activeTab === 'oportunidades'
-              ? 'bg-[#0A2540] text-white'
-              : 'text-[#0A2540]/75 hover:text-[#0A2540]'
+              ? 'bg-brand-primary text-white'
+              : 'text-brand-ink/75 hover:text-brand-ink'
           }`}
         >
           1. Oportunidades Recebidas ({opportunities.length})
@@ -406,8 +402,8 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
           onClick={() => setActiveTab('reputacao')}
           className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-semibold transition-colors text-center cursor-pointer ${
             activeTab === 'reputacao'
-              ? 'bg-[#0A2540] text-white'
-              : 'text-[#0A2540]/75 hover:text-[#0A2540]'
+              ? 'bg-brand-primary text-white'
+              : 'text-brand-ink/75 hover:text-brand-ink'
           }`}
         >
           2. Reputação Composta & Posicionamento Digital
@@ -417,8 +413,8 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
           onClick={() => setActiveTab('plano')}
           className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-semibold transition-colors text-center cursor-pointer ${
             activeTab === 'plano'
-              ? 'bg-[#0A2540] text-white'
-              : 'text-[#0A2540]/75 hover:text-[#0A2540]'
+              ? 'bg-brand-primary text-white'
+              : 'text-brand-ink/75 hover:text-brand-ink'
           }`}
         >
           3. Plano & Assinatura ({activeProvider.plan})
@@ -431,10 +427,10 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
           {opportunities.map((opp) => (
             <article
               key={opp.id}
-              className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4"
+              className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-4"
             >
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <div className="flex flex-wrap items-center gap-2 text-[#1D6FE0] font-semibold">
+                <div className="flex flex-wrap items-center gap-2 text-brand-link font-semibold">
                   <span>Origem: {opp.origin}</span>
                   {opp.referredByProviderName && (
                     <>
@@ -443,23 +439,23 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                     </>
                   )}
                   <span aria-hidden="true">·</span>
-                  <span className="text-[#FF6A00]">Urgência: {opp.urgency}</span>
+                  <span className="text-brand-accent-strong">Urgência: {opp.urgency}</span>
                 </div>
 
-                <span className="font-mono tabular-nums text-[#0A2540]/65">
+                <span className="font-mono tabular-nums text-brand-ink/65">
                   Expira em {opp.expiresInMinutes} min · {opp.photosAttached} foto(s)
                 </span>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
                 <div className="lg:col-span-8 space-y-2">
-                  <h2 className="font-display font-bold text-lg text-[#0A2540]">
+                  <h2 className="font-display font-bold text-lg text-brand-ink">
                     {opp.title}
                   </h2>
-                  <p className="text-xs sm:text-sm text-[#0A2540]/80 leading-relaxed">
+                  <p className="text-xs sm:text-sm text-brand-ink/80 leading-relaxed">
                     {opp.description}
                   </p>
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-[#0A2540]/70 pt-1">
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-brand-ink/70 pt-1">
                     <span>
                       <strong>Bairro:</strong> {opp.neighborhood} ({opp.distanceKm} km)
                     </span>
@@ -477,10 +473,10 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                   </div>
                 </div>
 
-                <div className="lg:col-span-4 flex flex-col gap-2.5 lg:border-l lg:border-[#0A2540]/10 lg:pl-6">
+                <div className="lg:col-span-4 flex flex-col gap-2.5 lg:border-l lg:border-brand-primary/10 lg:pl-6">
                   {opp.status === 'aceita' ? (
-                    <div className="p-4 rounded-2xl bg-[#0A2540] text-white space-y-1.5 text-xs">
-                      <p className="text-[#FF6A00] font-semibold">
+                    <div className="p-4 rounded-2xl bg-brand-primary text-white space-y-1.5 text-xs">
+                      <p className="text-brand-accent-contrast font-semibold">
                         ✓ Interesse confirmado — Contato liberado!
                       </p>
                       <p className="font-mono font-bold text-sm">
@@ -491,16 +487,16 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                       </p>
                     </div>
                   ) : opp.status === 'substituto_indicado' ? (
-                    <div className="p-4 rounded-2xl bg-[#F4F2EF] text-[#0A2540] space-y-1.5 text-xs">
-                      <p className="font-semibold text-[#1D6FE0]">
+                    <div className="p-4 rounded-2xl bg-brand-background text-brand-ink space-y-1.5 text-xs">
+                      <p className="font-semibold text-brand-link">
                         ✓ Substituto indicado com sucesso
                       </p>
-                      <p className="text-[#0A2540]/75">
+                      <p className="text-brand-ink/75">
                         Você encaminhou este cliente para colegas verificados da rede.
                       </p>
                     </div>
                   ) : opp.status === 'recusada' ? (
-                    <div className="p-4 rounded-2xl bg-[#F4F2EF] text-[#0A2540]/70 text-xs">
+                    <div className="p-4 rounded-2xl bg-brand-background text-brand-ink/70 text-xs">
                       Oportunidade recusada dentro do prazo sem impacto na nota.
                     </div>
                   ) : (
@@ -508,7 +504,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                       <button
                         type="button"
                         onClick={() => handleAcceptOpportunityWithNotification(opp)}
-                        className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-xs transition-colors cursor-pointer"
+                        className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs transition-colors cursor-pointer"
                       >
                         Aceitar interesse e liberar WhatsApp
                       </button>
@@ -519,14 +515,14 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                             onUpdateOpportunityStatus(opp.id, 'substituto_indicado');
                             onNavigate('indicacao-substituto', activeProvider.id);
                           }}
-                          className="min-h-[40px] px-3 py-2 rounded-xl bg-[#0A2540] hover:bg-[#13385c] text-white text-xs font-semibold transition-colors cursor-pointer"
+                          className="min-h-[40px] px-3 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white text-xs font-semibold transition-colors cursor-pointer"
                         >
                           Indicar substituto
                         </button>
                         <button
                           type="button"
                           onClick={() => onUpdateOpportunityStatus(opp.id, 'recusada')}
-                          className="min-h-[40px] px-3 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] text-xs font-semibold transition-colors cursor-pointer"
+                          className="min-h-[40px] px-3 py-2 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink text-xs font-semibold transition-colors cursor-pointer"
                         >
                           Recusar pedido
                         </button>
@@ -543,109 +539,115 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       {/* TAB 2: REPUTAÇÃO E POSICIONAMENTO DIGITAL */}
       {activeTab === 'reputacao' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          <div className="lg:col-span-6 bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-5">
+          <div className="lg:col-span-6 bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-5">
             <div>
-              <p className="text-xs font-semibold text-[#FF6A00]">
+              <p className="text-xs font-semibold text-brand-accent-strong">
                 Transparência Total no Matching
               </p>
-              <h2 className="font-display font-bold text-xl text-[#0A2540]">
-                Seu Score Composto: ★ {scoreBreakdown.totalScore.toFixed(2)} / 5.00
+              <h2 className="font-display font-bold text-xl text-brand-ink">
+                {hasCompositeData
+                  ? `Seu Score Composto: ★ ${scoreBreakdown.totalScore.toFixed(2)} / 5.00`
+                  : 'Histórico insuficiente para calcular a nota'}
               </h2>
-              <p className="text-xs text-[#0A2540]/70 mt-1">
-                Estrelas nunca podem ser compradas. Seu posicionamento depende da qualidade percebida pelo cliente e agilidade de resposta.
+              <p className="text-xs text-brand-ink/70 mt-1">
+                {hasCompositeData
+                  ? 'Estrelas nunca podem ser compradas. Seu posicionamento depende da qualidade percebida pelo cliente e agilidade de resposta.'
+                  : 'A pontuação será exibida quando houver avaliações e dados de atendimento suficientes.'}
               </p>
             </div>
 
+            {hasCompositeData && (
             <div className="space-y-3 text-xs font-mono tabular-nums">
-              <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/70 flex items-center justify-between">
-                <span className="font-sans font-medium text-[#0A2540]">
+              <div className="p-3.5 rounded-2xl bg-brand-background/70 flex items-center justify-between">
+                <span className="font-sans font-medium text-brand-ink">
                   1. Avaliações de clientes (peso 40%)
                 </span>
-                <span className="font-bold text-[#0A2540]">
+                <span className="font-bold text-brand-ink">
                   +{scoreBreakdown.reviewsComponent.toFixed(2)} pts
                 </span>
               </div>
-              <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/70 flex items-center justify-between">
-                <span className="font-sans font-medium text-[#0A2540]">
+              <div className="p-3.5 rounded-2xl bg-brand-background/70 flex items-center justify-between">
+                <span className="font-sans font-medium text-brand-ink">
                   2. Tempo médio de resposta ({activeProvider.responseTimeMinutes} min · peso 20%)
                 </span>
-                <span className="font-bold text-[#0A2540]">
+                <span className="font-bold text-brand-ink">
                   +{scoreBreakdown.responseTimeComponent.toFixed(2)} pts
                 </span>
               </div>
-              <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/70 flex items-center justify-between">
-                <span className="font-sans font-medium text-[#0A2540]">
+              <div className="p-3.5 rounded-2xl bg-brand-background/70 flex items-center justify-between">
+                <span className="font-sans font-medium text-brand-ink">
                   3. Taxa de resposta ({activeProvider.responseRatePercent}% · peso 20%)
                 </span>
-                <span className="font-bold text-[#0A2540]">
+                <span className="font-bold text-brand-ink">
                   +{scoreBreakdown.responseRateComponent.toFixed(2)} pts
                 </span>
               </div>
-              <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/70 flex items-center justify-between">
-                <span className="font-sans font-medium text-[#0A2540]">
+              <div className="p-3.5 rounded-2xl bg-brand-background/70 flex items-center justify-between">
+                <span className="font-sans font-medium text-brand-ink">
                   4. Atendimentos concluídos ({activeProvider.completedJobs} · peso 10%)
                 </span>
-                <span className="font-bold text-[#0A2540]">
+                <span className="font-bold text-brand-ink">
                   +{scoreBreakdown.completedJobsComponent.toFixed(2)} pts
                 </span>
               </div>
-              <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/70 flex items-center justify-between">
-                <span className="font-sans font-medium text-[#0A2540]">
+              <div className="p-3.5 rounded-2xl bg-brand-background/70 flex items-center justify-between">
+                <span className="font-sans font-medium text-brand-ink">
                   5. Verificações e completude do perfil (peso 10%)
                 </span>
-                <span className="font-bold text-[#1D6FE0]">
+                <span className="font-bold text-brand-link">
                   +{scoreBreakdown.verificationComponent.toFixed(2)} pts
                 </span>
               </div>
             </div>
+            )}
           </div>
 
-          <div className="lg:col-span-6 bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-5">
+          <div className="lg:col-span-6 bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-5">
             <div>
-              <p className="text-xs font-semibold text-[#1D6FE0]">
+              <p className="text-xs font-semibold text-brand-link">
                 Ferramentas de Posicionamento Digital para Autônomos
               </p>
-              <h2 className="font-display font-bold text-xl text-[#0A2540]">
+              <h2 className="font-display font-bold text-xl text-brand-ink">
                 Profissionalize seu atendimento no WhatsApp
               </h2>
             </div>
 
-            <div className="p-4 rounded-2xl bg-[#F4F2EF] space-y-2.5">
+            <div className="p-4 rounded-2xl bg-brand-background space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#0A2540]">
+                <span className="text-xs font-semibold text-brand-ink">
                   Modelo de resposta rápida para orçamento
                 </span>
                 <button
                   type="button"
                   onClick={handleCopyQuoteTemplate}
-                  className="text-xs font-semibold text-[#1D6FE0] inline-flex items-center gap-1 cursor-pointer"
+                  className="text-xs font-semibold text-brand-link inline-flex items-center gap-1 cursor-pointer"
                 >
                   <Copy className="w-3.5 h-3.5" />
                   <span>{copiedQuoteTemplate ? 'Copiado!' : 'Copiar modelo'}</span>
                 </button>
               </div>
-              <p className="text-xs text-[#0A2540]/80 italic leading-relaxed">
-                “Olá! Sou {activeProvider.name}, profissional verificado na rede Confiare (Nota ★ {scoreBreakdown.totalScore.toFixed(2)}). Vi sua solicitação no bairro e tenho disponibilidade para avaliar e enviar o escopo detalhado sem compromisso.”
+              <p className="text-xs text-brand-ink/80 italic leading-relaxed">
+                “Olá! Sou {activeProvider.name}, profissional cadastrado no Recontrate. Vi sua solicitação no bairro e tenho disponibilidade para avaliar e enviar o escopo detalhado sem compromisso.”
               </p>
             </div>
 
-            <div className="space-y-2.5 text-xs text-[#0A2540]/85">
-              <p className="font-semibold text-[#0A2540]">
+            <div className="space-y-2.5 text-xs text-brand-ink/85">
+              <p className="font-semibold text-brand-ink">
                 Checklist de Visibilidade Local:
               </p>
-              <div className="flex items-center justify-between py-2 border-b border-[#0A2540]/10">
+              <div className="flex items-center justify-between py-2 border-b border-brand-primary/10">
                 <span>✓ Documentos e comprovante de residência verificados</span>
-                <span className="font-mono text-[#1D6FE0]">100%</span>
+                <span className="font-mono text-brand-link">100%</span>
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-[#0A2540]/10">
+              <div className="flex items-center justify-between py-2 border-b border-brand-primary/10">
                 <span>✓ Portfólio com fotos Antes/Depois atualizadas</span>
-                <span className="font-mono text-[#1D6FE0]">
+                <span className="font-mono text-brand-link">
                   {activeProvider.portfolio.length} trabalhos
                 </span>
               </div>
               <div className="flex items-center justify-between py-2">
                 <span>✓ Link público otimizado para Google e WhatsApp</span>
-                <span className="font-mono text-[#FF6A00]">Ativo</span>
+                <span className="font-mono text-brand-accent-strong">Ativo</span>
               </div>
             </div>
           </div>
@@ -659,15 +661,15 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       {/* TAB 3: PLANOS E ASSINATURA */}
       {activeTab === 'plano' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="space-y-1">
-              <p className="text-xs font-semibold text-[#1D6FE0]">
+              <p className="text-xs font-semibold text-brand-link">
                 Previsibilidade de Custo Mensal · Asaas Recorrente (Pix, Cartão, Boleto) · Cancelamento Livre sem Multa
               </p>
-              <h2 className="font-display font-bold text-xl text-[#0A2540]">
+              <h2 className="font-display font-bold text-xl text-brand-ink">
                 Planos de assinatura para o prestador (0% comissão)
               </h2>
-              <p className="text-xs text-[#0A2540]/70">
+              <p className="text-xs text-brand-ink/70">
                 Consumo no ciclo atual: <strong>{opportunitiesUsedInCycle} utilizada(s)</strong> de{' '}
                 <strong>{currentPlanConfig.monthlyLimit}</strong> ({opportunitiesRemainingInCycle} restante(s)). Estrelas e reputação nunca podem ser compradas.
               </p>
@@ -679,8 +681,8 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                 onClick={() => setBillingCycle('mensal')}
                 className={`px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
                   billingCycle === 'mensal'
-                    ? 'bg-[#0A2540] text-white'
-                    : 'bg-[#F4F2EF] text-[#0A2540]'
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-brand-background text-brand-ink'
                 }`}
               >
                 Ciclo Mensal
@@ -690,8 +692,8 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                 onClick={() => setBillingCycle('anual')}
                 className={`px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
                   billingCycle === 'anual'
-                    ? 'bg-[#FF6A00] text-white'
-                    : 'bg-[#F4F2EF] text-[#0A2540]'
+                    ? 'bg-brand-accent-strong text-white'
+                    : 'bg-brand-background text-brand-ink'
                 }`}
               >
                 Anual (2 meses grátis)
@@ -704,7 +706,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                     e.target.value as 'pix' | 'cartao' | 'boleto'
                   )
                 }
-                className="px-3 py-2 rounded-xl border border-[#0A2540]/15 text-xs font-semibold bg-white text-[#0A2540]"
+                className="px-3 py-2 rounded-xl border border-brand-primary/15 text-xs font-semibold bg-white text-brand-ink"
               >
                 <option value="pix">Pagamento: Pix</option>
                 <option value="cartao">Pagamento: Cartão</option>
@@ -735,15 +737,15 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                   key={planItem.tier}
                   className={`rounded-3xl p-5 border flex flex-col justify-between gap-5 transition-all ${
                     isCurrent
-                      ? 'bg-[#0A2540] text-white border-[#0A2540]'
-                      : 'bg-white text-[#0A2540] border-[#0A2540]/10'
+                      ? 'bg-brand-primary text-white border-brand-primary'
+                      : 'bg-white text-brand-ink border-brand-primary/10'
                   }`}
                 >
                   <div className="space-y-3.5">
                     <div>
                       <p
                         className={`text-[11px] font-semibold ${
-                          isCurrent ? 'text-[#FF6A00]' : 'text-[#1D6FE0]'
+                          isCurrent ? 'text-brand-accent-strong' : 'text-brand-link'
                         }`}
                       >
                         {planItem.audience}
@@ -752,7 +754,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                         {planItem.tier}
                       </h3>
                       {planItem.badge && (
-                        <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-[#FF6A00]/20 text-[#FF6A00] text-[10px] font-bold">
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-brand-accent-strong/20 text-brand-accent-strong text-[10px] font-bold">
                           Selo: {planItem.badge}
                         </span>
                       )}
@@ -763,7 +765,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                       </p>
                       <p
                         className={`text-xs mt-1 ${
-                          isCurrent ? 'text-white/80' : 'text-[#0A2540]/70'
+                          isCurrent ? 'text-white/80' : 'text-brand-ink/70'
                         }`}
                       >
                         {planItem.limitLabel}
@@ -775,7 +777,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                         <li key={feat} className="flex items-start gap-2">
                           <CheckCircle2
                             className={`w-4 h-4 shrink-0 mt-0.5 ${
-                              isCurrent ? 'text-[#FF6A00]' : 'text-[#1D6FE0]'
+                              isCurrent ? 'text-brand-accent-strong' : 'text-brand-link'
                             }`}
                           />
                           <span>{feat}</span>
@@ -789,8 +791,8 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                     onClick={() => handleSelectPlanWithAsaas(planItem)}
                     className={`w-full min-h-[42px] px-3 py-2 rounded-xl text-xs font-display font-semibold transition-colors cursor-pointer ${
                       isCurrent
-                        ? 'bg-[#FF6A00] text-white'
-                        : 'bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540]'
+                        ? 'bg-brand-accent-strong text-white'
+                        : 'bg-brand-background hover:bg-brand-surface-hover text-brand-ink'
                     }`}
                   >
                     {isCurrent

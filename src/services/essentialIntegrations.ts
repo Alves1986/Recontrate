@@ -182,7 +182,7 @@ export class TransactionalEmailService {
           },
           body: JSON.stringify({
             from:
-              process.env.EMAIL_FROM || 'Confiare <nao-responda@confiare.com.br>',
+              process.env.EMAIL_FROM || 'Recontrate <nao-responda@confiare.com.br>',
             to: [input.to],
             subject: input.subject,
             text: Object.entries(input.variables)

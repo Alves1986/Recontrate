@@ -63,15 +63,15 @@ export const LoginPage: React.FC<{
   };
 
   return (
-    <div className="max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-[#0A2540]/10 space-y-6 my-6">
+    <div className="max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-6 my-6">
       <div className="space-y-1">
-        <p className="text-xs font-semibold text-[#1D6FE0]">
-          Acesso Seguro · Neon Auth (Managed Better Auth)
+        <p className="text-xs font-semibold text-brand-link">
+          Acesso seguro
         </p>
-        <h1 className="font-display font-bold text-2xl text-[#0A2540]">
+        <h1 className="font-display font-bold text-2xl text-brand-ink">
           Entrar na sua conta
         </h1>
-        <p className="text-xs text-[#0A2540]/70">
+        <p className="text-xs text-brand-ink/70">
           Acesse sua área de cliente, painel do prestador ou mentoria.
         </p>
       </div>
@@ -89,12 +89,12 @@ export const LoginPage: React.FC<{
         <div className="space-y-1">
           <label
             htmlFor="login-email"
-            className="font-semibold text-[#0A2540]"
+            className="font-semibold text-brand-ink"
           >
             E-mail
           </label>
-          <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-[#0A2540]/15">
-            <Mail className="w-4 h-4 text-[#0A2540]/50" />
+          <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-brand-primary/15">
+            <Mail className="w-4 h-4 text-brand-ink/50" />
             <input
               id="login-email"
               type="email"
@@ -111,20 +111,20 @@ export const LoginPage: React.FC<{
           <div className="flex items-center justify-between">
             <label
               htmlFor="login-password"
-              className="font-semibold text-[#0A2540]"
+              className="font-semibold text-brand-ink"
             >
               Senha
             </label>
             <button
               type="button"
               onClick={() => onNavigateUrl('/recuperar-senha')}
-              className="text-[#1D6FE0] hover:underline font-medium cursor-pointer"
+              className="text-brand-link hover:underline font-medium cursor-pointer"
             >
               Esqueceu a senha?
             </button>
           </div>
-          <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-[#0A2540]/15">
-            <Lock className="w-4 h-4 text-[#0A2540]/50" />
+          <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-brand-primary/15">
+            <Lock className="w-4 h-4 text-brand-ink/50" />
             <input
               id="login-password"
               type="password"
@@ -140,34 +140,34 @@ export const LoginPage: React.FC<{
         <button
           type="submit"
           disabled={loading}
-          className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-xs transition-colors cursor-pointer disabled:opacity-60"
+          className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs transition-colors cursor-pointer disabled:opacity-60"
         >
           {loading ? 'Autenticando...' : 'Entrar com e-mail e senha'}
         </button>
       </form>
 
       <div className="relative flex py-1 items-center">
-        <div className="flex-grow border-t border-[#0A2540]/10" />
-        <span className="flex-shrink mx-3 text-[11px] text-[#0A2540]/55">
+        <div className="flex-grow border-t border-brand-primary/10" />
+        <span className="flex-shrink mx-3 text-[11px] text-brand-ink/55">
           ou continue com
         </span>
-        <div className="flex-grow border-t border-[#0A2540]/10" />
+        <div className="flex-grow border-t border-brand-primary/10" />
       </div>
 
       <button
         type="button"
         onClick={handleGoogleSignIn}
-        className="w-full min-h-[42px] px-4 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold text-xs transition-colors cursor-pointer"
+        className="w-full min-h-[42px] px-4 py-2 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink font-semibold text-xs transition-colors cursor-pointer"
       >
-        Entrar com Google (Neon Auth OAuth)
+        Entrar com Google
       </button>
 
-      <p className="text-center text-xs text-[#0A2540]/70 pt-2">
+      <p className="text-center text-xs text-brand-ink/70 pt-2">
         Ainda não tem conta?{' '}
         <button
           type="button"
           onClick={() => onNavigateUrl('/criar-conta')}
-          className="font-semibold text-[#1D6FE0] hover:underline cursor-pointer"
+          className="font-semibold text-brand-link hover:underline cursor-pointer"
         >
           Criar conta gratuita
         </button>
@@ -265,21 +265,21 @@ export const SignupPage: React.FC<{
 
   if (pendingVerification) {
     return (
-      <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 border border-[#0A2540]/10 space-y-5 my-6 text-xs">
+      <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 space-y-5 my-6 text-xs">
         <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
           <CheckCircle2 className="w-6 h-6" />
         </div>
-        <h1 className="font-display font-bold text-2xl text-[#0A2540]">
+        <h1 className="font-display font-bold text-2xl text-brand-ink">
           Confirme seu e-mail para ativar a conta
         </h1>
-        <p className="text-[#0A2540]/75 leading-relaxed">
+        <p className="text-brand-ink/75 leading-relaxed">
           Enviamos a confirmação para <strong>{pendingVerification.user.email}</strong>. Confirme abaixo para concluir o onboarding obrigatório e acessar seu painel.
         </p>
         <button
           type="button"
           onClick={handleConfirmEmailAndContinue}
           disabled={loading}
-          className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold cursor-pointer"
+          className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold cursor-pointer"
         >
           {loading
             ? 'Confirmando e-mail...'
@@ -290,13 +290,13 @@ export const SignupPage: React.FC<{
   }
 
   return (
-    <div className="max-w-xl mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-[#0A2540]/10 space-y-6 my-6">
+    <div className="max-w-xl mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-6 my-6">
       <div className="space-y-1">
-        <p className="text-xs font-semibold text-[#1D6FE0]">
+        <p className="text-xs font-semibold text-brand-link">
           Cadastro Real · Cliente e/ou Prestador
         </p>
-        <h1 className="font-display font-bold text-2xl text-[#0A2540]">
-          Criar conta na Confiare
+        <h1 className="font-display font-bold text-2xl text-brand-ink">
+          Criar conta no Recontrate
         </h1>
       </div>
 
@@ -307,8 +307,8 @@ export const SignupPage: React.FC<{
           onClick={() => setRole('cliente')}
           className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
             role === 'cliente'
-              ? 'bg-[#0A2540] text-white border-[#0A2540]'
-              : 'bg-[#F4F2EF]/60 text-[#0A2540] border-[#0A2540]/10'
+              ? 'bg-brand-primary text-white border-brand-primary'
+              : 'bg-brand-background/60 text-brand-ink border-brand-primary/10'
           }`}
         >
           <p className="font-display font-bold text-sm">Sou cliente</p>
@@ -322,8 +322,8 @@ export const SignupPage: React.FC<{
           onClick={() => setRole('prestador')}
           className={`p-4 rounded-2xl border text-left transition-all cursor-pointer ${
             role === 'prestador'
-              ? 'bg-[#0A2540] text-white border-[#0A2540]'
-              : 'bg-[#F4F2EF]/60 text-[#0A2540] border-[#0A2540]/10'
+              ? 'bg-brand-primary text-white border-brand-primary'
+              : 'bg-brand-background/60 text-brand-ink border-brand-primary/10'
           }`}
         >
           <p className="font-display font-bold text-sm">Sou prestador</p>
@@ -345,7 +345,7 @@ export const SignupPage: React.FC<{
       <form onSubmit={handleSignup} className="space-y-4 text-xs">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">
+            <label className="font-semibold text-brand-ink">
               Nome completo
             </label>
             <input
@@ -354,12 +354,12 @@ export const SignupPage: React.FC<{
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               placeholder="Seu nome completo"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-[#0A2540]/15 text-sm"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 text-sm"
             />
           </div>
 
           <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">
+            <label className="font-semibold text-brand-ink">
               WhatsApp / Telefone
             </label>
             <input
@@ -368,26 +368,26 @@ export const SignupPage: React.FC<{
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="(11) 99000-0000"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-[#0A2540]/15 text-sm"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 text-sm"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">E-mail</label>
+            <label className="font-semibold text-brand-ink">E-mail</label>
             <input
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="voce@email.com.br"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-[#0A2540]/15 text-sm"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 text-sm"
             />
           </div>
 
           <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">
+            <label className="font-semibold text-brand-ink">
               Senha (mín. 8 caracteres)
             </label>
             <input
@@ -397,14 +397,14 @@ export const SignupPage: React.FC<{
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-[#0A2540]/15 text-sm"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 text-sm"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">
+            <label className="font-semibold text-brand-ink">
               Bairro principal
             </label>
             <input
@@ -412,18 +412,18 @@ export const SignupPage: React.FC<{
               required
               value={neighborhood}
               onChange={(e) => setNeighborhood(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-[#0A2540]/15 text-sm"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 text-sm"
             />
           </div>
 
           <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">
+            <label className="font-semibold text-brand-ink">
               Especialidade {role === 'cliente' ? 'favorita' : 'de atuação'}
             </label>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-[#0A2540]/15 text-sm bg-white"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 text-sm bg-white"
             >
               {INITIAL_TAXONOMY_CATEGORIES.map((cat) => (
                 <option key={cat.slug} value={cat.nome}>
@@ -441,7 +441,7 @@ export const SignupPage: React.FC<{
             onChange={(e) => setAlsoEnableSecondRole(e.target.checked)}
             className="mt-0.5"
           />
-          <span className="text-[#0A2540]/80">
+          <span className="text-brand-ink/80">
             Desejo usar a plataforma como <strong>Cliente e Prestador</strong> na mesma conta.
           </span>
         </label>
@@ -453,26 +453,26 @@ export const SignupPage: React.FC<{
             onChange={(e) => setLgpdConsent(e.target.checked)}
             className="mt-0.5"
           />
-          <span className="text-[#0A2540]/80">
-            Aceito os Termos de Uso e a Política de Privacidade LGPD da Confiare.
+          <span className="text-brand-ink/80">
+            Aceito os Termos de Uso e a Política de Privacidade LGPD do Recontrate.
           </span>
         </label>
 
         <button
           type="submit"
           disabled={loading}
-          className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-xs transition-colors cursor-pointer disabled:opacity-60"
+          className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs transition-colors cursor-pointer disabled:opacity-60"
         >
           {loading ? 'Criando conta segura...' : 'Criar minha conta'}
         </button>
       </form>
 
-      <p className="text-center text-xs text-[#0A2540]/70">
+      <p className="text-center text-xs text-brand-ink/70">
         Já possui conta?{' '}
         <button
           type="button"
           onClick={() => onNavigateUrl('/entrar')}
-          className="font-semibold text-[#1D6FE0] hover:underline cursor-pointer"
+          className="font-semibold text-brand-link hover:underline cursor-pointer"
         >
           Entrar
         </button>
@@ -530,12 +530,12 @@ export const ForgotAndResetPasswordPage: React.FC<{
   };
 
   return (
-    <div className="max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-[#0A2540]/10 space-y-6 my-6 text-xs">
+    <div className="max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-6 my-6 text-xs">
       <div className="space-y-1">
-        <p className="text-xs font-semibold text-[#1D6FE0]">
+        <p className="text-xs font-semibold text-brand-link">
           Recuperação Segura de Credenciais
         </p>
-        <h1 className="font-display font-bold text-2xl text-[#0A2540]">
+        <h1 className="font-display font-bold text-2xl text-brand-ink">
           Recuperar senha
         </h1>
       </div>
@@ -549,7 +549,7 @@ export const ForgotAndResetPasswordPage: React.FC<{
       {step === 'request' && (
         <form onSubmit={handleRequestReset} className="space-y-4">
           <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">
+            <label className="font-semibold text-brand-ink">
               E-mail cadastrado
             </label>
             <input
@@ -558,12 +558,12 @@ export const ForgotAndResetPasswordPage: React.FC<{
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="seu@email.com.br"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-[#0A2540]/15 text-sm"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 text-sm"
             />
           </div>
           <button
             type="submit"
-            className="w-full min-h-[42px] px-4 py-2 rounded-xl bg-[#0A2540] text-white font-semibold cursor-pointer"
+            className="w-full min-h-[42px] px-4 py-2 rounded-xl bg-brand-primary text-white font-semibold cursor-pointer"
           >
             Enviar instruções de recuperação
           </button>
@@ -578,7 +578,7 @@ export const ForgotAndResetPasswordPage: React.FC<{
             </p>
           )}
           <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">
+            <label className="font-semibold text-brand-ink">
               Token de recuperação
             </label>
             <input
@@ -586,11 +586,11 @@ export const ForgotAndResetPasswordPage: React.FC<{
               required
               value={resetToken}
               onChange={(e) => setResetToken(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl border border-[#0A2540]/15 font-mono"
+              className="w-full px-3.5 py-2 rounded-xl border border-brand-primary/15 font-mono"
             />
           </div>
           <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">
+            <label className="font-semibold text-brand-ink">
               Nova senha (mín. 8 caracteres)
             </label>
             <input
@@ -599,12 +599,12 @@ export const ForgotAndResetPasswordPage: React.FC<{
               minLength={8}
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl border border-[#0A2540]/15 text-sm"
+              className="w-full px-3.5 py-2 rounded-xl border border-brand-primary/15 text-sm"
             />
           </div>
           <button
             type="submit"
-            className="w-full min-h-[42px] px-4 py-2 rounded-xl bg-[#FF6A00] text-white font-semibold cursor-pointer"
+            className="w-full min-h-[42px] px-4 py-2 rounded-xl bg-brand-accent-strong text-white font-semibold cursor-pointer"
           >
             Redefinir senha agora
           </button>
@@ -619,7 +619,7 @@ export const ForgotAndResetPasswordPage: React.FC<{
           <button
             type="button"
             onClick={() => onNavigateUrl('/entrar')}
-            className="w-full min-h-[42px] px-4 py-2 rounded-xl bg-[#0A2540] text-white font-semibold cursor-pointer"
+            className="w-full min-h-[42px] px-4 py-2 rounded-xl bg-brand-primary text-white font-semibold cursor-pointer"
           >
             Ir para Login
           </button>
@@ -690,15 +690,15 @@ export const OnboardingPage: React.FC<{
         isProviderOnboarding ? 'max-w-3xl' : 'max-w-lg'
       } mx-auto space-y-6 my-6 text-xs`}
     >
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#0A2540]/10 space-y-6">
+      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-6">
         <div className="space-y-1">
-          <p className="text-xs font-semibold text-[#FF6A00]">
+          <p className="text-xs font-semibold text-brand-accent-strong">
             Onboarding Obrigatório de Primeiro Acesso
           </p>
-          <h1 className="font-display font-bold text-2xl text-[#0A2540]">
+          <h1 className="font-display font-bold text-2xl text-brand-ink">
             Bem-vindo(a), {user.fullName}!
           </h1>
-          <p className="text-[#0A2540]/70">
+          <p className="text-brand-ink/70">
             Papel ativo: <strong>{user.activeRole.toUpperCase()}</strong>. Confirme seus dados locais
             {isProviderOnboarding
               ? ' e escolha de 1 a 5 especialidades oficiais para liberar o acesso ao painel.'
@@ -718,37 +718,37 @@ export const OnboardingPage: React.FC<{
         <form onSubmit={handleFinish} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="font-semibold text-[#0A2540]">Cidade</label>
+              <label className="font-semibold text-brand-ink">Cidade</label>
               <input
                 type="text"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15"
+                className="w-full px-3 py-2 rounded-xl border border-brand-primary/15"
               />
             </div>
             <div className="space-y-1">
-              <label className="font-semibold text-[#0A2540]">
+              <label className="font-semibold text-brand-ink">
                 Bairro de referência
               </label>
               <input
                 type="text"
                 value={neighborhood}
                 onChange={(e) => setNeighborhood(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15"
+                className="w-full px-3 py-2 rounded-xl border border-brand-primary/15"
               />
             </div>
           </div>
 
           {user.roles.includes('prestador') && (
             <div className="space-y-1">
-              <label className="font-semibold text-[#0A2540]">
+              <label className="font-semibold text-brand-ink">
                 Resumo profissional (Vitrine Pública)
               </label>
               <textarea
                 rows={2}
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15"
+                className="w-full px-3 py-2 rounded-xl border border-brand-primary/15"
               />
             </div>
           )}
@@ -764,7 +764,7 @@ export const OnboardingPage: React.FC<{
             disabled={
               loading || (isProviderOnboarding && officialSpecialtiesCount < 1)
             }
-            className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold cursor-pointer disabled:opacity-50"
+            className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold cursor-pointer disabled:opacity-50"
           >
             {loading
               ? 'Salvando configurações...'
@@ -837,8 +837,8 @@ export const PadrinhoDashboardPage: React.FC<{
 
   return (
     <div className="space-y-6 pb-12">
-      <div className="bg-[#0A2540] text-white rounded-3xl p-8 space-y-2">
-        <p className="text-xs font-semibold text-[#FF6A00]">
+      <div className="bg-brand-primary text-white rounded-3xl p-8 space-y-2">
+        <p className="text-xs font-semibold text-brand-accent-strong">
           Área Autenticada Restrita · Papel: Padrinho Verificado (/app/padrinho)
         </p>
         <h1 className="font-display font-bold text-2xl sm:text-3xl">
@@ -852,9 +852,9 @@ export const PadrinhoDashboardPage: React.FC<{
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
         <form
           onSubmit={handleCreateMentorship}
-          className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4"
+          className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-4"
         >
-          <h2 className="font-display font-bold text-base text-[#0A2540]">
+          <h2 className="font-display font-bold text-base text-brand-ink">
             Autorizar Novo Apadrinhado
           </h2>
           {feedback && (
@@ -863,43 +863,43 @@ export const PadrinhoDashboardPage: React.FC<{
             </div>
           )}
           <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">
+            <label className="font-semibold text-brand-ink">
               ID do Profissional Apadrinhado
             </label>
             <input
               type="text"
               value={menteeProviderId}
               onChange={(e) => setMenteeProviderId(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl border border-[#0A2540]/15"
+              className="w-full px-3.5 py-2 rounded-xl border border-brand-primary/15"
             />
           </div>
           <div className="space-y-1">
-            <label className="font-semibold text-[#0A2540]">
+            <label className="font-semibold text-brand-ink">
               Código de Mentoria Verificada
             </label>
             <input
               type="text"
               value={mentorCode}
               onChange={(e) => setMentorCode(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl border border-[#0A2540]/15 font-mono"
+              className="w-full px-3.5 py-2 rounded-xl border border-brand-primary/15 font-mono"
             />
           </div>
           <button
             type="submit"
-            className="min-h-[42px] px-4 py-2 rounded-xl bg-[#FF6A00] text-white font-semibold cursor-pointer"
+            className="min-h-[42px] px-4 py-2 rounded-xl bg-brand-accent-strong text-white font-semibold cursor-pointer"
           >
             Vincular Apadrinhado
           </button>
         </form>
 
-        <div className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4">
-          <h2 className="font-display font-bold text-base text-[#0A2540]">
+        <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-4">
+          <h2 className="font-display font-bold text-base text-brand-ink">
             Meus Apadrinhados Autorizados ({mentees.length})
           </h2>
           {loading ? (
-            <p className="text-[#0A2540]/60">Carregando apadrinhados...</p>
+            <p className="text-brand-ink/60">Carregando apadrinhados...</p>
           ) : mentees.length === 0 ? (
-            <p className="text-[#0A2540]/60">
+            <p className="text-brand-ink/60">
               Nenhum apadrinhado vinculado ainda para este padrinho.
             </p>
           ) : (
@@ -907,13 +907,13 @@ export const PadrinhoDashboardPage: React.FC<{
               {mentees.map((m) => (
                 <div
                   key={m.id}
-                  className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10 flex items-center justify-between"
+                  className="p-3.5 rounded-2xl bg-brand-background/60 border border-brand-primary/10 flex items-center justify-between"
                 >
                   <div>
-                    <p className="font-semibold text-[#0A2540]">
+                    <p className="font-semibold text-brand-ink">
                       {m.mentee_name || m.mentee_provider_id}
                     </p>
-                    <p className="text-[11px] text-[#0A2540]/65">
+                    <p className="text-[11px] text-brand-ink/65">
                       Código: {m.mentor_code} · Categoria:{' '}
                       {m.mentee_category || 'Serviços'}
                     </p>

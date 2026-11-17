@@ -45,9 +45,8 @@ export const AdminMonetizationScreen: React.FC = () => {
     categoria: 'ferramentas',
     anunciante: '',
     texto: '',
-    linkDestino: 'https://fornecedores.confiare.com.br',
-    imagemUrl:
-      'https://images.unsplash.com/photo-1581092160607-ee22621dd758',
+    linkDestino: '',
+    imagemUrl: '',
     prioridade: 5,
     dataInicio: new Date().toISOString().slice(0, 10),
     dataFim: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
@@ -56,10 +55,10 @@ export const AdminMonetizationScreen: React.FC = () => {
   });
   const [adFeedback, setAdFeedback] = useState('');
   const [googleForm, setGoogleForm] = useState({
-    enabled: true,
+    enabled: false,
     mode: 'hibrido_google_adsense',
-    clientId: 'ca-pub-0000000000000000',
-    slotId: '1234567890',
+    clientId: '',
+    slotId: '',
   });
   const [googleFeedback, setGoogleFeedback] = useState('');
 
@@ -233,9 +232,9 @@ export const AdminMonetizationScreen: React.FC = () => {
 
   return (
     <div className="space-y-8 pb-12">
-      <div className="bg-[#0A2540] text-white rounded-3xl p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+      <div className="bg-brand-primary text-white rounded-3xl p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-[#FF6A00]">
+          <p className="text-xs font-semibold text-brand-accent-strong">
             Governança Financeira & Operacional · Asaas + Neon Lakebase Postgres
           </p>
           <h1 className="font-display font-bold text-2xl sm:text-3xl">
@@ -250,7 +249,7 @@ export const AdminMonetizationScreen: React.FC = () => {
           type="button"
           onClick={loadAdminDashboard}
           disabled={loading}
-          className="min-h-[42px] px-4 py-2 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer self-start lg:self-auto"
+          className="min-h-[42px] px-4 py-2 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer self-start lg:self-auto"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           <span>Atualizar Indicadores</span>
@@ -260,69 +259,69 @@ export const AdminMonetizationScreen: React.FC = () => {
       {/* KPI Strip */}
       {metrics && (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3.5 font-mono tabular-nums">
-          <div className="bg-white rounded-2xl p-4 border border-[#0A2540]/10">
-            <p className="text-[11px] font-sans text-[#0A2540]/70">MRR (Mensal)</p>
-            <p className="text-lg font-bold text-[#0A2540] mt-1">
+          <div className="bg-white rounded-2xl p-4 border border-brand-primary/10">
+            <p className="text-[11px] font-sans text-brand-ink/70">MRR (Mensal)</p>
+            <p className="text-lg font-bold text-brand-ink mt-1">
               {formatBRLFromCents(metrics.mrrCentavos)}
             </p>
-            <p className="text-[11px] font-sans text-[#1D6FE0] mt-0.5">
+            <p className="text-[11px] font-sans text-brand-link mt-0.5">
               ARR: {formatBRLFromCents(metrics.arrCentavos)}
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-4 border border-[#0A2540]/10">
-            <p className="text-[11px] font-sans text-[#0A2540]/70">
+          <div className="bg-white rounded-2xl p-4 border border-brand-primary/10">
+            <p className="text-[11px] font-sans text-brand-ink/70">
               Renovação / Churn
             </p>
             <p className="text-lg font-bold text-emerald-700 mt-1">
               {metrics.renewalRatePercent}%
             </p>
-            <p className="text-[11px] font-sans text-[#0A2540]/70 mt-0.5">
+            <p className="text-[11px] font-sans text-brand-ink/70 mt-0.5">
               Churn: {metrics.churnMonthlyPercent}%
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-4 border border-[#0A2540]/10">
-            <p className="text-[11px] font-sans text-[#0A2540]/70">
+          <div className="bg-white rounded-2xl p-4 border border-brand-primary/10">
+            <p className="text-[11px] font-sans text-brand-ink/70">
               Conversão Gratuito → Pago
             </p>
-            <p className="text-lg font-bold text-[#0A2540] mt-1">
+            <p className="text-lg font-bold text-brand-ink mt-1">
               {metrics.freeToPaidConversionPercent}%
             </p>
-            <p className="text-[11px] font-sans text-[#1D6FE0] mt-0.5">
+            <p className="text-[11px] font-sans text-brand-link mt-0.5">
               Upgrades: {metrics.upgradesCount} · Downgrades: {metrics.downgradesCount}
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-4 border border-[#0A2540]/10">
-            <p className="text-[11px] font-sans text-[#0A2540]/70">
+          <div className="bg-white rounded-2xl p-4 border border-brand-primary/10">
+            <p className="text-[11px] font-sans text-brand-ink/70">
               Inadimplência & Tolerância
             </p>
-            <p className="text-lg font-bold text-[#FF6A00] mt-1">
+            <p className="text-lg font-bold text-brand-accent-strong mt-1">
               {metrics.overdueProvidersCount} inadimplente(s)
             </p>
-            <p className="text-[11px] font-sans text-[#0A2540]/70 mt-0.5">
+            <p className="text-[11px] font-sans text-brand-ink/70 mt-0.5">
               {metrics.gracePeriodProvidersCount} em tolerância (7 dias)
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-4 border border-[#0A2540]/10">
-            <p className="text-[11px] font-sans text-[#0A2540]/70">
+          <div className="bg-white rounded-2xl p-4 border border-brand-primary/10">
+            <p className="text-[11px] font-sans text-brand-ink/70">
               Anúncios (Plano Gratuito)
             </p>
-            <p className="text-lg font-bold text-[#0A2540] mt-1">
+            <p className="text-lg font-bold text-brand-ink mt-1">
               {metrics.adImpressionsCount} imp. · {metrics.adClicksCount} cliques
             </p>
-            <p className="text-[11px] font-sans text-[#1D6FE0] mt-0.5">
+            <p className="text-[11px] font-sans text-brand-link mt-0.5">
               CTR: {metrics.adCtrPercent}% · Est. {formatBRLFromCents(metrics.estimatedAdRevenueCents)}
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl p-4 border border-[#0A2540]/10">
-            <p className="text-[11px] font-sans text-[#0A2540]/70">
+          <div className="bg-white rounded-2xl p-4 border border-brand-primary/10">
+            <p className="text-[11px] font-sans text-brand-ink/70">
               Assinaturas / Faturas Pagas
             </p>
-            <p className="text-lg font-bold text-[#0A2540] mt-1">
+            <p className="text-lg font-bold text-brand-ink mt-1">
               {metrics.newSubscriptionsCount} assinaturas
             </p>
             <p className="text-[11px] font-sans text-emerald-700 mt-0.5">
@@ -333,12 +332,12 @@ export const AdminMonetizationScreen: React.FC = () => {
       )}
 
       {/* Plans Configuration Table */}
-      <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4">
+      <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-4">
         <div>
-          <p className="text-xs font-semibold text-[#1D6FE0]">
+          <p className="text-xs font-semibold text-brand-link">
             1. Planos Configuráveis no Banco (Valores em Centavos)
           </p>
-          <h2 className="font-display font-bold text-lg text-[#0A2540]">
+          <h2 className="font-display font-bold text-lg text-brand-ink">
             Matriz de Planos, Limites Mensais e Bônus Moderado de Matching
           </h2>
         </div>
@@ -346,7 +345,7 @@ export const AdminMonetizationScreen: React.FC = () => {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="border-b border-[#0A2540]/10 text-[#0A2540]/70">
+              <tr className="border-b border-brand-primary/10 text-brand-ink/70">
                 <th className="py-2.5 pr-4">Plano</th>
                 <th className="py-2.5 pr-4">Mensal</th>
                 <th className="py-2.5 pr-4">Anual</th>
@@ -356,10 +355,10 @@ export const AdminMonetizationScreen: React.FC = () => {
                 <th className="py-2.5 pr-4">Receita Mensal Ativa</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#0A2540]/10 font-mono">
+            <tbody className="divide-y divide-brand-primary/10 font-mono">
               {plansList.map((p: any) => (
                 <tr key={p.id}>
-                  <td className="py-3 pr-4 font-sans font-semibold text-[#0A2540]">
+                  <td className="py-3 pr-4 font-sans font-semibold text-brand-ink">
                     {p.nome} ({p.slug})
                   </td>
                   <td className="py-3 pr-4">
@@ -375,7 +374,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                   <td className="py-3 pr-4">
                     {p.exibeAnuncios ? 'Sim (Moderado)' : 'Não'}
                   </td>
-                  <td className="py-3 pr-4 font-bold text-[#1D6FE0]">
+                  <td className="py-3 pr-4 font-bold text-brand-link">
                     {formatBRLFromCents(metrics?.revenueByPlan?.[p.slug] || 0)}
                   </td>
                 </tr>
@@ -386,22 +385,22 @@ export const AdminMonetizationScreen: React.FC = () => {
       </section>
 
       {/* CRUD Administrativo de Anúncios + Relatório de Impressões, Cliques, CTR e Receita Estimada */}
-      <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-6">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#0A2540]/10 pb-4">
+      <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-brand-primary/10 pb-4">
           <div>
-            <p className="text-xs font-semibold text-[#FF6A00]">
+            <p className="text-xs font-semibold text-brand-accent-strong">
               2. Administrador de Anúncios Moderados (Exclusivo Plano Gratuito · Painel do Prestador)
             </p>
-            <h2 className="font-display font-bold text-lg text-[#0A2540]">
+            <h2 className="font-display font-bold text-lg text-brand-ink">
               CRUD de Anúncios e Relatório de Impressões, Cliques, CTR e Receita Estimada
             </h2>
-            <p className="text-xs text-[#0A2540]/70 mt-0.5">
+            <p className="text-xs text-brand-ink/70 mt-0.5">
               Limites ativos: máx. 1 banner por sessão · máx. 3 impressões/prestador/dia · 0 anúncios no fluxo do cliente · Selo obrigatório &quot;Patrocinado&quot;.
             </p>
           </div>
 
           {adsReport && (
-            <div className="flex flex-wrap items-center gap-3 text-xs font-mono bg-[#F4F2EF] px-4 py-2.5 rounded-2xl">
+            <div className="flex flex-wrap items-center gap-3 text-xs font-mono bg-brand-background px-4 py-2.5 rounded-2xl">
               <span>
                 <strong>Impressões:</strong> {adsReport.totalImpressions}
               </span>
@@ -414,7 +413,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                 <strong>CTR:</strong> {adsReport.ctrPercent}%
               </span>
               <span>·</span>
-              <span className="text-[#1D6FE0] font-bold">
+              <span className="text-brand-link font-bold">
                 Receita Est.: {formatBRLFromCents(adsReport.estimatedRevenueCents)}
               </span>
             </div>
@@ -424,14 +423,14 @@ export const AdminMonetizationScreen: React.FC = () => {
         {/* Configuração Google AdSense & ads.txt (Modo Híbrido / NPA=1) */}
         <form
           onSubmit={handleSaveGoogleAdsConfig}
-          className="bg-[#0A2540]/5 rounded-2xl p-4 border border-[#0A2540]/10 space-y-3 text-xs"
+          className="bg-brand-primary/5 rounded-2xl p-4 border border-brand-primary/10 space-y-3 text-xs"
         >
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <p className="font-semibold text-[#0A2540]">
+              <p className="font-semibold text-brand-ink">
                 Integração Google AdSense / Google Ad Manager (NPA=1 · Auto Ads Desativado)
               </p>
-              <p className="text-[11px] text-[#0A2540]/70 font-mono">
+              <p className="text-[11px] text-brand-ink/70 font-mono">
                 ads.txt ativo: {adsReport?.googleAdSense?.adsTxtLine || 'google.com, pub-0000000000000000, DIRECT, f08c47fec0942fa0'}
               </p>
             </div>
@@ -448,7 +447,7 @@ export const AdminMonetizationScreen: React.FC = () => {
               onChange={(e) =>
                 setGoogleForm((prev) => ({ ...prev, clientId: e.target.value }))
               }
-              className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white font-mono"
+              className="px-3 py-2 rounded-xl border border-brand-primary/15 bg-white font-mono"
             />
             <input
               type="text"
@@ -457,7 +456,7 @@ export const AdminMonetizationScreen: React.FC = () => {
               onChange={(e) =>
                 setGoogleForm((prev) => ({ ...prev, slotId: e.target.value }))
               }
-              className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white font-mono"
+              className="px-3 py-2 rounded-xl border border-brand-primary/15 bg-white font-mono"
             />
             <select
               aria-label="Modo de exibição Google AdSense"
@@ -465,7 +464,7 @@ export const AdminMonetizationScreen: React.FC = () => {
               onChange={(e) =>
                 setGoogleForm((prev) => ({ ...prev, mode: e.target.value }))
               }
-              className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
+              className="px-3 py-2 rounded-xl border border-brand-primary/15 bg-white"
             >
               <option value="hibrido_google_adsense">
                 Modo Híbrido (Direto + Google Backfill)
@@ -479,14 +478,14 @@ export const AdminMonetizationScreen: React.FC = () => {
             </select>
             <button
               type="submit"
-              className="min-h-[38px] px-4 py-2 rounded-xl bg-[#1D6FE0] hover:bg-[#1559b8] text-white font-semibold cursor-pointer"
+              className="min-h-[38px] px-4 py-2 rounded-xl bg-brand-link hover:bg-brand-link text-white font-semibold cursor-pointer"
             >
               Salvar Google AdSense &amp; ads.txt
             </button>
           </div>
 
           {googleFeedback && (
-            <p className="text-xs font-semibold text-[#1D6FE0]">
+            <p className="text-xs font-semibold text-brand-link">
               ✓ {googleFeedback}
             </p>
           )}
@@ -496,9 +495,9 @@ export const AdminMonetizationScreen: React.FC = () => {
           {/* Formulário de Criação/Agendamento */}
           <form
             onSubmit={handleCreateAd}
-            className="lg:col-span-5 bg-[#F4F2EF]/60 rounded-2xl p-4 border border-[#0A2540]/10 space-y-3 text-xs"
+            className="lg:col-span-5 bg-brand-background/60 rounded-2xl p-4 border border-brand-primary/10 space-y-3 text-xs"
           >
-            <p className="font-semibold text-[#0A2540]">
+            <p className="font-semibold text-brand-ink">
               Criar e Agendar Novo Anúncio Patrocinado
             </p>
             <input
@@ -509,7 +508,7 @@ export const AdminMonetizationScreen: React.FC = () => {
               onChange={(e) =>
                 setAdForm((prev) => ({ ...prev, nome: e.target.value }))
               }
-              className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
+              className="w-full px-3 py-2 rounded-xl border border-brand-primary/15 bg-white"
             />
             <div className="grid grid-cols-2 gap-2">
               <select
@@ -518,7 +517,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                 onChange={(e) =>
                   setAdForm((prev) => ({ ...prev, categoria: e.target.value }))
                 }
-                className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
+                className="px-3 py-2 rounded-xl border border-brand-primary/15 bg-white"
               >
                 <option value="ferramentas">Ferramentas</option>
                 <option value="materiais">Materiais</option>
@@ -538,7 +537,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                     tipo: e.target.value as any,
                   }))
                 }
-                className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
+                className="px-3 py-2 rounded-xl border border-brand-primary/15 bg-white"
               >
                 <option value="banner_painel_prestador">
                   Banner Painel Prestador
@@ -558,7 +557,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                 onChange={(e) =>
                   setAdForm((prev) => ({ ...prev, anunciante: e.target.value }))
                 }
-                className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
+                className="px-3 py-2 rounded-xl border border-brand-primary/15 bg-white"
               />
               <input
                 type="number"
@@ -572,12 +571,12 @@ export const AdminMonetizationScreen: React.FC = () => {
                     prioridade: Number(e.target.value),
                   }))
                 }
-                className="px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
+                className="px-3 py-2 rounded-xl border border-brand-primary/15 bg-white"
               />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <label className="space-y-1">
-                <span className="text-[11px] text-[#0A2540]/70">Início</span>
+                <span className="text-[11px] text-brand-ink/70">Início</span>
                 <input
                   type="date"
                   value={adForm.dataInicio}
@@ -587,18 +586,18 @@ export const AdminMonetizationScreen: React.FC = () => {
                       dataInicio: e.target.value,
                     }))
                   }
-                  className="w-full px-3 py-1.5 rounded-xl border border-[#0A2540]/15 bg-white"
+                  className="w-full px-3 py-1.5 rounded-xl border border-brand-primary/15 bg-white"
                 />
               </label>
               <label className="space-y-1">
-                <span className="text-[11px] text-[#0A2540]/70">Fim</span>
+                <span className="text-[11px] text-brand-ink/70">Fim</span>
                 <input
                   type="date"
                   value={adForm.dataFim}
                   onChange={(e) =>
                     setAdForm((prev) => ({ ...prev, dataFim: e.target.value }))
                   }
-                  className="w-full px-3 py-1.5 rounded-xl border border-[#0A2540]/15 bg-white"
+                  className="w-full px-3 py-1.5 rounded-xl border border-brand-primary/15 bg-white"
                 />
               </label>
             </div>
@@ -610,16 +609,16 @@ export const AdminMonetizationScreen: React.FC = () => {
               onChange={(e) =>
                 setAdForm((prev) => ({ ...prev, texto: e.target.value }))
               }
-              className="w-full px-3 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
+              className="w-full px-3 py-2 rounded-xl border border-brand-primary/15 bg-white"
             />
             {adFeedback && (
-              <p className="text-xs font-semibold text-[#1D6FE0]">
+              <p className="text-xs font-semibold text-brand-link">
                 {adFeedback}
               </p>
             )}
             <button
               type="submit"
-              className="w-full min-h-[40px] px-4 py-2 rounded-xl bg-[#0A2540] hover:bg-[#13385c] text-white font-semibold cursor-pointer"
+              className="w-full min-h-[40px] px-4 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-semibold cursor-pointer"
             >
               Validar Diretrizes e Publicar Anúncio
             </button>
@@ -629,7 +628,7 @@ export const AdminMonetizationScreen: React.FC = () => {
           <div className="lg:col-span-7 overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-[#0A2540]/10 text-[#0A2540]/70">
+                <tr className="border-b border-brand-primary/10 text-brand-ink/70">
                   <th className="py-2 pr-3">Anúncio / Selo</th>
                   <th className="py-2 pr-3">Categoria</th>
                   <th className="py-2 pr-3">Status</th>
@@ -639,19 +638,19 @@ export const AdminMonetizationScreen: React.FC = () => {
                   <th className="py-2">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#0A2540]/10 font-mono">
+              <tbody className="divide-y divide-brand-primary/10 font-mono">
                 {(adsReport?.ads || []).map((ad: any) => (
                   <tr key={ad.id}>
                     <td className="py-3 pr-3 font-sans">
                       <div className="flex items-center gap-1.5">
-                        <span className="px-1.5 py-0.5 rounded bg-[#0A2540]/10 text-[#0A2540] font-mono text-[10px] font-bold">
+                        <span className="px-1.5 py-0.5 rounded bg-brand-primary/10 text-brand-ink font-mono text-[10px] font-bold">
                           {ad.badge || 'Patrocinado'}
                         </span>
-                        <span className="font-semibold text-[#0A2540]">
+                        <span className="font-semibold text-brand-ink">
                           {ad.nome}
                         </span>
                       </div>
-                      <p className="text-[11px] text-[#0A2540]/65">
+                      <p className="text-[11px] text-brand-ink/65">
                         {ad.anunciante}
                       </p>
                     </td>
@@ -671,7 +670,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                       {ad.impressoes} / {ad.cliques}
                     </td>
                     <td className="py-3 pr-3">{ad.ctrPercent ?? 0}%</td>
-                    <td className="py-3 pr-3 font-bold text-[#1D6FE0]">
+                    <td className="py-3 pr-3 font-bold text-brand-link">
                       {formatBRLFromCents(ad.receitaEstimadaCentavos || 0)}
                     </td>
                     <td className="py-3">
@@ -684,7 +683,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                               ? 'Pausar anúncio'
                               : 'Ativar anúncio'
                           }
-                          className="p-1.5 rounded-lg bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] cursor-pointer"
+                          className="p-1.5 rounded-lg bg-brand-background hover:bg-brand-surface-hover text-brand-ink cursor-pointer"
                         >
                           {ad.status === 'ativo' ? (
                             <Pause className="w-3.5 h-3.5" />
@@ -711,13 +710,13 @@ export const AdminMonetizationScreen: React.FC = () => {
       </section>
 
       {/* Subscriptions Audit */}
-      <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4">
+      <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold text-[#1D6FE0]">
+            <p className="text-xs font-semibold text-brand-link">
               3. Assinaturas & Ciclo de Vida
             </p>
-            <h2 className="font-display font-bold text-lg text-[#0A2540]">
+            <h2 className="font-display font-bold text-lg text-brand-ink">
               Busca por Prestador, Plano e Status ({filteredSubscriptions.length})
             </h2>
           </div>
@@ -728,12 +727,12 @@ export const AdminMonetizationScreen: React.FC = () => {
               placeholder="Buscar prestador ou plano..."
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-xl border border-[#0A2540]/15 text-xs"
+              className="px-3 py-1.5 rounded-xl border border-brand-primary/15 text-xs"
             />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-1.5 rounded-xl border border-[#0A2540]/15 text-xs bg-white"
+              className="px-3 py-1.5 rounded-xl border border-brand-primary/15 text-xs bg-white"
             >
               <option value="todos">Todos os status</option>
               <option value="ativa">Ativa</option>
@@ -745,21 +744,21 @@ export const AdminMonetizationScreen: React.FC = () => {
           </div>
         </div>
 
-        <div className="max-h-72 overflow-y-auto divide-y divide-[#0A2540]/10 text-xs">
+        <div className="max-h-72 overflow-y-auto divide-y divide-brand-primary/10 text-xs">
           {filteredSubscriptions.slice(0, 12).map((s: any) => (
             <div
               key={s.id}
               className="py-2.5 flex flex-wrap items-center justify-between gap-2"
             >
               <div>
-                <p className="font-semibold text-[#0A2540]">
+                <p className="font-semibold text-brand-ink">
                   Prestador: {s.providerProfileId} · Plano: {s.planId}
                 </p>
-                <p className="text-[#0A2540]/65 font-mono">
+                <p className="text-brand-ink/65 font-mono">
                   ID: {s.id} · Ciclo: {s.ciclo}
                 </p>
               </div>
-              <span className="px-2.5 py-1 rounded-lg bg-[#F4F2EF] font-mono font-semibold text-[#0A2540]">
+              <span className="px-2.5 py-1 rounded-lg bg-brand-background font-mono font-semibold text-brand-ink">
                 {s.status}
               </span>
             </div>
@@ -768,27 +767,27 @@ export const AdminMonetizationScreen: React.FC = () => {
       </section>
 
       {/* 4. Aprovação de Cadastros de Prestadores */}
-      <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4">
+      <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-4">
         <div>
-          <p className="text-xs font-semibold text-[#FF6A00]">
+          <p className="text-xs font-semibold text-brand-accent-strong">
             4. Governança Operacional · Curadoria de Prestadores
           </p>
-          <h2 className="font-display font-bold text-lg text-[#0A2540]">
+          <h2 className="font-display font-bold text-lg text-brand-ink">
             Aprovação de Cadastros e Verificação Documental ({providersRegistry.length})
           </h2>
         </div>
 
-        <div className="divide-y divide-[#0A2540]/10 text-xs">
+        <div className="divide-y divide-brand-primary/10 text-xs">
           {providersRegistry.slice(0, 12).map((prov: any) => (
             <div
               key={prov.id}
               className="py-3 flex flex-wrap items-center justify-between gap-3"
             >
               <div>
-                <p className="font-semibold text-[#0A2540]">
+                <p className="font-semibold text-brand-ink">
                   {prov.name} ({prov.category}) — {prov.city}
                 </p>
-                <p className="text-[#0A2540]/65 font-mono">
+                <p className="text-brand-ink/65 font-mono">
                   ID: {prov.id} · Nota: {prov.rating_avg} · Status:{' '}
                   <strong>{prov.verification_status}</strong>
                 </p>
@@ -829,13 +828,13 @@ export const AdminMonetizationScreen: React.FC = () => {
       </section>
 
       {/* 5. Infraestrutura de Produção: Disponibilidade, Backups e Alertas */}
-      <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4">
+      <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold text-[#1D6FE0]">
+            <p className="text-xs font-semibold text-brand-link">
               5. Infraestrutura de Produção · Neon Lakebase + Object Storage
             </p>
-            <h2 className="font-display font-bold text-lg text-[#0A2540]">
+            <h2 className="font-display font-bold text-lg text-brand-ink">
               Disponibilidade, Backups e Alertas
             </h2>
           </div>
@@ -866,7 +865,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                 setBackupLoading(false);
               }
             }}
-            className="min-h-[40px] px-4 py-2 rounded-xl bg-[#0A2540] hover:bg-[#13385d] text-white text-xs font-semibold cursor-pointer disabled:opacity-60"
+            className="min-h-[40px] px-4 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white text-xs font-semibold cursor-pointer disabled:opacity-60"
           >
             {backupLoading
               ? 'Gerando Snapshot...'
@@ -876,28 +875,28 @@ export const AdminMonetizationScreen: React.FC = () => {
 
         {systemHealth && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
-              <p className="text-[#0A2540]/65">Status (/api/health)</p>
+            <div className="p-3.5 rounded-2xl bg-brand-background/60 border border-brand-primary/10">
+              <p className="text-brand-ink/65">Status (/api/health)</p>
               <p className="font-bold text-emerald-700 mt-1 uppercase">
                 {systemHealth.status}
               </p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
-              <p className="text-[#0A2540]/65">Latência PostgreSQL</p>
-              <p className="font-mono font-bold text-[#0A2540] mt-1">
+            <div className="p-3.5 rounded-2xl bg-brand-background/60 border border-brand-primary/10">
+              <p className="text-brand-ink/65">Latência PostgreSQL</p>
+              <p className="font-mono font-bold text-brand-ink mt-1">
                 {systemHealth.dbLatencyMs} ms
               </p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
-              <p className="text-[#0A2540]/65">Tabelas com RLS Ativo</p>
-              <p className="font-mono font-bold text-[#0A2540] mt-1">
+            <div className="p-3.5 rounded-2xl bg-brand-background/60 border border-brand-primary/10">
+              <p className="text-brand-ink/65">Tabelas com RLS Ativo</p>
+              <p className="font-mono font-bold text-brand-ink mt-1">
                 {systemHealth.rlsProtectedTablesCount}/
                 {systemHealth.expectedRlsTablesCount}
               </p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
-              <p className="text-[#0A2540]/65">Ambiente / Branch</p>
-              <p className="font-mono font-bold text-[#0A2540] mt-1">
+            <div className="p-3.5 rounded-2xl bg-brand-background/60 border border-brand-primary/10">
+              <p className="text-brand-ink/65">Ambiente / Branch</p>
+              <p className="font-mono font-bold text-brand-ink mt-1">
                 {systemHealth.environment} ({systemHealth.branch})
               </p>
             </div>
@@ -925,16 +924,16 @@ export const AdminMonetizationScreen: React.FC = () => {
 
       {/* 6. Campanha de Lançamento (50% off / 3 meses) · Conversão, Cancelamento & Renovação Pós-Promoção */}
       {promoAnalytics?.campaign && (
-        <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-5">
+        <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold text-[#FF6A00]">
+              <p className="text-xs font-semibold text-brand-accent-strong">
                 6. Campanhas Promocionais · {promoAnalytics.campaign.slug}
               </p>
-              <h2 className="font-display font-bold text-lg text-[#0A2540]">
+              <h2 className="font-display font-bold text-lg text-brand-ink">
                 {promoAnalytics.campaign.nome}
               </h2>
-              <p className="text-xs text-[#0A2540]/70">
+              <p className="text-xs text-brand-ink/70">
                 Status:{' '}
                 <strong className="uppercase">
                   {promoAnalytics.campaign.status}
@@ -971,7 +970,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                     loadAdminDashboard();
                   }
                 }}
-                className="min-h-[38px] px-3.5 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold cursor-pointer"
+                className="min-h-[38px] px-3.5 py-2 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink font-semibold cursor-pointer"
               >
                 {promoAnalytics.campaign.status === 'ativo'
                   ? 'Pausar Campanha'
@@ -997,7 +996,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                     );
                   }
                 }}
-                className="min-h-[38px] px-4 py-2 rounded-xl bg-[#0A2540] hover:bg-[#13385d] text-white font-semibold cursor-pointer"
+                className="min-h-[38px] px-4 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-semibold cursor-pointer"
               >
                 Disparar Avisos de Término (E-mail + WhatsApp)
               </button>
@@ -1011,54 +1010,54 @@ export const AdminMonetizationScreen: React.FC = () => {
           )}
 
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 text-xs font-mono tabular-nums">
-            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
-              <p className="font-sans text-[#0A2540]/65">Resgates Totais</p>
-              <p className="text-lg font-bold text-[#0A2540] mt-1">
+            <div className="p-3.5 rounded-2xl bg-brand-background/60 border border-brand-primary/10">
+              <p className="font-sans text-brand-ink/65">Resgates Totais</p>
+              <p className="text-lg font-bold text-brand-ink mt-1">
                 {promoAnalytics.metrics.totalRedemptions}
               </p>
-              <p className="font-sans text-[11px] text-[#0A2540]/60">
+              <p className="font-sans text-[11px] text-brand-ink/60">
                 Ativos na promo: {promoAnalytics.metrics.activeInPromoCount}
               </p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
-              <p className="font-sans text-[#0A2540]/65">Conversão da Oferta</p>
+            <div className="p-3.5 rounded-2xl bg-brand-background/60 border border-brand-primary/10">
+              <p className="font-sans text-brand-ink/65">Conversão da Oferta</p>
               <p className="text-lg font-bold text-emerald-700 mt-1">
                 {promoAnalytics.metrics.conversionRatePercent}%
               </p>
-              <p className="font-sans text-[11px] text-[#0A2540]/60">
+              <p className="font-sans text-[11px] text-brand-ink/60">
                 Elegíveis: {promoAnalytics.metrics.eligibleChecksCount}
               </p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
-              <p className="font-sans text-[#0A2540]/65">
+            <div className="p-3.5 rounded-2xl bg-brand-background/60 border border-brand-primary/10">
+              <p className="font-sans text-brand-ink/65">
                 Cancelamentos na Promo
               </p>
-              <p className="text-lg font-bold text-[#FF6A00] mt-1">
+              <p className="text-lg font-bold text-brand-accent-strong mt-1">
                 {promoAnalytics.metrics.cancelDuringPromoRatePercent}%
               </p>
-              <p className="font-sans text-[11px] text-[#0A2540]/60">
+              <p className="font-sans text-[11px] text-brand-ink/60">
                 Cancelados: {promoAnalytics.metrics.canceledDuringPromoCount}
               </p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
-              <p className="font-sans text-[#0A2540]/65">
+            <div className="p-3.5 rounded-2xl bg-brand-background/60 border border-brand-primary/10">
+              <p className="font-sans text-brand-ink/65">
                 Renovação Pós-Promoção
               </p>
-              <p className="text-lg font-bold text-[#1D6FE0] mt-1">
+              <p className="text-lg font-bold text-brand-link mt-1">
                 {promoAnalytics.metrics.postPromoRenewalRatePercent}%
               </p>
-              <p className="font-sans text-[11px] text-[#0A2540]/60">
+              <p className="font-sans text-[11px] text-brand-ink/60">
                 No preço cheio: {promoAnalytics.metrics.renewedAfterPromoCount}
               </p>
             </div>
-            <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10">
-              <p className="font-sans text-[#0A2540]/65">
+            <div className="p-3.5 rounded-2xl bg-brand-background/60 border border-brand-primary/10">
+              <p className="font-sans text-brand-ink/65">
                 Bloqueios Antifraude
               </p>
               <p className="text-lg font-bold text-red-700 mt-1">
                 {promoAnalytics.metrics.blockedFraudCount}
               </p>
-              <p className="font-sans text-[11px] text-[#0A2540]/60">
+              <p className="font-sans text-[11px] text-brand-ink/60">
                 Multi-conta / reuso
               </p>
             </div>
@@ -1067,12 +1066,12 @@ export const AdminMonetizationScreen: React.FC = () => {
       )}
 
       {/* 7. Moderação de Especialidades Sugeridas & Tags Livres */}
-      <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-5 text-xs">
+      <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-5 text-xs">
         <div>
-          <p className="font-semibold text-[#1D6FE0]">
+          <p className="font-semibold text-brand-link">
             7. Governança de Taxonomia · Catálogo Oficial
           </p>
-          <h2 className="font-display font-bold text-lg text-[#0A2540]">
+          <h2 className="font-display font-bold text-lg text-brand-ink">
             Moderação de Especialidades Sugeridas ({taxonomyQueue.suggestions.length})
           </h2>
         </div>
@@ -1084,7 +1083,7 @@ export const AdminMonetizationScreen: React.FC = () => {
         )}
 
         {taxonomyQueue.suggestions.length === 0 ? (
-          <p className="text-[#0A2540]/60">
+          <p className="text-brand-ink/60">
             Nenhuma sugestão de especialidade registrada no momento.
           </p>
         ) : (
@@ -1092,31 +1091,31 @@ export const AdminMonetizationScreen: React.FC = () => {
             {taxonomyQueue.suggestions.map((sug: any) => (
               <div
                 key={sug.id}
-                className="p-4 rounded-2xl bg-[#F4F2EF]/50 border border-[#0A2540]/10 space-y-3"
+                className="p-4 rounded-2xl bg-brand-background/50 border border-brand-primary/10 space-y-3"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="font-bold text-sm text-[#0A2540]">
+                    <p className="font-bold text-sm text-brand-ink">
                       {sug.nome_sugerido}
                     </p>
-                    <p className="text-[#0A2540]/70">
+                    <p className="text-brand-ink/70">
                       Prestador: <strong>{sug.provider_name}</strong> · Categoria:{' '}
                       <strong>{sug.category_name}</strong> · Frequência:{' '}
                       <strong>{sug.similar_frequency} pedido(s)</strong>
                     </p>
                     {sug.descricao && (
-                      <p className="text-[#0A2540]/75 italic mt-1">
+                      <p className="text-brand-ink/75 italic mt-1">
                         “{sug.descricao}”
                       </p>
                     )}
                   </div>
-                  <span className="px-2.5 py-1 rounded-full bg-white border border-[#0A2540]/10 font-mono font-semibold">
+                  <span className="px-2.5 py-1 rounded-full bg-white border border-brand-primary/10 font-mono font-semibold">
                     {sug.status}
                   </span>
                 </div>
 
                 {sug.status === 'pendente' && (
-                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#0A2540]/10">
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-brand-primary/10">
                     <button
                       type="button"
                       onClick={async () => {
@@ -1159,7 +1158,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                           [sug.id]: e.target.value,
                         }))
                       }
-                      className="px-2.5 py-1.5 rounded-lg border border-[#0A2540]/15 bg-white"
+                      className="px-2.5 py-1.5 rounded-lg border border-brand-primary/15 bg-white"
                     >
                       {officialSpecialtiesCatalog.map((sp: any) => (
                         <option key={sp.id} value={sp.id}>
@@ -1196,7 +1195,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                           loadAdminDashboard();
                         }
                       }}
-                      className="px-3 py-1.5 rounded-lg bg-[#1D6FE0] text-white font-semibold cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg bg-brand-link text-white font-semibold cursor-pointer"
                     >
                       Mesclar / Sinônimo
                     </button>
@@ -1211,7 +1210,7 @@ export const AdminMonetizationScreen: React.FC = () => {
                           [sug.id]: e.target.value,
                         }))
                       }
-                      className="px-2.5 py-1.5 rounded-lg border border-[#0A2540]/15 bg-white"
+                      className="px-2.5 py-1.5 rounded-lg border border-brand-primary/15 bg-white"
                     />
 
                     <button

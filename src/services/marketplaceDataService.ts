@@ -964,7 +964,7 @@ export class MarketplaceDataService {
       if (uRows[0]?.email) {
         await emailService.sendEmail({
           to: uRows[0].email,
-          subject: `Confiare: Cadastro de Prestador ${input.decision.toUpperCase()}`,
+          subject: `Recontrate: Cadastro de Prestador ${input.decision.toUpperCase()}`,
           template: 'aviso_aprovacao_cadastro',
           userId: updated.user_id,
           variables: {

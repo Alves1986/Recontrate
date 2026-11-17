@@ -16,12 +16,12 @@ test('PWA: manifest.webmanifest existe com start_url /entrar, display standalone
   assert.equal(fs.existsSync(manifestPath), true);
 
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  assert.equal(manifest.short_name, 'Confiare');
+  assert.equal(manifest.short_name, 'Recontrate');
   assert.equal(manifest.start_url, '/entrar');
   assert.equal(manifest.scope, '/');
   assert.equal(manifest.display, 'standalone');
-  assert.equal(manifest.theme_color, '#0A2540');
-  assert.equal(manifest.background_color, '#F4F2EF');
+  assert.equal(manifest.theme_color, '#123B3A');
+  assert.equal(manifest.background_color, '#F6F1E8');
   assert.equal(Array.isArray(manifest.icons) && manifest.icons.length > 0, true);
   assert.equal(manifest.icons[0].src, '/icons/icon.svg');
 
@@ -42,7 +42,7 @@ test('PWA: Service Worker (public/sw.js) não faz cache de endpoints /api/ nem r
 test('PWA: index.html e vercel.json configuram manifest, meta tags mobile e rewrites estáticos', () => {
   const indexHtml = fs.readFileSync(path.join(ROOT_DIR, 'index.html'), 'utf8');
   assert.match(indexHtml, /<link rel="manifest" href="\/manifest\.webmanifest"/);
-  assert.match(indexHtml, /<meta name="theme-color" content="#0A2540"/);
+  assert.match(indexHtml, /<meta name="theme-color" content="#123B3A"/);
   assert.match(indexHtml, /apple-mobile-web-app-capable/);
 
   const vercelConfig = JSON.parse(

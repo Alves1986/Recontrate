@@ -396,7 +396,7 @@ export class AuthService {
         ipAddress: input.ipAddress,
       });
       throw new Error(
-        'Sua conta está suspensa temporariamente. Entre em contato com o suporte da Confiare.'
+        'Sua conta está suspensa temporariamente. Entre em contato com o suporte do Recontrate.'
       );
     }
 

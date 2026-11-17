@@ -1,25 +1,37 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Sora", "Poppins", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Poppins", "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Manrope", "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Manrope", "Poppins", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
-  --color-confiare-navy: #0A2540;
-  --color-confiare-blue: #1D6FE0;
-  --color-confiare-orange: #FF6A00;
-  --color-confiare-bg: #F4F2EF;
+  --color-brand-primary: #123B3A;
+  --color-brand-primary-hover: #0D302F;
+  --color-brand-ink: #17212B;
+  --color-brand-link: #24665F;
+  --color-brand-soft: #D9F2E6;
+  --color-brand-background: #F6F1E8;
+  --color-brand-accent: #E97A4B;
+  --color-brand-accent-strong: #A94727;
+  --color-brand-accent-contrast: #F19973;
+  --color-brand-accent-hover: #8F3A22;
+  --color-brand-surface-hover: #ECE7DC;
 }
 
 @layer base {
   body {
     font-family: var(--font-sans);
-    background-color: #F4F2EF;
-    color: #0A2540;
+    background-color: var(--color-brand-background);
+    color: var(--color-brand-ink);
   }
 
   h1, h2, h3, h4, .font-display {
     font-family: var(--font-display);
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-brand-accent-strong);
+    outline-offset: 3px;
   }
 }
 

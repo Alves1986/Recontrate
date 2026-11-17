@@ -278,13 +278,13 @@ export const ProviderSpecialtiesManager: React.FC<{
   };
 
   return (
-    <section className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-6 text-xs">
+    <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-6 text-xs">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <p className="font-semibold text-[#1D6FE0]">
-            Taxonomia Oficial Confiare · Busca e Matching
+          <p className="font-semibold text-brand-link">
+            Categorias de serviço · Busca e compatibilidade
           </p>
-          <h3 className="font-display font-bold text-lg text-[#0A2540]">
+          <h3 className="font-display font-bold text-lg text-brand-ink">
             Categoria Principal, Especialidades Oficiais (1 a 5) e Tags Complementares
           </h3>
         </div>
@@ -292,9 +292,9 @@ export const ProviderSpecialtiesManager: React.FC<{
         <button
           type="button"
           onClick={() => setModalOpen(true)}
-          className="px-3.5 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold inline-flex items-center gap-1.5 cursor-pointer self-start"
+          className="px-3.5 py-2 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink font-semibold inline-flex items-center gap-1.5 cursor-pointer self-start"
         >
-          <Sparkles className="w-3.5 h-3.5 text-[#FF6A00]" />
+          <Sparkles className="w-3.5 h-3.5 text-brand-accent-strong" />
           <span>Não encontrei minha especialidade</span>
         </button>
       </div>
@@ -320,13 +320,13 @@ export const ProviderSpecialtiesManager: React.FC<{
       {/* 1. Seleção obrigatória de 1 categoria oficial + Autocomplete de especialidades */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <label className="font-semibold text-[#0A2540]">
+          <label className="font-semibold text-brand-ink">
             1. Categoria Principal Oficial *
           </label>
           <select
             value={selectedCategoryId}
             onChange={(e) => setSelectedCategoryId(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl border border-[#0A2540]/15 bg-white font-medium"
+            className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 bg-white font-medium"
           >
             {categories.map((cat) => (
               <option key={cat.id} value={cat.id}>
@@ -337,11 +337,11 @@ export const ProviderSpecialtiesManager: React.FC<{
         </div>
 
         <div className="space-y-1.5">
-          <label className="font-semibold text-[#0A2540]">
+          <label className="font-semibold text-brand-ink">
             2. Buscar Especialidade Oficial (com sinônimos)
           </label>
-          <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-[#0A2540]/15">
-            <Search className="w-4 h-4 text-[#0A2540]/50" />
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-brand-primary/15">
+            <Search className="w-4 h-4 text-brand-ink/50" />
             <input
               type="text"
               value={searchQuery}
@@ -356,14 +356,14 @@ export const ProviderSpecialtiesManager: React.FC<{
       {/* Lista de especialidades oficiais selecionáveis (1 a 5) */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <p className="font-semibold text-[#0A2540]">
+          <p className="font-semibold text-brand-ink">
             Especialidades Oficiais Disponíveis ({selectedSpecialtyIds.length}/5 selecionadas)
           </p>
           <button
             type="button"
             disabled={saving || selectedSpecialtyIds.length === 0}
             onClick={handleSaveOfficialSpecialties}
-            className="px-4 py-2 rounded-xl bg-[#0A2540] hover:bg-[#13385d] text-white font-semibold cursor-pointer disabled:opacity-50"
+            className="px-4 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-semibold cursor-pointer disabled:opacity-50"
           >
             Salvar Especialidades Oficiais
           </button>
@@ -380,14 +380,14 @@ export const ProviderSpecialtiesManager: React.FC<{
                 onClick={() => toggleSpecialty(spec.id)}
                 className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
                   isSelected
-                    ? 'bg-[#0A2540] text-white border-[#0A2540]'
-                    : 'bg-[#F4F2EF]/70 text-[#0A2540] border-[#0A2540]/10 hover:bg-[#e5e2dc]'
+                    ? 'bg-brand-primary text-white border-brand-primary'
+                    : 'bg-brand-background/70 text-brand-ink border-brand-primary/10 hover:bg-brand-surface-hover'
                 }`}
               >
-                {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-[#FF6A00]" />}
+                {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-brand-accent-strong" />}
                 <span>{spec.nome}</span>
                 {isPrincipal && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#FF6A00] text-white">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-accent-strong text-white">
                     Principal
                   </span>
                 )}
@@ -398,14 +398,14 @@ export const ProviderSpecialtiesManager: React.FC<{
       </div>
 
       {/* 3. Tags Livres Complementares (máx. 10) */}
-      <div className="pt-4 border-t border-[#0A2540]/10 space-y-3">
+      <div className="pt-4 border-t border-brand-primary/10 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="font-semibold text-[#0A2540] flex items-center gap-1.5">
-              <Tag className="w-3.5 h-3.5 text-[#1D6FE0]" />
+            <p className="font-semibold text-brand-ink flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5 text-brand-link" />
               Tags Livres Complementares ({customTags.length}/10)
             </p>
-            <p className="text-[11px] text-[#0A2540]/65">
+            <p className="text-[11px] text-brand-ink/65">
               Complementam sua busca textual (ex.: eventos, arquitetura, LED). Não criam novas categorias.
             </p>
           </div>
@@ -417,12 +417,12 @@ export const ProviderSpecialtiesManager: React.FC<{
             value={newTagInput}
             onChange={(e) => setNewTagInput(e.target.value)}
             placeholder="Adicionar tag complementar..."
-            className="flex-1 px-3.5 py-2 rounded-xl border border-[#0A2540]/15 text-xs"
+            className="flex-1 px-3.5 py-2 rounded-xl border border-brand-primary/15 text-xs"
           />
           <button
             type="submit"
             disabled={saving || customTags.length >= 10}
-            className="px-4 py-2 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+            className="px-4 py-2 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Adicionar Tag</span>
@@ -434,7 +434,7 @@ export const ProviderSpecialtiesManager: React.FC<{
             {customTags.map((t) => (
               <span
                 key={t.id}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F4F2EF] border border-[#0A2540]/10 text-[#0A2540]"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-background border border-brand-primary/10 text-brand-ink"
               >
                 <span>#{t.tag}</span>
                 <span className="text-[10px] text-emerald-700 font-semibold">
@@ -443,7 +443,7 @@ export const ProviderSpecialtiesManager: React.FC<{
                 <button
                   type="button"
                   onClick={() => handleRemoveTag(t.id)}
-                  className="text-[#0A2540]/50 hover:text-red-600 cursor-pointer"
+                  className="text-brand-ink/50 hover:text-red-600 cursor-pointer"
                   aria-label={`Remover tag ${t.tag}`}
                 >
                   <Trash2 className="w-3 h-3" />
@@ -456,20 +456,20 @@ export const ProviderSpecialtiesManager: React.FC<{
 
       {/* 4. Acompanhamento das Sugestões Enviadas pelo Prestador */}
       {suggestions.length > 0 && (
-        <div className="pt-4 border-t border-[#0A2540]/10 space-y-2">
-          <p className="font-semibold text-[#0A2540]">
+        <div className="pt-4 border-t border-brand-primary/10 space-y-2">
+          <p className="font-semibold text-brand-ink">
             Minhas Sugestões de Especialidades ({suggestions.filter((s) => s.status === 'pendente').length}/3 pendentes)
           </p>
           <div className="space-y-2">
             {suggestions.map((sug) => (
               <div
                 key={sug.id}
-                className="p-3 rounded-2xl bg-[#F4F2EF]/60 border border-[#0A2540]/10 flex flex-wrap items-center justify-between gap-2"
+                className="p-3 rounded-2xl bg-brand-background/60 border border-brand-primary/10 flex flex-wrap items-center justify-between gap-2"
               >
                 <div>
-                  <p className="font-semibold text-[#0A2540]">
+                  <p className="font-semibold text-brand-ink">
                     {sug.nome_sugerido} ·{' '}
-                    <span className="text-[#1D6FE0]">{sug.category_name}</span>
+                    <span className="text-brand-link">{sug.category_name}</span>
                   </p>
                   {sug.motivo_rejeicao && (
                     <p className="text-[11px] text-red-700">
@@ -477,7 +477,7 @@ export const ProviderSpecialtiesManager: React.FC<{
                     </p>
                   )}
                 </div>
-                <span className="px-2.5 py-1 rounded-full bg-white border border-[#0A2540]/10 text-[11px] font-semibold">
+                <span className="px-2.5 py-1 rounded-full bg-white border border-brand-primary/10 text-[11px] font-semibold">
                   {sug.status === 'pendente'
                     ? 'Em análise'
                     : sug.status === 'aprovada'
@@ -497,17 +497,17 @@ export const ProviderSpecialtiesManager: React.FC<{
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 bg-[#0A2540]/60 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-brand-primary/60 flex items-center justify-center p-4"
         >
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between">
-              <h4 className="font-display font-bold text-lg text-[#0A2540]">
+              <h4 className="font-display font-bold text-lg text-brand-ink">
                 Sugerir nova especialidade para análise
               </h4>
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                className="p-1.5 rounded-lg hover:bg-[#F4F2EF] cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-brand-background cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -515,13 +515,13 @@ export const ProviderSpecialtiesManager: React.FC<{
 
             <form onSubmit={handleSubmitSuggestion} className="space-y-3.5">
               <div className="space-y-1">
-                <label className="font-semibold text-[#0A2540]">
+                <label className="font-semibold text-brand-ink">
                   Categoria mais próxima *
                 </label>
                 <select
                   value={suggestionCategoryId}
                   onChange={(e) => setSuggestionCategoryId(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#0A2540]/15 bg-white"
+                  className="w-full px-3.5 py-2 rounded-xl border border-brand-primary/15 bg-white"
                 >
                   {categories.map((cat) => (
                     <option key={cat.id} value={cat.id}>
@@ -532,7 +532,7 @@ export const ProviderSpecialtiesManager: React.FC<{
               </div>
 
               <div className="space-y-1">
-                <label className="font-semibold text-[#0A2540]">
+                <label className="font-semibold text-brand-ink">
                   Nome da especialidade sugerida (3 a 60 caracteres) *
                 </label>
                 <input
@@ -543,7 +543,7 @@ export const ProviderSpecialtiesManager: React.FC<{
                   value={suggestionName}
                   onChange={(e) => setSuggestionName(e.target.value)}
                   placeholder="Ex.: Instalação de iluminação cênica"
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#0A2540]/15"
+                  className="w-full px-3.5 py-2 rounded-xl border border-brand-primary/15"
                 />
               </div>
 
@@ -571,7 +571,7 @@ export const ProviderSpecialtiesManager: React.FC<{
               )}
 
               <div className="space-y-1">
-                <label className="font-semibold text-[#0A2540]">
+                <label className="font-semibold text-brand-ink">
                   Descrição opcional
                 </label>
                 <textarea
@@ -579,7 +579,7 @@ export const ProviderSpecialtiesManager: React.FC<{
                   value={suggestionDesc}
                   onChange={(e) => setSuggestionDesc(e.target.value)}
                   placeholder="Detalhe rapidamente o tipo de serviço atendido..."
-                  className="w-full px-3.5 py-2 rounded-xl border border-[#0A2540]/15"
+                  className="w-full px-3.5 py-2 rounded-xl border border-brand-primary/15"
                 />
               </div>
 
@@ -587,14 +587,14 @@ export const ProviderSpecialtiesManager: React.FC<{
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-[#F4F2EF] text-[#0A2540] font-semibold cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-brand-background text-brand-ink font-semibold cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-4 py-2 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-semibold cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-semibold cursor-pointer"
                 >
                   Enviar para moderação
                 </button>

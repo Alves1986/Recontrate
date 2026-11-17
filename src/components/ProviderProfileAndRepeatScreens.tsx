@@ -18,8 +18,6 @@ import {
   RepeatServiceRequest,
   ScreenId,
 } from '../types/confiare';
-import { calculateCompositeScore } from '../utils/marketplaceRules';
-import { PortfolioVisualGraphic } from './ConfiareLogo';
 
 interface ProviderProfileScreenProps {
   provider: ProviderProfile;
@@ -34,13 +32,18 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
   onSelectProvider,
   onNavigate,
 }) => {
-  const [whatsappUnlocked, setWhatsappUnlocked] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const [publicOfficialSpecs, setPublicOfficialSpecs] = useState<string[] | null>(null);
-  const [publicApprovedTags, setPublicApprovedTags] = useState<string[]>([]);
 
   React.useEffect(() => {
+    if (!provider.isVerified) {
+      setPublicOfficialSpecs(null);
+      return;
+    }
+
     let cancelled = false;
+    setPublicOfficialSpecs(null);
     fetch(`/api/public/providers/${encodeURIComponent(provider.id)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
@@ -53,46 +56,63 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
         } else {
           setPublicOfficialSpecs(null);
         }
-        const tags = Array.isArray(body.provider.approvedTags)
-          ? body.provider.approvedTags.map((t: any) => t.tag)
-          : [];
-        setPublicApprovedTags(tags);
       })
       .catch(() => null);
     return () => {
       cancelled = true;
     };
-  }, [provider.id]);
+  }, [provider.id, provider.isVerified]);
 
   const displayedSpecialties =
     publicOfficialSpecs && publicOfficialSpecs.length > 0
       ? publicOfficialSpecs
       : provider.specialties;
 
-  const scoreBreakdown = calculateCompositeScore(provider);
-
-  const handleCopyShareLink = () => {
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 3000);
+  const handleCopyShareLink = async () => {
+    setCopyFailed(false);
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopiedLink(true);
+      window.setTimeout(() => setCopiedLink(false), 3000);
+    } catch {
+      setCopyFailed(true);
+      setCopiedLink(false);
+    }
   };
+
+  if (!provider.isVerified) {
+    return (
+      <div className="max-w-xl mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 text-center space-y-3 my-8">
+        <h1 className="font-display font-bold text-xl text-brand-ink">Perfil não disponível publicamente</h1>
+        <p className="text-sm text-brand-ink/70">Este perfil não tem status de verificação ativo e não é exibido na busca pública.</p>
+        <button
+          type="button"
+          onClick={() => onNavigate('profissionais-compativeis')}
+          className="min-h-[42px] px-5 py-2.5 rounded-xl bg-brand-primary text-white text-xs font-semibold cursor-pointer"
+        >
+          Voltar à busca
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-12">
-      {/* Top Bar to switch between providers for easy evaluation */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#0A2540]/10 pb-5">
+      {/* Cabeçalho do perfil público */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-brand-primary/10 pb-5">
         <div>
-          <p className="text-xs font-semibold text-[#1D6FE0]">
-            Tela 05 · Vitrine Pública Otimizada para Busca Local
+          <p className="text-xs font-semibold text-brand-link">
+            Perfil público
           </p>
-          <h1 className="font-display font-bold text-2xl sm:text-3xl text-[#0A2540] mt-1">
-            Perfil do prestador com avaliações, selo verificado e portfólio
+          <h1 className="font-display font-bold text-2xl sm:text-3xl text-brand-ink mt-1">
+            Informações públicas do perfil
           </h1>
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 w-full sm:w-auto min-w-0">
           <label
             htmlFor="switch-provider-select"
-            className="text-xs font-medium text-[#0A2540]/70 whitespace-nowrap"
+            className="text-xs font-medium text-brand-ink/70 whitespace-nowrap"
           >
             Alternar profissional:
           </label>
@@ -100,12 +120,11 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
             id="switch-provider-select"
             value={provider.id}
             onChange={(e) => {
-              setWhatsappUnlocked(false);
               onSelectProvider(e.target.value);
             }}
-            className="w-full sm:w-auto max-w-full px-3 py-2 rounded-xl bg-white border border-[#0A2540]/15 text-xs font-semibold text-[#0A2540] truncate"
+            className="w-full sm:w-auto max-w-full px-3 py-2 rounded-xl bg-white border border-brand-primary/15 text-xs font-semibold text-brand-ink truncate"
           >
-            {allProviders.map((p) => (
+            {allProviders.filter((profile) => profile.isVerified).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name} ({p.category})
               </option>
@@ -115,20 +134,16 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
       </div>
 
       {/* Main Profile Header Card */}
-      <section className="bg-[#0A2540] text-white rounded-3xl p-5 sm:p-8 lg:p-10">
+      <section className="bg-brand-primary text-white rounded-3xl p-5 sm:p-8 lg:p-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
           <div className="lg:col-span-8 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-[#1D6FE0] text-white font-display font-bold text-2xl flex items-center justify-center shrink-0">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-brand-link text-white font-display font-bold text-2xl flex items-center justify-center shrink-0">
                 {provider.initials}
               </div>
               <div className="space-y-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-[#FF6A00] font-semibold">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-brand-accent-contrast font-semibold">
                   <span>{provider.category}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{provider.yearsExperience} anos de experiência</span>
-                  <span aria-hidden="true">·</span>
-                  <span>{provider.city}</span>
                 </div>
                 <h2 className="font-display font-bold text-2xl sm:text-3xl text-white break-words">
                   {provider.name}
@@ -137,337 +152,81 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
                 <div className="flex flex-wrap items-center gap-2 text-xs text-white/90 pt-1">
                   {provider.isVerified && (
                     <span className="font-semibold text-[#60A5FA]">
-                      ✓ Selo Verificado (Identidade + Endereço)
+                      ✓ Perfil verificado
                     </span>
-                  )}
-                  {provider.isTopRegion && (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <span>Top na região</span>
-                    </>
-                  )}
-                  {provider.isMentor && (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <span className="text-[#FF6A00] font-semibold">
-                        Padrinho Verificado na Rede
-                      </span>
-                    </>
-                  )}
-                  {provider.mentorName && (
-                    <>
-                      <span aria-hidden="true">·</span>
-                      <span className="text-[#FF6A00] font-semibold">
-                        Indicado por {provider.mentorName}
-                      </span>
-                    </>
                   )}
                 </div>
               </div>
             </div>
 
-            <p className="text-sm text-white/85 leading-relaxed max-w-3xl">
-              {provider.bio}
-            </p>
+            {provider.bio.trim() && (
+              <p className="text-sm text-white/85 leading-relaxed max-w-3xl">
+                <span className="font-semibold">Descrição informada:</span> {provider.bio}
+              </p>
+            )}
 
-            <div className="pt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-white/75 font-mono tabular-nums">
-              <span>★ Nota Composta: {scoreBreakdown.totalScore.toFixed(2)}</span>
-              <span>·</span>
-              <span>{provider.completedJobs} atendimentos concluídos</span>
-              <span>·</span>
-              <span>Tempo médio de resposta: {provider.responseTimeMinutes} min</span>
-              <span>·</span>
-              <span>Comparecimento: {provider.attendanceRatePercent}%</span>
-            </div>
+
           </div>
 
-          {/* Right CTAs */}
-          <div className="lg:col-span-4 bg-white text-[#0A2540] rounded-2xl p-4 sm:p-5 space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#0A2540]/10 pb-3">
-              <span className="text-xs font-semibold text-[#0A2540]/70">
-                Negociação direta sem taxa
-              </span>
-              <span className="text-xs font-mono font-semibold text-[#1D6FE0]">
-                {provider.availableToday ? 'Disponível hoje' : 'Agenda sob consulta'}
-              </span>
+          {/* Ações públicas disponíveis */}
+          <div className="lg:col-span-4 bg-white text-brand-ink rounded-2xl p-4 sm:p-5 space-y-3">
+            <div className="border-b border-brand-primary/10 pb-3">
+              <span className="text-xs font-semibold text-brand-ink/70">Contato</span>
             </div>
-
+            <p className="text-xs text-brand-ink/75">
+              O contato direto não está disponível por esta página no momento.
+            </p>
             <button
               type="button"
-              onClick={() => setWhatsappUnlocked(true)}
-              className="w-full min-h-[46px] px-4 py-3 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-xs sm:text-sm transition-colors flex items-center justify-center gap-2 text-center cursor-pointer"
+              onClick={handleCopyShareLink}
+              className="w-full min-h-[42px] px-3 py-2 rounded-lg bg-brand-background hover:bg-brand-surface-hover text-brand-ink text-xs font-medium transition-colors inline-flex items-center justify-center gap-1 cursor-pointer"
             >
-              <MessageSquare className="w-4 h-4 shrink-0" />
+              <Share2 className="w-3.5 h-3.5 shrink-0" />
               <span>
-                {whatsappUnlocked
-                  ? `Falar no WhatsApp: ${provider.whatsapp}`
-                  : 'Solicitar orçamento no WhatsApp'}
+                {copyFailed ? 'Não foi possível copiar o link' : copiedLink ? 'Link copiado' : 'Copiar link do perfil'}
               </span>
             </button>
-
-            <button
-              type="button"
-              onClick={() => onNavigate('solicitar-novamente', provider.id)}
-              className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#0A2540] hover:bg-[#13385c] text-white font-display font-semibold text-xs transition-colors flex items-center justify-center gap-2 text-center cursor-pointer"
-            >
-              <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-              <span>Solicitar novamente este profissional</span>
-            </button>
-
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => onNavigate('avaliacao-pos-atendimento', provider.id)}
-                className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] text-xs font-medium transition-colors cursor-pointer"
-              >
-                Avaliar serviço
-              </button>
-              <button
-                type="button"
-                onClick={handleCopyShareLink}
-                className="min-h-[38px] px-3 py-1.5 rounded-lg bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] text-xs font-medium transition-colors inline-flex items-center justify-center gap-1 cursor-pointer"
-              >
-                <Share2 className="w-3.5 h-3.5 shrink-0" />
-                <span>{copiedLink ? 'Link copiado!' : 'Compartilhar'}</span>
-              </button>
-            </div>
           </div>
         </div>
       </section>
 
-      {/* Especialidades, Área de Atendimento e Composição da Nota */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-7 bg-white rounded-3xl p-5 sm:p-6 border border-[#0A2540]/10 space-y-5">
-          <div>
-            <p className="text-xs font-semibold text-[#1D6FE0]">
-              Cobertura Local e Especialidades
-            </p>
-            <h3 className="font-display font-bold text-lg text-[#0A2540]">
-              O que {provider.name} resolve na sua região
-            </h3>
-          </div>
+      <section className="bg-white rounded-3xl p-5 sm:p-6 border border-brand-primary/10 space-y-5">
+        <div>
+          <p className="text-xs font-semibold text-brand-link">Informações do perfil</p>
+          <h3 className="font-display font-bold text-lg text-brand-ink">
+            Especialidades e localidade informadas
+          </h3>
+        </div>
 
+        {displayedSpecialties.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-[#0A2540]/70">
-              Especialidades técnicas oficiais:
-            </p>
+            <p className="text-xs font-semibold text-brand-ink/70">Especialidades informadas:</p>
             <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {displayedSpecialties.map((spec) => (
+              {displayedSpecialties.map((specialty) => (
                 <li
-                  key={spec}
-                  className="flex items-center gap-2 text-xs text-[#0A2540] bg-[#F4F2EF]/60 px-3.5 py-2.5 rounded-xl"
+                  key={specialty}
+                  className="flex items-center gap-2 text-xs text-brand-ink bg-brand-background/60 px-3.5 py-2.5 rounded-xl"
                 >
-                  <CheckCircle2 className="w-4 h-4 text-[#1D6FE0] shrink-0" />
-                  <span>{spec}</span>
+                  <span>{specialty}</span>
                 </li>
               ))}
             </ul>
-            {publicApprovedTags.length > 0 && (
-              <div className="pt-2 flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] font-semibold text-[#0A2540]/65">
-                  Atuação complementar:
-                </span>
-                {publicApprovedTags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="px-2.5 py-0.5 rounded-full bg-[#F4F2EF] text-[11px] text-[#0A2540]/80"
-                  >
-                    #{tag}
-                  </span>
-                ))}
-              </div>
-            )}
           </div>
+        )}
 
-          <div className="pt-3 border-t border-[#0A2540]/10 flex flex-wrap items-center justify-between gap-2 text-xs text-[#0A2540]/75">
-            <span>
-              <strong>Bairros atendidos:</strong> {provider.neighborhoods.join(', ')}
-            </span>
-            <button
-              type="button"
-              onClick={() => onNavigate('indicacao-substituto', provider.id)}
-              className="text-left text-[#1D6FE0] font-semibold hover:underline cursor-pointer"
-            >
-              Ver rede de substitutos deste profissional →
-            </button>
-          </div>
-        </div>
-
-        {/* Transparência da Nota Composta */}
-        <div className="lg:col-span-5 bg-white rounded-3xl p-5 sm:p-6 border border-[#0A2540]/10 space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <p className="text-xs font-semibold text-[#FF6A00]">
-                Auditoria de Reputação Confiare
-              </p>
-              <h3 className="font-display font-bold text-lg text-[#0A2540]">
-                Nota Composta: ★ {scoreBreakdown.totalScore.toFixed(2)}
-              </h3>
-            </div>
-            <span className="text-xs font-mono text-[#0A2540]/60 shrink-0">
-              Imune a compra
-            </span>
-          </div>
-
-          <p className="text-xs text-[#0A2540]/70 leading-relaxed">
-            A reputação na Confiare não é uma média simples nem pode ser comprada por planos pagos. Veja a composição exata:
-          </p>
-
-          <div className="space-y-2.5 text-xs font-mono tabular-nums">
-            <div className="flex items-center justify-between gap-2 py-1.5 border-b border-[#0A2540]/10">
-              <span className="font-sans text-[#0A2540]">
-                Avaliações de clientes (peso 40%)
-              </span>
-              <span className="font-semibold text-[#0A2540] shrink-0">
-                +{scoreBreakdown.reviewsComponent.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-2 py-1.5 border-b border-[#0A2540]/10">
-              <span className="font-sans text-[#0A2540]">
-                Tempo médio de resposta ({provider.responseTimeMinutes}m · 20%)
-              </span>
-              <span className="font-semibold text-[#0A2540] shrink-0">
-                +{scoreBreakdown.responseTimeComponent.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-2 py-1.5 border-b border-[#0A2540]/10">
-              <span className="font-sans text-[#0A2540]">
-                Taxa de resposta ({provider.responseRatePercent}% · 20%)
-              </span>
-              <span className="font-semibold text-[#0A2540] shrink-0">
-                +{scoreBreakdown.responseRateComponent.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-2 py-1.5 border-b border-[#0A2540]/10">
-              <span className="font-sans text-[#0A2540]">
-                Atendimentos concluídos ({provider.completedJobs} · 10%)
-              </span>
-              <span className="font-semibold text-[#0A2540] shrink-0">
-                +{scoreBreakdown.completedJobsComponent.toFixed(2)}
-              </span>
-            </div>
-            <div className="flex items-center justify-between gap-2 py-1">
-              <span className="font-sans text-[#0A2540]">
-                Verificação documental e perfil (10%)
-              </span>
-              <span className="font-semibold text-[#1D6FE0] shrink-0">
-                +{scoreBreakdown.verificationComponent.toFixed(2)}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* PORTFÓLIO VISUAL */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-[#1D6FE0]">
-              Trabalhos reais registrados
-            </p>
-            <h3 className="font-display font-bold text-xl text-[#0A2540]">
-              Portfólio e Antes / Depois ({provider.portfolio.length})
-            </h3>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {provider.portfolio.map((item) => (
-            <div
-              key={item.id}
-              className="bg-white rounded-2xl p-4 border border-[#0A2540]/10 flex flex-col justify-between gap-4 min-w-0"
-            >
-              <div className="space-y-3">
-                <PortfolioVisualGraphic
-                  visualType={item.visualType}
-                  title={item.title}
-                />
-                <div className="flex items-center justify-between text-xs text-[#0A2540]/60">
-                  <span>{item.neighborhood}</span>
-                  <span>
-                    {item.date} · {item.duration}
-                  </span>
-                </div>
-                <h4 className="font-display font-bold text-sm text-[#0A2540]">
-                  {item.title}
-                </h4>
-                <p className="text-xs text-[#0A2540]/75 leading-relaxed">
-                  {item.description}
-                </p>
-              </div>
-              <p className="text-[11px] font-semibold text-[#1D6FE0] pt-2 border-t border-[#0A2540]/10">
-                {item.beforeAfterLabel}
-              </p>
-            </div>
-          ))}
-        </div>
+        <p className="text-xs text-brand-ink/75">
+          <strong>Localidade informada:</strong>{' '}
+          {provider.neighborhoods.length > 0
+            ? provider.neighborhoods.join(', ')
+            : provider.city || 'Não informada'}
+        </p>
       </section>
 
-      {/* AVALIAÇÕES AUDITADAS */}
-      <section className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold text-[#1D6FE0]">
-              Vinculadas exclusivamente a solicitações reais
-            </p>
-            <h3 className="font-display font-bold text-xl text-[#0A2540]">
-              Avaliações verificadas de clientes ({provider.reviews.length} em destaque)
-            </h3>
-          </div>
-          <button
-            type="button"
-            onClick={() => onNavigate('avaliacao-pos-atendimento', provider.id)}
-            className="min-h-[42px] px-4 py-2 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white text-xs font-semibold transition-colors cursor-pointer self-start"
-          >
-            Registrar nova avaliação pós-atendimento
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {provider.reviews.map((rev) => (
-            <div
-              key={rev.id}
-              className="bg-white rounded-2xl p-5 sm:p-6 border border-[#0A2540]/10 space-y-3 min-w-0"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-display font-bold text-sm text-[#0A2540]">
-                    {rev.clientName}
-                  </p>
-                  <p className="text-xs text-[#0A2540]/60">
-                    {rev.neighborhood} · {rev.date} · {rev.serviceTitle}
-                  </p>
-                </div>
-                <span className="font-mono tabular-nums text-sm font-bold text-[#0A2540] shrink-0">
-                  ★ {rev.rating.toFixed(1)}
-                </span>
-              </div>
-
-              <p className="text-xs sm:text-sm text-[#0A2540]/85 leading-relaxed">
-                “{rev.comment}”
-              </p>
-
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#0A2540]/65 font-mono tabular-nums pt-1">
-                <span>Qualidade: {rev.criteria.qualidade}/5</span>
-                <span>·</span>
-                <span>Pontualidade: {rev.criteria.pontualidade}/5</span>
-                <span>·</span>
-                <span>Comunicação: {rev.criteria.comunicacao}/5</span>
-                <span>·</span>
-                <span>Organização: {rev.criteria.organizacao}/5</span>
-              </div>
-
-              {rev.providerReply && (
-                <div className="p-3.5 rounded-xl bg-[#F4F2EF] text-xs text-[#0A2540]/80 space-y-1">
-                  <p className="font-semibold text-[#0A2540]">
-                    Resposta pública de {provider.name}:
-                  </p>
-                  <p>{rev.providerReply}</p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+      <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-2">
+        <h3 className="font-display font-bold text-lg text-brand-ink">Avaliações e pontuações</h3>
+        <p className="text-sm text-brand-ink/70">
+          Avaliações e métricas de reputação não são exibidas publicamente nesta versão.
+        </p>
       </section>
     </div>
   );
@@ -541,22 +300,22 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-12">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-[#0A2540]/10 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-brand-primary/10 pb-6">
         <div>
-          <p className="text-xs font-semibold text-[#FF6A00]">
+          <p className="text-xs font-semibold text-brand-accent-strong">
             Tela 06 · Retenção e Continuidade com Quem Você Já Conhece
           </p>
-          <h1 className="font-display font-bold text-2xl sm:text-3xl text-[#0A2540] mt-1">
+          <h1 className="font-display font-bold text-2xl sm:text-3xl text-brand-ink mt-1">
             Solicitar novamente
           </h1>
-          <p className="text-sm text-[#0A2540]/75 mt-1">
+          <p className="text-sm text-brand-ink/75 mt-1">
             Recontrate facilmente um profissional da sua lista “Meus profissionais de confiança” preservando o histórico do atendimento anterior.
           </p>
         </div>
         <button
           type="button"
           onClick={() => onNavigate('indicacao-substituto', activeProvider.id)}
-          className="text-left text-xs font-semibold text-[#1D6FE0] hover:text-[#0A2540] underline underline-offset-4 sm:whitespace-nowrap cursor-pointer self-start sm:self-auto"
+          className="text-left text-xs font-semibold text-brand-link hover:text-brand-ink underline underline-offset-4 sm:whitespace-nowrap cursor-pointer self-start sm:self-auto"
         >
           E se ele não puder atender? Ver Indicação de Substituto →
         </button>
@@ -564,7 +323,7 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
 
       {/* Lista Meus Profissionais de Confiança */}
       <section className="space-y-3">
-        <h2 className="font-display font-bold text-base text-[#0A2540]">
+        <h2 className="font-display font-bold text-base text-brand-ink">
           1. Selecione em “Meus profissionais de confiança”
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -580,28 +339,28 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
                 }}
                 className={`text-left p-5 rounded-2xl border transition-all cursor-pointer min-w-0 ${
                   isSelected
-                    ? 'bg-[#0A2540] text-white border-[#0A2540]'
-                    : 'bg-white text-[#0A2540] border-[#0A2540]/10 hover:border-[#1D6FE0]'
+                    ? 'bg-brand-primary text-white border-brand-primary'
+                    : 'bg-white text-brand-ink border-brand-primary/10 hover:border-brand-link'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-display font-bold text-base truncate">
                     {tp.name}
                   </span>
-                  <span className="font-mono text-xs font-semibold text-[#FF6A00] shrink-0">
+                  <span className="font-mono text-xs font-semibold text-brand-accent-strong shrink-0">
                     ★ {tp.ratingAvg.toFixed(2)}
                   </span>
                 </div>
                 <p
                   className={`text-xs mt-1 ${
-                    isSelected ? 'text-white/80' : 'text-[#0A2540]/70'
+                    isSelected ? 'text-white/80' : 'text-brand-ink/70'
                   }`}
                 >
                   {tp.category} · Último serviço: {tp.lastServiceDate}
                 </p>
                 <p
                   className={`text-xs mt-2 line-clamp-2 ${
-                    isSelected ? 'text-white/90' : 'text-[#0A2540]/80'
+                    isSelected ? 'text-white/90' : 'text-brand-ink/80'
                   }`}
                 >
                   Histórico: “{tp.lastServiceSummary}”
@@ -616,21 +375,21 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         <form
           onSubmit={handleDirectRepeatSubmit}
-          className="lg:col-span-8 bg-white rounded-3xl p-5 sm:p-8 border border-[#0A2540]/10 space-y-6"
+          className="lg:col-span-8 bg-white rounded-3xl p-5 sm:p-8 border border-brand-primary/10 space-y-6"
         >
-          <div className="p-4 rounded-2xl bg-[#F4F2EF] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-4 rounded-2xl bg-brand-background flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold text-[#1D6FE0]">
+              <p className="text-xs font-semibold text-brand-link">
                 Histórico preservado do último atendimento com {activeProvider.name}
               </p>
-              <p className="text-xs text-[#0A2540]/80 mt-0.5">
+              <p className="text-xs text-brand-ink/80 mt-0.5">
                 {activeProvider.lastServiceDate} — {activeProvider.lastServiceSummary}
               </p>
             </div>
             <button
               type="button"
               onClick={() => onNavigate('perfil-prestador', activeProvider.id)}
-              className="text-left text-xs font-semibold text-[#0A2540] underline whitespace-nowrap self-start sm:self-auto cursor-pointer"
+              className="text-left text-xs font-semibold text-brand-ink underline whitespace-nowrap self-start sm:self-auto cursor-pointer"
             >
               Ver ficha técnica
             </button>
@@ -639,10 +398,10 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
           {confirmationMode === 'accepted' && (
             <div
               role="status"
-              className="p-5 rounded-2xl bg-[#0A2540] text-white space-y-3"
+              className="p-5 rounded-2xl bg-brand-primary text-white space-y-3"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-[#FF6A00]">
+                <span className="text-xs font-semibold text-brand-accent-contrast">
                   Solicitação direta aceita pelo profissional!
                 </span>
                 <span className="text-xs font-mono">WhatsApp Liberado</span>
@@ -659,7 +418,7 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
                   onClick={() =>
                     onNavigate('avaliacao-pos-atendimento', activeProvider.id)
                   }
-                  className="min-h-[40px] px-4 py-2 rounded-xl bg-[#FF6A00] text-white text-xs font-semibold cursor-pointer"
+                  className="min-h-[40px] px-4 py-2 rounded-xl bg-brand-accent-strong text-white text-xs font-semibold cursor-pointer"
                 >
                   Simular conclusão e avaliar serviço →
                 </button>
@@ -671,7 +430,7 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
             <div>
               <label
                 htmlFor="repeat-service-type"
-                className="block text-xs font-semibold text-[#0A2540] mb-1.5"
+                className="block text-xs font-semibold text-brand-ink mb-1.5"
               >
                 O que você precisa que {activeProvider.name} faça desta vez? *
               </label>
@@ -680,7 +439,7 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
                 type="text"
                 value={serviceType}
                 onChange={(e) => setServiceType(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-[#F4F2EF]/60 border border-[#0A2540]/15 text-sm text-[#0A2540]"
+                className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
               />
             </div>
 
@@ -688,7 +447,7 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
               <div>
                 <label
                   htmlFor="repeat-date"
-                  className="block text-xs font-semibold text-[#0A2540] mb-1.5"
+                  className="block text-xs font-semibold text-brand-ink mb-1.5"
                 >
                   Data e horário desejados
                 </label>
@@ -697,14 +456,14 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
                   type="text"
                   value={desiredDate}
                   onChange={(e) => setDesiredDate(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-[#F4F2EF]/60 border border-[#0A2540]/15 text-sm text-[#0A2540]"
+                  className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="repeat-urgency"
-                  className="block text-xs font-semibold text-[#0A2540] mb-1.5"
+                  className="block text-xs font-semibold text-brand-ink mb-1.5"
                 >
                   Urgência
                 </label>
@@ -716,7 +475,7 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
                       e.target.value as 'Hoje' | 'Amanhã' | 'Esta semana' | 'Flexível'
                     )
                   }
-                  className="w-full px-4 py-2.5 rounded-xl bg-[#F4F2EF]/60 border border-[#0A2540]/15 text-sm text-[#0A2540]"
+                  className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
                 >
                   <option value="Hoje">Hoje</option>
                   <option value="Amanhã">Amanhã</option>
@@ -729,7 +488,7 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
             <div>
               <label
                 htmlFor="repeat-notes"
-                className="block text-xs font-semibold text-[#0A2540] mb-1.5"
+                className="block text-xs font-semibold text-brand-ink mb-1.5"
               >
                 Observações ou referência do serviço anterior
               </label>
@@ -738,19 +497,19 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
                 rows={2}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-[#F4F2EF]/60 border border-[#0A2540]/15 text-sm text-[#0A2540]"
+                className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
               />
             </div>
           </div>
 
-          <label className="flex items-start gap-2.5 cursor-pointer p-3.5 rounded-xl bg-[#F4F2EF]/70">
+          <label className="flex items-start gap-2.5 cursor-pointer p-3.5 rounded-xl bg-brand-background/70">
             <input
               type="checkbox"
               checked={lgpdShareConsent}
               onChange={(e) => setLgpdShareConsent(e.target.checked)}
-              className="mt-0.5 w-4 h-4 accent-[#1D6FE0]"
+              className="mt-0.5 w-4 h-4 accent-brand-link"
             />
-            <span className="text-xs text-[#0A2540]">
+            <span className="text-xs text-brand-ink">
               Caso {activeProvider.name} esteja indisponível na data escolhida, autorizo que ele me envie até 2 indicações de substitutos verificados da sua rede de confiança.
             </span>
           </label>
@@ -758,7 +517,7 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
           <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 pt-2">
             <button
               type="submit"
-              className="w-full sm:w-auto min-h-[48px] px-5 py-3 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-xs sm:text-sm transition-colors inline-flex items-center justify-center gap-2 text-center cursor-pointer"
+              className="w-full sm:w-auto min-h-[48px] px-5 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs sm:text-sm transition-colors inline-flex items-center justify-center gap-2 text-center cursor-pointer"
             >
               <RotateCcw className="w-4 h-4 shrink-0" />
               <span>Enviar solicitação direta a {activeProvider.name}</span>
@@ -767,7 +526,7 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
             <button
               type="button"
               onClick={handleSimulateUnavailableWithSubstitute}
-              className="w-full sm:w-auto min-h-[48px] px-5 py-3 rounded-xl bg-[#0A2540] hover:bg-[#13385c] text-white font-display font-semibold text-xs sm:text-sm transition-colors text-center cursor-pointer"
+              className="w-full sm:w-auto min-h-[48px] px-5 py-3 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-display font-semibold text-xs sm:text-sm transition-colors text-center cursor-pointer"
             >
               Simular profissional ocupado → Receber Substituto
             </button>
@@ -776,12 +535,12 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
 
         {/* Right Column: Histórico de Recompras */}
         <aside className="lg:col-span-4 space-y-4">
-          <div className="bg-white rounded-3xl p-6 border border-[#0A2540]/10 space-y-4">
-            <h3 className="font-display font-bold text-base text-[#0A2540]">
+          <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-4">
+            <h3 className="font-display font-bold text-base text-brand-ink">
               Histórico de recontratações ({repeatRequests.length})
             </h3>
             {repeatRequests.length === 0 ? (
-              <p className="text-xs text-[#0A2540]/65">
+              <p className="text-xs text-brand-ink/65">
                 Nenhuma solicitação enviada nesta sessão ainda. Clique em “Enviar solicitação direta” para testar.
               </p>
             ) : (
@@ -791,14 +550,14 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
                   return (
                     <div
                       key={item.id}
-                      className="p-3.5 rounded-2xl bg-[#F4F2EF] space-y-1 text-xs"
+                      className="p-3.5 rounded-2xl bg-brand-background space-y-1 text-xs"
                     >
-                      <div className="flex items-center justify-between font-semibold text-[#0A2540]">
+                      <div className="flex items-center justify-between font-semibold text-brand-ink">
                         <span>{prov?.name}</span>
-                        <span className="text-[#1D6FE0]">{item.createdAt}</span>
+                        <span className="text-brand-link">{item.createdAt}</span>
                       </div>
-                      <p className="text-[#0A2540]/80">{item.serviceType}</p>
-                      <p className="text-[#0A2540]/60">Data: {item.desiredDate}</p>
+                      <p className="text-brand-ink/80">{item.serviceType}</p>
+                      <p className="text-brand-ink/60">Data: {item.desiredDate}</p>
                     </div>
                   );
                 })}

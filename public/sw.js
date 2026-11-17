@@ -1,4 +1,4 @@
-const CACHE_NAME = 'confiare-pwa-v1';
+const CACHE_NAME = 'recontrate-pwa-v1';
 const APP_SHELL_ASSETS = [
   '/',
   '/entrar',

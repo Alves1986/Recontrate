@@ -218,58 +218,6 @@ export class AdAndMetricsService {
     if (isProductionEnvironment() || !isDemoModeEnabled()) {
       return;
     }
-    const existing = await db.select().from(adSlots);
-    const now = new Date();
-    const nextYear = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
-
-    if (!existing.some((a) => a.id === 'ad-ferramentas-1')) {
-      await db
-        .insert(adSlots)
-        .values({
-          id: 'ad-ferramentas-1',
-          nome: 'Kit Alicate Amperímetro Digital True RMS + EPI NR-10',
-          tipo: 'banner_painel_prestador',
-          categoria: 'ferramentas',
-          anunciante: 'Casa do Eletricista & Ferramentas SP',
-          imagemUrl:
-            'https://images.unsplash.com/photo-1581092160607-ee22621dd758',
-          linkDestino: 'https://fornecedores.confiare.com.br/ferramentas-nr10',
-          texto:
-            'Desconto de 15% para autônomos verificados em instrumentos de medição, EPIs certificados e materiais elétricos.',
-          dataInicio: now,
-          dataFim: nextYear,
-          prioridade: 10,
-          status: 'ativo',
-          impressoes: 0,
-          cliques: 0,
-        })
-        .onConflictDoNothing();
-    }
-
-    if (!existing.some((a) => a.id === 'ad-google-adsense-1')) {
-      await db
-        .insert(adSlots)
-        .values({
-          id: 'ad-google-adsense-1',
-          nome: 'Bloco Contextual Google AdSense — Ferramentas, Seguros e MEI',
-          tipo: 'banner_painel_prestador',
-          categoria: 'maquininhas',
-          anunciante: 'Google AdSense (Contextual Moderado · NPA=1)',
-          imagemUrl:
-            'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d',
-          linkDestino: 'https://adsense.google.com',
-          texto:
-            'Ofertas contextuais verificadas pelo Google AdSense (ferramentas profissionais, maquininhas, seguros e cursos técnicos) sem rastreamento de dados pessoais.',
-          dataInicio: now,
-          dataFim: nextYear,
-          prioridade: 8,
-          status: 'ativo',
-          impressoes: 0,
-          cliques: 0,
-        })
-        .onConflictDoNothing();
-    }
-
     return db.select().from(adSlots);
   }
 

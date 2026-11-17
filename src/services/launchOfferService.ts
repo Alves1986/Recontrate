@@ -550,7 +550,7 @@ async function sendEndingNoticeForRedemption(
 
   await emailService.sendEmail({
     to: recipientEmail,
-    subject: `Confiare: Sua oferta de 50% no plano ${row.plan_name} está terminando`,
+    subject: `Recontrate: Sua oferta de 50% no plano ${row.plan_name} está terminando`,
     template: 'aviso_aprovacao_cadastro',
     userId: row.user_id || undefined,
     variables: {

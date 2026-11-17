@@ -203,22 +203,22 @@ export const ProviderRealtimeNotifications: React.FC<
   return (
     <section
       aria-label="Notificações de status em tempo real"
-      className="bg-white rounded-3xl p-5 sm:p-6 border border-[#0A2540]/10 space-y-5"
+      className="bg-white rounded-3xl p-5 sm:p-6 border border-brand-primary/10 space-y-5"
     >
       {/* Top Header & Live Simulation Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#0A2540]/10 pb-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-brand-primary/10 pb-4">
         <div className="space-y-1.5 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1D6FE0]">
-              <span className="w-2 h-2 rounded-full bg-[#FF6A00] animate-pulse shrink-0" />
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-link">
+              <span className="w-2 h-2 rounded-full bg-brand-accent-strong animate-pulse shrink-0" />
               <span>Monitoramento de Status em Tempo Real</span>
             </span>
-            <span aria-hidden="true" className="text-xs text-[#0A2540]/30">
+            <span aria-hidden="true" className="text-xs text-brand-ink/30">
               ·
             </span>
             <span
               data-testid="realtime-unread-badge"
-              className="text-xs font-mono font-semibold text-[#0A2540]"
+              className="text-xs font-mono font-semibold text-brand-ink"
             >
               {unreadCount > 0
                 ? `${unreadCount} nova(s) não lida(s)`
@@ -226,10 +226,10 @@ export const ProviderRealtimeNotifications: React.FC<
             </span>
           </div>
 
-          <h2 className="font-display font-bold text-lg sm:text-xl text-[#0A2540]">
+          <h2 className="font-display font-bold text-lg sm:text-xl text-brand-ink">
             Alertas de novas oportunidades e aceites de orçamento
           </h2>
-          <p className="text-xs text-[#0A2540]/70">
+          <p className="text-xs text-brand-ink/70">
             Acompanhe em tempo real quando um cliente compatível envia um pedido na sua região ou aprova seu orçamento técnico.
           </p>
         </div>
@@ -239,7 +239,7 @@ export const ProviderRealtimeNotifications: React.FC<
           <button
             type="button"
             onClick={handleSimulateNewOpportunity}
-            className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#1D6FE0] hover:bg-[#175cc0] text-white text-xs font-display font-semibold transition-colors inline-flex items-center justify-center gap-1.5 cursor-pointer"
+            className="min-h-[40px] px-3.5 py-2 rounded-xl bg-brand-link hover:bg-brand-link text-white text-xs font-display font-semibold transition-colors inline-flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <Zap className="w-3.5 h-3.5 shrink-0" />
             <span>Simular nova oportunidade</span>
@@ -248,7 +248,7 @@ export const ProviderRealtimeNotifications: React.FC<
           <button
             type="button"
             onClick={handleSimulateQuoteAcceptance}
-            className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white text-xs font-display font-semibold transition-colors inline-flex items-center justify-center gap-1.5 cursor-pointer"
+            className="min-h-[40px] px-3.5 py-2 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white text-xs font-display font-semibold transition-colors inline-flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
             <span>Simular aceite de orçamento</span>
@@ -268,8 +268,8 @@ export const ProviderRealtimeNotifications: React.FC<
             onClick={() => setFilterType('todas')}
             className={`min-h-[36px] px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
               filterType === 'todas'
-                ? 'bg-[#0A2540] text-white'
-                : 'bg-[#F4F2EF] text-[#0A2540]/80 hover:text-[#0A2540]'
+                ? 'bg-brand-primary text-white'
+                : 'bg-brand-background text-brand-ink/80 hover:text-brand-ink'
             }`}
           >
             Todas ({notifications.length})
@@ -280,8 +280,8 @@ export const ProviderRealtimeNotifications: React.FC<
             onClick={() => setFilterType('nova_oportunidade')}
             className={`min-h-[36px] px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
               filterType === 'nova_oportunidade'
-                ? 'bg-[#1D6FE0] text-white'
-                : 'bg-[#F4F2EF] text-[#0A2540]/80 hover:text-[#0A2540]'
+                ? 'bg-brand-link text-white'
+                : 'bg-brand-background text-brand-ink/80 hover:text-brand-ink'
             }`}
           >
             Novas Oportunidades ({oppNotifCount})
@@ -292,8 +292,8 @@ export const ProviderRealtimeNotifications: React.FC<
             onClick={() => setFilterType('aceite_orcamento')}
             className={`min-h-[36px] px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
               filterType === 'aceite_orcamento'
-                ? 'bg-[#FF6A00] text-white'
-                : 'bg-[#F4F2EF] text-[#0A2540]/80 hover:text-[#0A2540]'
+                ? 'bg-brand-accent-strong text-white'
+                : 'bg-brand-background text-brand-ink/80 hover:text-brand-ink'
             }`}
           >
             Aceites de Orçamento ({quoteNotifCount})
@@ -304,7 +304,7 @@ export const ProviderRealtimeNotifications: React.FC<
           <button
             type="button"
             onClick={handleMarkAllRead}
-            className="text-left sm:text-right text-xs font-semibold text-[#1D6FE0] hover:text-[#0A2540] underline underline-offset-4 inline-flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+            className="text-left sm:text-right text-xs font-semibold text-brand-link hover:text-brand-ink underline underline-offset-4 inline-flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
           >
             <CheckCheck className="w-3.5 h-3.5 shrink-0" />
             <span>Marcar todas como lidas</span>
@@ -322,44 +322,44 @@ export const ProviderRealtimeNotifications: React.FC<
               className={`rounded-2xl p-4 sm:p-5 border transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4 min-w-0 ${
                 !item.read
                   ? isNewOpp
-                    ? 'bg-[#F4F2EF]/80 border-l-4 border-l-[#1D6FE0] border-[#0A2540]/15'
-                    : 'bg-[#F4F2EF]/80 border-l-4 border-l-[#FF6A00] border-[#0A2540]/15'
-                  : 'bg-white border-[#0A2540]/10 opacity-85'
+                    ? 'bg-brand-background/80 border-l-4 border-l-[#1D6FE0] border-brand-primary/15'
+                    : 'bg-brand-background/80 border-l-4 border-l-[#FF6A00] border-brand-primary/15'
+                  : 'bg-white border-brand-primary/10 opacity-85'
               }`}
             >
               <div className="space-y-1.5 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 text-xs">
                   <span
                     className={`font-semibold ${
-                      isNewOpp ? 'text-[#1D6FE0]' : 'text-[#FF6A00]'
+                      isNewOpp ? 'text-brand-link' : 'text-brand-accent-strong'
                     }`}
                   >
                     {isNewOpp
                       ? '● Nova Oportunidade Compatível'
                       : '✓ Aceite de Orçamento Confirmado'}
                   </span>
-                  <span aria-hidden="true" className="text-[#0A2540]/30">
+                  <span aria-hidden="true" className="text-brand-ink/30">
                     ·
                   </span>
-                  <span className="font-mono text-[#0A2540]/65">
+                  <span className="font-mono text-brand-ink/65">
                     {item.timestamp}
                   </span>
                   {!item.read && (
-                    <span className="text-[11px] font-bold text-[#0A2540] bg-white px-2 py-0.5 rounded-md border border-[#0A2540]/10">
+                    <span className="text-[11px] font-bold text-brand-ink bg-white px-2 py-0.5 rounded-md border border-brand-primary/10">
                       Novo
                     </span>
                   )}
                 </div>
 
-                <h3 className="font-display font-bold text-sm sm:text-base text-[#0A2540] leading-snug">
+                <h3 className="font-display font-bold text-sm sm:text-base text-brand-ink leading-snug">
                   {item.title}
                 </h3>
 
-                <p className="text-xs sm:text-sm text-[#0A2540]/80 leading-relaxed">
+                <p className="text-xs sm:text-sm text-brand-ink/80 leading-relaxed">
                   {item.message}
                 </p>
 
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#0A2540]/70 pt-0.5">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-brand-ink/70 pt-0.5">
                   <span>
                     <strong>Cliente:</strong> {item.clientName}
                   </span>
@@ -368,13 +368,13 @@ export const ProviderRealtimeNotifications: React.FC<
                     <strong>Bairro:</strong> {item.neighborhood}
                   </span>
                   <span aria-hidden="true">·</span>
-                  <span className="font-medium text-[#0A2540]">
+                  <span className="font-medium text-brand-ink">
                     {item.urgencyOrScope}
                   </span>
                   {item.clientWhatsapp && !isNewOpp && (
                     <>
                       <span aria-hidden="true">·</span>
-                      <span className="font-mono font-semibold text-[#1D6FE0]">
+                      <span className="font-mono font-semibold text-brand-link">
                         WhatsApp: {item.clientWhatsapp}
                       </span>
                     </>
@@ -390,7 +390,7 @@ export const ProviderRealtimeNotifications: React.FC<
                       handleMarkSingleRead(item.id);
                       onFocusOpportunityTab();
                     }}
-                    className="min-h-[38px] px-3.5 py-2 rounded-xl bg-[#0A2540] hover:bg-[#13385c] text-white text-xs font-semibold transition-colors text-center cursor-pointer"
+                    className="min-h-[38px] px-3.5 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white text-xs font-semibold transition-colors text-center cursor-pointer"
                   >
                     Ver oportunidade na fila
                   </button>
@@ -400,7 +400,7 @@ export const ProviderRealtimeNotifications: React.FC<
                   <button
                     type="button"
                     onClick={() => handleMarkSingleRead(item.id)}
-                    className="min-h-[38px] px-3.5 py-2 rounded-xl bg-white hover:bg-[#F4F2EF] border border-[#0A2540]/15 text-[#0A2540] text-xs font-semibold transition-colors text-center cursor-pointer"
+                    className="min-h-[38px] px-3.5 py-2 rounded-xl bg-white hover:bg-brand-background border border-brand-primary/15 text-brand-ink text-xs font-semibold transition-colors text-center cursor-pointer"
                   >
                     Confirmar leitura
                   </button>

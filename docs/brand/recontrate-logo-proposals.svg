@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">Estudos preliminares de símbolo para Recontrate</title>
+  <desc id="desc">Duas propostas vetoriais editáveis inspiradas na prancha de referência compartilhada. São estudos, não uma marca aprovada.</desc>
+  <rect width="1440" height="900" fill="#F6F1E8"/>
+  <text x="96" y="100" fill="#123B3A" font-family="Manrope, Arial, sans-serif" font-size="18" font-weight="700" letter-spacing="3">RECONTRATE · ESTUDOS DE SÍMBOLO</text>
+  <text x="96" y="148" fill="#17212B" font-family="Manrope, Arial, sans-serif" font-size="15">Rascunhos vetoriais para revisão. O wordmark da interface permanece tipográfico até a aprovação.</text>
+
+  <g transform="translate(96 210)">
+    <rect width="596" height="560" rx="28" fill="#FFFFFF" stroke="#123B3A" stroke-opacity=".12"/>
+    <text x="44" y="64" fill="#A94727" font-family="Manrope, Arial, sans-serif" font-size="13" font-weight="800" letter-spacing="2">OPÇÃO A · CONTINUIDADE</text>
+    <g transform="translate(110 115)" fill="none" stroke="#123B3A" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M38 225V76c0-37 28-62 67-62h39c45 0 72 26 72 65 0 39-28 65-72 65H45"/>
+      <path d="M129 144l103 104"/>
+      <path d="M63 248h171" stroke="#E97A4B" stroke-width="12"/>
+    </g>
+    <text x="298" y="430" text-anchor="middle" fill="#123B3A" font-family="Manrope, Arial, sans-serif" font-size="42" font-weight="800" letter-spacing="-2">Recontrate</text>
+    <text x="298" y="476" text-anchor="middle" fill="#53605C" font-family="Manrope, Arial, sans-serif" font-size="15">Uma linha contínua que desenha um R e sugere retorno.</text>
+    <text x="298" y="505" text-anchor="middle" fill="#53605C" font-family="Manrope, Arial, sans-serif" font-size="15">Curvas e espessuras ainda ajustáveis.</text>
+  </g>
+
+  <g transform="translate(748 210)">
+    <rect width="596" height="560" rx="28" fill="#FFFFFF" stroke="#123B3A" stroke-opacity=".12"/>
+    <text x="44" y="64" fill="#A94727" font-family="Manrope, Arial, sans-serif" font-size="13" font-weight="800" letter-spacing="2">OPÇÃO B · ELO DE RETORNO</text>
+    <g transform="translate(150 115)" fill="none" stroke="#123B3A" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M47 102h108l44 44-44 44H47c-28 0-48-19-48-44s20-44 48-44Z"/>
+      <path d="M249 102h-44l-44 44 44 44h44c28 0 48-19 48-44s-20-44-48-44Z"/>
+      <path d="M47 102l25-25M249 190l-25 25" stroke="#E97A4B" stroke-width="12"/>
+    </g>
+    <text x="298" y="430" text-anchor="middle" fill="#123B3A" font-family="Manrope, Arial, sans-serif" font-size="42" font-weight="800" letter-spacing="-2">Recontrate</text>
+    <text x="298" y="476" text-anchor="middle" fill="#53605C" font-family="Manrope, Arial, sans-serif" font-size="15">Dois elos geométricos evocam vínculo e recontratação.</text>
+    <text x="298" y="505" text-anchor="middle" fill="#53605C" font-family="Manrope, Arial, sans-serif" font-size="15">Pode ser simplificado para tamanhos pequenos.</text>
+  </g>
+
+  <text x="96" y="835" fill="#53605C" font-family="Manrope, Arial, sans-serif" font-size="13">Paleta de estudo: petróleo #123B3A · verde suave #D9F2E6 · areia #F6F1E8 · coral #E97A4B · ferrugem #A94727</text>
+</svg>

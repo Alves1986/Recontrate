@@ -68,29 +68,29 @@ export const GoogleModeratedAdSlot: React.FC<GoogleModeratedAdSlotProps> = ({
   return (
     <aside
       aria-label="Oferta Patrocinada para Prestadores"
-      className="bg-white rounded-2xl p-4 sm:p-5 border border-[#0A2540]/10 space-y-3 text-xs"
+      className="bg-white rounded-2xl p-4 sm:p-5 border border-brand-primary/10 space-y-3 text-xs"
     >
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="px-2 py-0.5 rounded bg-[#0A2540]/10 text-[#0A2540] font-mono text-[10px] font-bold uppercase">
+            <span className="px-2 py-0.5 rounded bg-brand-primary/10 text-brand-ink font-mono text-[10px] font-bold uppercase">
               {sponsoredAd.badge || 'Patrocinado'}
             </span>
-            <span className="px-2 py-0.5 rounded bg-[#1D6FE0]/10 text-[#1D6FE0] font-mono text-[10px] font-semibold">
+            <span className="px-2 py-0.5 rounded bg-brand-link/10 text-brand-link font-mono text-[10px] font-semibold">
               {isGoogleNetwork
                 ? `Google AdSense Contextual (NPA=1 · ${clientId})`
-                : 'Parceiro Verificado Confiare'}
+                : 'Parceiro verificado'}
             </span>
-            <span className="font-semibold text-[#0A2540]">
+            <span className="font-semibold text-brand-ink">
               {sponsoredAd.nome} · {sponsoredAd.anunciante}
             </span>
-            <span className="text-[11px] font-mono text-[#0A2540]/60">
+            <span className="text-[11px] font-mono text-brand-ink/60">
               (1 banner/sessão · {sponsoredAd.dailyImpressionsUsed || 1}/
               {sponsoredAd.dailyImpressionsLimit || 3} impressões hoje)
             </span>
           </div>
-          <p className="text-[#0A2540]/80">{sponsoredAd.texto}</p>
-          <p className="text-[11px] text-[#0A2540]/60">
+          <p className="text-brand-ink/80">{sponsoredAd.texto}</p>
+          <p className="text-[11px] text-brand-ink/60">
             Privacidade LGPD garantida: anúncios não personalizados (`requestNonPersonalizedAds=1`), restritos ao painel do prestador Gratuito e zero compartilhamento de dados pessoais.
           </p>
         </div>
@@ -99,7 +99,7 @@ export const GoogleModeratedAdSlot: React.FC<GoogleModeratedAdSlotProps> = ({
           <button
             type="button"
             onClick={onTrackClick}
-            className="px-3.5 py-2 rounded-xl bg-[#0A2540] hover:bg-[#13385c] text-white font-semibold whitespace-nowrap cursor-pointer"
+            className="px-3.5 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-semibold whitespace-nowrap cursor-pointer"
           >
             {adClickConfirmed
               ? '✓ Clique registrado na oferta'
@@ -108,7 +108,7 @@ export const GoogleModeratedAdSlot: React.FC<GoogleModeratedAdSlotProps> = ({
           <button
             type="button"
             onClick={onUpgradeClick}
-            className="px-3.5 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold whitespace-nowrap cursor-pointer"
+            className="px-3.5 py-2 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink font-semibold whitespace-nowrap cursor-pointer"
           >
             Remover anúncios (Upgrade)
           </button>
@@ -117,7 +117,7 @@ export const GoogleModeratedAdSlot: React.FC<GoogleModeratedAdSlotProps> = ({
 
       {/* Bloco <ins class="adsbygoogle"> montado apenas quando um Publisher ID real (ca-pub-...) está configurado */}
       {isLivePublisherId && (
-        <div className="pt-2 border-t border-[#0A2540]/10">
+        <div className="pt-2 border-t border-brand-primary/10">
           <ins
             className="adsbygoogle"
             style={{ display: 'block' }}

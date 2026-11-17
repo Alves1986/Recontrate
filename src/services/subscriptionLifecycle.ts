@@ -441,7 +441,7 @@ export class SubscriptionLifecycleService {
       if (prov?.email) {
         await emailService.sendEmail({
           to: prov.email,
-          subject: `Confiare: Assinatura ${plan.nome} (${sub.ciclo}) ativada`,
+          subject: `Recontrate: Assinatura ${plan.nome} (${sub.ciclo}) ativada`,
           template: 'aviso_aprovacao_cadastro',
           userId: prov.user_id || undefined,
           variables: {

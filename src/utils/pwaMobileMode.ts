@@ -43,7 +43,7 @@ export function detectCurrentMobileOrPwa(): boolean {
   return isMobileOrPwaViewport(window.innerWidth, detectStandaloneDisplayMode());
 }
 
-export async function registerConfiareServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+export async function registerAppServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
     return null;
   }

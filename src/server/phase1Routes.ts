@@ -213,6 +213,7 @@ export function createPhase1Router(): express.Router {
         `SELECT id, COALESCE(slug, id) AS slug, name, category, city, neighborhoods,
                 years_experience, bio, plan_slug, rating_avg, reviews_count,
                 completed_jobs, response_time_minutes, response_rate_percent,
+                profile_completeness_percent,
                 is_verified, is_top_region, is_mentor, available_today
          FROM provider_profiles
          ${whereClause}

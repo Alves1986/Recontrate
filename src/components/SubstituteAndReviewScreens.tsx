@@ -96,28 +96,28 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-12">
       {/* Header & Perspective Switcher */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-[#0A2540]/10 pb-6">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-brand-primary/10 pb-6">
         <div>
-          <p className="text-xs font-semibold text-[#FF6A00]">
+          <p className="text-xs font-semibold text-brand-accent-strong">
             Tela 07 · Continuidade da Rede de Confiança e Corresponsabilidade
           </p>
-          <h1 className="font-display font-bold text-2xl sm:text-3xl text-[#0A2540] mt-1">
+          <h1 className="font-display font-bold text-2xl sm:text-3xl text-brand-ink mt-1">
             Indicação de substituto
           </h1>
-          <p className="text-sm text-[#0A2540]/75 mt-1">
+          <p className="text-sm text-brand-ink/75 mt-1">
             Quando o profissional habitual não pode atender, ele indica até 2 profissionais verificados ou apadrinhados. A reputação de ambos fica vinculada à qualidade do atendimento.
           </p>
         </div>
 
         {/* Interactive Perspective Switcher */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 p-1.5 bg-white border border-[#0A2540]/15 rounded-2xl w-full md:w-auto shrink-0">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 p-1.5 bg-white border border-brand-primary/15 rounded-2xl w-full md:w-auto shrink-0">
           <button
             type="button"
             onClick={() => setPerspective('cliente')}
             className={`min-h-[38px] px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-center ${
               perspective === 'cliente'
-                ? 'bg-[#0A2540] text-white font-semibold'
-                : 'text-[#0A2540]/70 hover:text-[#0A2540]'
+                ? 'bg-brand-primary text-white font-semibold'
+                : 'text-brand-ink/70 hover:text-brand-ink'
             }`}
           >
             Visão do Cliente (Receber Indicação)
@@ -130,8 +130,8 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
             }}
             className={`min-h-[38px] px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-center ${
               perspective === 'prestador'
-                ? 'bg-[#1D6FE0] text-white font-semibold'
-                : 'text-[#0A2540]/70 hover:text-[#0A2540]'
+                ? 'bg-brand-link text-white font-semibold'
+                : 'text-brand-ink/70 hover:text-brand-ink'
             }`}
           >
             Visão do Prestador (Indicar até 2)
@@ -142,8 +142,8 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
       {perspective === 'cliente' ? (
         <div className="space-y-6">
           {/* Banner de Mensagem de Indicação Rastreável */}
-          <section className="bg-[#0A2540] text-white rounded-3xl p-5 sm:p-8 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#FF6A00] font-semibold">
+          <section className="bg-brand-primary text-white rounded-3xl p-5 sm:p-8 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-brand-accent-contrast font-semibold">
               <span>Indicação Oficial Rastreável · {currentReferral.createdAt}</span>
               <span className="font-mono text-white/80">
                 Motivo: {currentReferral.reasonCategory}
@@ -178,16 +178,16 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
           {acceptedProvider && (
             <div
               role="status"
-              className="p-5 sm:p-6 rounded-3xl bg-white border-2 border-[#1D6FE0] flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+              className="p-5 sm:p-6 rounded-3xl bg-white border-2 border-brand-link flex flex-col sm:flex-row sm:items-center justify-between gap-4"
             >
               <div className="space-y-1">
-                <p className="text-xs font-semibold text-[#1D6FE0]">
+                <p className="text-xs font-semibold text-brand-link">
                   ✓ Indicação aceita com sucesso — Contexto compartilhado!
                 </p>
-                <p className="font-display font-bold text-base text-[#0A2540]">
+                <p className="font-display font-bold text-base text-brand-ink">
                   Você escolheu {acceptedProvider.name}. WhatsApp liberado: {acceptedProvider.whatsapp}
                 </p>
-                <p className="text-xs text-[#0A2540]/70">
+                <p className="text-xs text-brand-ink/70">
                   Esta indicação ficou registrada no histórico de {originalProvider.name} e de {acceptedProvider.name}.
                 </p>
               </div>
@@ -197,7 +197,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
                   onClick={() =>
                     onNavigate('avaliacao-pos-atendimento', acceptedProvider.id)
                   }
-                  className="min-h-[42px] px-4 py-2 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white text-xs font-semibold cursor-pointer"
+                  className="min-h-[42px] px-4 py-2 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white text-xs font-semibold cursor-pointer"
                 >
                   Avaliar este atendimento →
                 </button>
@@ -207,7 +207,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
 
           {/* Cards dos Substitutos Indicados (Até 2) */}
           <div className="space-y-3">
-            <h3 className="font-display font-bold text-lg text-[#0A2540]">
+            <h3 className="font-display font-bold text-lg text-brand-ink">
               Profissionais substitutos recomendados ({indicatedProviders.length} de máx. 2)
             </h3>
 
@@ -222,38 +222,38 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
                     key={sub.id}
                     className={`bg-white rounded-3xl p-5 sm:p-6 border transition-all flex flex-col justify-between gap-5 min-w-0 ${
                       isAccepted
-                        ? 'border-2 border-[#1D6FE0]'
-                        : 'border-[#0A2540]/10'
+                        ? 'border-2 border-brand-link'
+                        : 'border-brand-primary/10'
                     }`}
                   >
                     <div className="space-y-4">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-[#0A2540] text-white font-display font-bold text-base sm:text-lg flex items-center justify-center shrink-0">
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-brand-primary text-white font-display font-bold text-base sm:text-lg flex items-center justify-center shrink-0">
                             {sub.initials}
                           </div>
                           <div className="min-w-0">
-                            <h4 className="font-display font-bold text-base sm:text-lg text-[#0A2540] leading-snug">
+                            <h4 className="font-display font-bold text-base sm:text-lg text-brand-ink leading-snug">
                               {sub.name}
                             </h4>
-                            <p className="text-xs text-[#0A2540]/70 leading-snug mt-0.5">
+                            <p className="text-xs text-brand-ink/70 leading-snug mt-0.5">
                               {sub.category} · {sub.yearsExperience} anos de experiência
                             </p>
                           </div>
                         </div>
 
                         <div className="text-right font-mono tabular-nums shrink-0">
-                          <span className="text-sm sm:text-base font-bold text-[#0A2540]">
+                          <span className="text-sm sm:text-base font-bold text-brand-ink">
                             ★ {subScore.toFixed(2)}
                           </span>
-                          <p className="text-[11px] text-[#0A2540]/60">
+                          <p className="text-[11px] text-brand-ink/60">
                             {sub.reviewsCount} avaliações
                           </p>
                         </div>
                       </div>
 
                       {/* Unboxed Trust Metadata */}
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-[#1D6FE0] font-semibold">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-brand-link font-semibold">
                         <span>✓ Selo Verificado</span>
                         <span aria-hidden="true">·</span>
                         <span>
@@ -262,30 +262,30 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
                             : `Colega verificado de ${originalProvider.name}`}
                         </span>
                         <span aria-hidden="true">·</span>
-                        <span className="text-[#0A2540]/75 font-mono">
+                        <span className="text-brand-ink/75 font-mono">
                           Responde em ~{sub.responseTimeMinutes} min
                         </span>
                       </div>
 
-                      <p className="text-xs sm:text-sm text-[#0A2540]/80 leading-relaxed">
+                      <p className="text-xs sm:text-sm text-brand-ink/80 leading-relaxed">
                         {sub.bio}
                       </p>
 
-                      <div className="p-3.5 rounded-2xl bg-[#F4F2EF]/80 space-y-1 text-xs">
-                        <p className="font-semibold text-[#0A2540]">
+                      <div className="p-3.5 rounded-2xl bg-brand-background/80 space-y-1 text-xs">
+                        <p className="font-semibold text-brand-ink">
                           Destaque do portfólio recente:
                         </p>
-                        <p className="text-[#0A2540]/75">
+                        <p className="text-brand-ink/75">
                           {sub.portfolio[0]?.title || 'Manutenção elétrica residencial verificada'} ({sub.portfolio[0]?.neighborhood || 'Pinheiros'})
                         </p>
                       </div>
                     </div>
 
-                    <div className="pt-4 border-t border-[#0A2540]/10 flex flex-col sm:flex-row gap-2.5">
+                    <div className="pt-4 border-t border-brand-primary/10 flex flex-col sm:flex-row gap-2.5">
                       <button
                         type="button"
                         onClick={() => onAcceptSubstitute(sub.id)}
-                        className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-xs transition-colors cursor-pointer text-center"
+                        className="flex-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs transition-colors cursor-pointer text-center"
                       >
                         {isAccepted
                           ? `✓ Indicação aceita (${sub.whatsapp})`
@@ -294,7 +294,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
                       <button
                         type="button"
                         onClick={() => onNavigate('perfil-prestador', sub.id)}
-                        className="min-h-[44px] px-4 py-2.5 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold text-xs transition-colors cursor-pointer text-center"
+                        className="min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink font-semibold text-xs transition-colors cursor-pointer text-center"
                       >
                         Ver perfil completo
                       </button>
@@ -306,14 +306,14 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
           </div>
 
           {/* Alternative Option: Search other professionals */}
-          <div className="bg-white rounded-2xl p-5 border border-[#0A2540]/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="text-xs text-[#0A2540]/80">
+          <div className="bg-white rounded-2xl p-5 border border-brand-primary/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="text-xs text-brand-ink/80">
               <strong>Prefere escolher outro profissional por conta própria?</strong> Você tem total autonomia para buscar outros prestadores compatíveis na região.
             </div>
             <button
               type="button"
               onClick={() => onNavigate('profissionais-compativeis')}
-              className="w-full sm:w-auto min-h-[40px] px-4 py-2 rounded-xl bg-[#0A2540] text-white text-xs font-semibold hover:bg-[#13385c] transition-colors text-center shrink-0 cursor-pointer"
+              className="w-full sm:w-auto min-h-[40px] px-4 py-2 rounded-xl bg-brand-primary text-white text-xs font-semibold hover:bg-brand-primary-hover transition-colors text-center shrink-0 cursor-pointer"
             >
               Buscar outros profissionais na lista
             </button>
@@ -323,17 +323,17 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
         /* VISÃO DO PRESTADOR: INDICAR ATÉ 2 SUBSTITUTOS */
         <form
           onSubmit={handleSaveProviderReferral}
-          className="bg-white rounded-3xl p-5 sm:p-8 border border-[#0A2540]/10 space-y-6"
+          className="bg-white rounded-3xl p-5 sm:p-8 border border-brand-primary/10 space-y-6"
         >
           <div>
-            <p className="text-xs font-semibold text-[#1D6FE0]">
+            <p className="text-xs font-semibold text-brand-link">
               Ferramenta do Prestador · Preservação de Cliente e Reputação da Rede
             </p>
-            <h2 className="font-display font-bold text-xl text-[#0A2540] mt-1">
+            <h2 className="font-display font-bold text-xl text-brand-ink mt-1">
               Não pode atender a solicitação de hoje? Indique até 2 colegas ou apadrinhados
             </h2>
-            <p className="text-xs text-[#0A2540]/70 mt-1">
-              Boas indicações fortalecem seu selo de confiabilidade na Confiare e mantêm o cliente bem atendido.
+            <p className="text-xs text-brand-ink/70 mt-1">
+              Boas indicações fortalecem a confiança na rede e ajudam o cliente a encontrar atendimento.
             </p>
           </div>
 
@@ -349,7 +349,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
           {providerSavedSuccess && (
             <div
               role="status"
-              className="p-4 rounded-xl bg-[#0A2540] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+              className="p-4 rounded-xl bg-brand-primary text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
             >
               <span>
                 ✓ Indicação atualizada com sucesso! Agora alterne para a “Visão do Cliente” para ver como ele recebe.
@@ -357,7 +357,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
               <button
                 type="button"
                 onClick={() => setPerspective('cliente')}
-                className="px-3 py-1.5 rounded-lg bg-[#FF6A00] text-white font-semibold self-start sm:self-auto cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-brand-accent-strong text-white font-semibold self-start sm:self-auto cursor-pointer"
               >
                 Ver como Cliente
               </button>
@@ -365,7 +365,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
           )}
 
           <div className="space-y-3">
-            <label className="block text-xs font-semibold text-[#0A2540]">
+            <label className="block text-xs font-semibold text-brand-ink">
               1. Escolha até 2 profissionais verificados da categoria {originalProvider.category} ({selectedSubIds.length}/2 selecionados)
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -378,21 +378,21 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
                     onClick={() => toggleSubSelection(col.id)}
                     className={`text-left p-4 rounded-2xl border transition-all cursor-pointer min-w-0 ${
                       selected
-                        ? 'bg-[#0A2540] text-white border-[#0A2540]'
-                        : 'bg-[#F4F2EF]/60 text-[#0A2540] border-[#0A2540]/15'
+                        ? 'bg-brand-primary text-white border-brand-primary'
+                        : 'bg-brand-background/60 text-brand-ink border-brand-primary/15'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-display font-bold text-sm truncate">
                         {selected ? `✓ ${col.name}` : col.name}
                       </span>
-                      <span className="font-mono text-xs text-[#FF6A00] shrink-0">
+                      <span className="font-mono text-xs text-brand-accent-strong shrink-0">
                         ★ {col.ratingAvg.toFixed(2)}
                       </span>
                     </div>
                     <p
                       className={`text-xs mt-1 ${
-                        selected ? 'text-white/80' : 'text-[#0A2540]/70'
+                        selected ? 'text-white/80' : 'text-brand-ink/70'
                       }`}
                     >
                       {col.mentorName
@@ -409,7 +409,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
             <div>
               <label
                 htmlFor="sub-reason-cat"
-                className="block text-xs font-semibold text-[#0A2540] mb-1.5"
+                className="block text-xs font-semibold text-brand-ink mb-1.5"
               >
                 2. Motivo da indisponibilidade
               </label>
@@ -421,7 +421,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
                     e.target.value as SubstituteReferral['reasonCategory']
                   )
                 }
-                className="w-full px-4 py-2.5 rounded-xl bg-[#F4F2EF]/60 border border-[#0A2540]/15 text-sm text-[#0A2540]"
+                className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
               >
                 <option value="Agenda cheia na data">Agenda cheia na data</option>
                 <option value="Em atendimento em outro bairro">
@@ -437,7 +437,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
             <div>
               <label
                 htmlFor="sub-note"
-                className="block text-xs font-semibold text-[#0A2540] mb-1.5"
+                className="block text-xs font-semibold text-brand-ink mb-1.5"
               >
                 3. Breve recomendação ao cliente *
               </label>
@@ -446,14 +446,14 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
                 type="text"
                 value={customNote}
                 onChange={(e) => setCustomNote(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-[#F4F2EF]/60 border border-[#0A2540]/15 text-sm text-[#0A2540]"
+                className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
               />
             </div>
           </div>
 
           <button
             type="submit"
-            className="w-full sm:w-auto min-h-[48px] px-6 py-3 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-sm transition-colors cursor-pointer"
+            className="w-full sm:w-auto min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-sm transition-colors cursor-pointer"
           >
             Enviar indicação de substituto ao cliente
           </button>
@@ -538,15 +538,15 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-12">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-[#0A2540]/10 pb-6">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-brand-primary/10 pb-6">
         <div>
-          <p className="text-xs font-semibold text-[#FF6A00]">
+          <p className="text-xs font-semibold text-brand-accent-strong">
             Tela 08 · Reputação Auditável Pós-Atendimento
           </p>
-          <h1 className="font-display font-bold text-2xl sm:text-3xl text-[#0A2540] mt-1">
+          <h1 className="font-display font-bold text-2xl sm:text-3xl text-brand-ink mt-1">
             Avaliação pós-atendimento
           </h1>
-          <p className="text-sm text-[#0A2540]/75 mt-1">
+          <p className="text-sm text-brand-ink/75 mt-1">
             Avaliações só podem ser registradas após atendimento vinculado e atualizam imediatamente a Nota Composta do profissional e a lista “Meus profissionais de confiança”.
           </p>
         </div>
@@ -554,7 +554,7 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
         <button
           type="button"
           onClick={() => onNavigate('perfil-prestador', provider.id)}
-          className="text-left text-xs font-semibold text-[#1D6FE0] hover:text-[#0A2540] underline underline-offset-4 sm:whitespace-nowrap cursor-pointer self-start sm:self-auto"
+          className="text-left text-xs font-semibold text-brand-link hover:text-brand-ink underline underline-offset-4 sm:whitespace-nowrap cursor-pointer self-start sm:self-auto"
         >
           Ver perfil atualizado de {provider.name} →
         </button>
@@ -563,7 +563,7 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         <form
           onSubmit={handleSubmit}
-          className="lg:col-span-8 bg-white rounded-3xl p-5 sm:p-8 border border-[#0A2540]/10 space-y-6"
+          className="lg:col-span-8 bg-white rounded-3xl p-5 sm:p-8 border border-brand-primary/10 space-y-6"
         >
           {error && (
             <div
@@ -577,10 +577,10 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
           {submitted && (
             <div
               role="status"
-              className="p-5 rounded-2xl bg-[#0A2540] text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+              className="p-5 rounded-2xl bg-brand-primary text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4"
             >
               <div className="space-y-1">
-                <p className="text-xs text-[#FF6A00] font-semibold">
+                <p className="text-xs text-brand-accent-contrast font-semibold">
                   ✓ Avaliação publicada e Nota Composta recalculada!
                 </p>
                 <p className="text-sm font-display font-semibold">
@@ -590,7 +590,7 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
               <button
                 type="button"
                 onClick={() => onNavigate('perfil-prestador', provider.id)}
-                className="min-h-[40px] px-4 py-2 rounded-xl bg-[#FF6A00] text-white text-xs font-semibold self-start sm:self-auto cursor-pointer"
+                className="min-h-[40px] px-4 py-2 rounded-xl bg-brand-accent-strong text-white text-xs font-semibold self-start sm:self-auto cursor-pointer"
               >
                 Conferir no perfil público →
               </button>
@@ -601,7 +601,7 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
             <div>
               <label
                 htmlFor="rev-provider"
-                className="block text-xs font-semibold text-[#0A2540] mb-1.5"
+                className="block text-xs font-semibold text-brand-ink mb-1.5"
               >
                 Profissional avaliado
               </label>
@@ -612,7 +612,7 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
                   setTargetProviderId(e.target.value);
                   setSubmitted(false);
                 }}
-                className="w-full px-4 py-2.5 rounded-xl bg-[#F4F2EF]/60 border border-[#0A2540]/15 text-sm text-[#0A2540]"
+                className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
               >
                 {providers.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -625,7 +625,7 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
             <div>
               <label
                 htmlFor="rev-service"
-                className="block text-xs font-semibold text-[#0A2540] mb-1.5"
+                className="block text-xs font-semibold text-brand-ink mb-1.5"
               >
                 Serviço realizado *
               </label>
@@ -634,7 +634,7 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
                 type="text"
                 value={serviceTitle}
                 onChange={(e) => setServiceTitle(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-[#F4F2EF]/60 border border-[#0A2540]/15 text-sm text-[#0A2540]"
+                className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
               />
             </div>
           </div>
@@ -642,10 +642,10 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
           {/* 4 Critérios de Avaliação */}
           <div className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="text-xs font-semibold text-[#0A2540]">
+              <label className="text-xs font-semibold text-brand-ink">
                 Avalie os 4 pilares do atendimento (1 a 5 estrelas)
               </label>
-              <span className="font-mono tabular-nums text-xs font-bold text-[#1D6FE0]">
+              <span className="font-mono tabular-nums text-xs font-bold text-brand-link">
                 Média desta avaliação: ★ {previewAverage.toFixed(1)}
               </span>
             </div>
@@ -675,9 +675,9 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
               ].map((crit) => (
                 <div
                   key={crit.label}
-                  className="p-4 rounded-2xl bg-[#F4F2EF]/70 border border-[#0A2540]/10 space-y-2"
+                  className="p-4 rounded-2xl bg-brand-background/70 border border-brand-primary/10 space-y-2"
                 >
-                  <div className="flex items-center justify-between gap-2 text-xs font-semibold text-[#0A2540]">
+                  <div className="flex items-center justify-between gap-2 text-xs font-semibold text-brand-ink">
                     <span>{crit.label}</span>
                     <span className="font-mono shrink-0">{crit.val}/5</span>
                   </div>
@@ -690,8 +690,8 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
                         onClick={() => crit.setter(star)}
                         className={`w-9 h-9 rounded-lg font-mono text-xs font-bold transition-colors cursor-pointer ${
                           star <= crit.val
-                            ? 'bg-[#FF6A00] text-white'
-                            : 'bg-white text-[#0A2540]/50 border border-[#0A2540]/10'
+                            ? 'bg-brand-accent-strong text-white'
+                            : 'bg-white text-brand-ink/50 border border-brand-primary/10'
                         }`}
                       >
                         ★
@@ -705,8 +705,8 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
 
           {/* Recomendaria e Depoimento */}
           <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-[#F4F2EF]/70">
-              <span className="text-xs font-semibold text-[#0A2540]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-brand-background/70">
+              <span className="text-xs font-semibold text-brand-ink">
                 Você recontrataria ou indicaria {provider.name} para um vizinho?
               </span>
               <div className="flex items-center gap-2 shrink-0">
@@ -715,8 +715,8 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
                   onClick={() => setWouldRecommend(true)}
                   className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
                     wouldRecommend
-                      ? 'bg-[#0A2540] text-white'
-                      : 'bg-white text-[#0A2540]'
+                      ? 'bg-brand-primary text-white'
+                      : 'bg-white text-brand-ink'
                   }`}
                 >
                   Sim, recomendo
@@ -726,8 +726,8 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
                   onClick={() => setWouldRecommend(false)}
                   className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
                     !wouldRecommend
-                      ? 'bg-[#0A2540] text-white'
-                      : 'bg-white text-[#0A2540]'
+                      ? 'bg-brand-primary text-white'
+                      : 'bg-white text-brand-ink'
                   }`}
                 >
                   Não
@@ -738,7 +738,7 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
             <div>
               <label
                 htmlFor="rev-comment"
-                className="block text-xs font-semibold text-[#0A2540] mb-1.5"
+                className="block text-xs font-semibold text-brand-ink mb-1.5"
               >
                 Relato sobre o atendimento *
               </label>
@@ -747,14 +747,14 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
                 rows={3}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-[#F4F2EF]/60 border border-[#0A2540]/15 text-sm text-[#0A2540]"
+                className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
               />
             </div>
           </div>
 
           <button
             type="submit"
-            className="min-h-[48px] px-6 py-3 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-sm transition-colors inline-flex items-center gap-2 cursor-pointer"
+            className="min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-sm transition-colors inline-flex items-center gap-2 cursor-pointer"
           >
             <span>Publicar avaliação verificada</span>
             <ArrowRight className="w-4 h-4" />
@@ -763,9 +763,9 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
 
         {/* Right Side: Impacto na Reputação */}
         <aside className="lg:col-span-4 space-y-4">
-          <div className="bg-[#0A2540] text-white rounded-3xl p-6 space-y-4">
-            <p className="text-xs font-semibold text-[#FF6A00]">
-              Integridade de Avaliações
+          <div className="bg-brand-primary text-white rounded-3xl p-6 space-y-4">
+          <p className="text-xs font-semibold text-brand-accent-contrast">
+            Integridade de Avaliações
             </p>
             <h2 className="font-display font-bold text-lg">
               Como sua avaliação protege toda a comunidade

@@ -61,7 +61,7 @@ const DEFAULT_OFFICIAL_PLANS: PlanPricingDisplay[] = [
     slug: 'profissional',
     nome: 'Profissional',
     descricao:
-      'Prioridade média, destaque em buscas locais, portfólio ilimitado, estatísticas de resposta e selo Profissional Confiare.',
+      'Prioridade média, destaque em buscas locais, portfólio ilimitado, estatísticas de resposta e selo Profissional Recontrate.',
     precoMensalCentavos: 5990,
     precoAnualCentavos: 59900,
     limiteOportunidadesMensal: 40,
@@ -72,7 +72,7 @@ const DEFAULT_OFFICIAL_PLANS: PlanPricingDisplay[] = [
     permitePortfolioIlimitado: true,
     limiteFotosPortfolio: null,
     suportePrioritario: false,
-    selo: 'Profissional Confiare',
+    selo: 'Profissional Recontrate',
     exibeAnuncios: false,
     ordemExibicao: 3,
   },
@@ -81,7 +81,7 @@ const DEFAULT_OFFICIAL_PLANS: PlanPricingDisplay[] = [
     slug: 'premium',
     nome: 'Premium',
     descricao:
-      'Prioridade alta, destaque regional e por categoria, relatórios avançados, suporte prioritário e selo Top Confiare.',
+      'Prioridade alta, destaque regional e por categoria, relatórios avançados, suporte prioritário e selo Top Recontrate.',
     precoMensalCentavos: 9990,
     precoAnualCentavos: 99900,
     limiteOportunidadesMensal: 100,
@@ -92,7 +92,7 @@ const DEFAULT_OFFICIAL_PLANS: PlanPricingDisplay[] = [
     permitePortfolioIlimitado: true,
     limiteFotosPortfolio: null,
     suportePrioritario: true,
-    selo: 'Top Confiare',
+    selo: 'Top Recontrate',
     exibeAnuncios: false,
     ordemExibicao: 4,
   },
@@ -141,7 +141,7 @@ const PLAN_BULLETS: Record<string, string[]> = {
     'Destaque em buscas locais',
     'Portfólio ilimitado',
     'Estatísticas de resposta e conversão',
-    'Selo "Profissional Confiare"',
+    'Selo "Profissional Recontrate"',
   ],
   premium: [
     'Até 100 oportunidades por mês',
@@ -149,7 +149,7 @@ const PLAN_BULLETS: Record<string, string[]> = {
     'Destaque regional e por categoria',
     'Relatórios avançados',
     'Suporte prioritário',
-    'Selo "Top Confiare"',
+    'Selo "Top Recontrate"',
   ],
   padrinho: [
     'Até 100 oportunidades por mês',
@@ -178,15 +178,15 @@ export const BillingCycleToggle: React.FC<{
       <div
         role="group"
         aria-label="Ciclo de cobrança"
-        className="inline-flex items-center p-1.5 rounded-2xl bg-[#0A2540]/5 border border-[#0A2540]/10"
+        className="inline-flex items-center p-1.5 rounded-2xl bg-brand-primary/5 border border-brand-primary/10"
       >
         <button
           type="button"
           onClick={() => onChange('mensal')}
           className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-display font-semibold transition-all cursor-pointer ${
             cycle === 'mensal'
-              ? 'bg-[#0A2540] text-white shadow-sm'
-              : 'text-[#0A2540]/75 hover:text-[#0A2540]'
+              ? 'bg-brand-primary text-white shadow-sm'
+              : 'text-brand-ink/75 hover:text-brand-ink'
           }`}
         >
           Mensal
@@ -196,8 +196,8 @@ export const BillingCycleToggle: React.FC<{
           onClick={() => onChange('anual')}
           className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-display font-semibold transition-all cursor-pointer flex items-center gap-2 ${
             cycle === 'anual'
-              ? 'bg-[#FF6A00] text-white shadow-sm'
-              : 'text-[#0A2540]/75 hover:text-[#0A2540]'
+              ? 'bg-brand-accent-strong text-white shadow-sm'
+              : 'text-brand-ink/75 hover:text-brand-ink'
           }`}
         >
           <span>Anual — economize 2 meses</span>
@@ -210,7 +210,7 @@ export const BillingCycleToggle: React.FC<{
           {formatCentavosBRL(19980)} por ano
         </p>
       ) : (
-        <p className="text-xs text-[#0A2540]/70">
+        <p className="text-xs text-brand-ink/70">
           Pagamento mensal flexível — cancele a qualquer momento
         </p>
       )}
@@ -259,21 +259,21 @@ export const PlanCard: React.FC<{
     <div
       className={`rounded-3xl p-6 flex flex-col justify-between gap-5 border transition-all ${
         isProfissional
-          ? 'bg-[#0A2540] text-white border-[#FF6A00] ring-2 ring-[#FF6A00]/30 shadow-lg'
-          : 'bg-white text-[#0A2540] border-[#0A2540]/10'
+          ? 'bg-brand-primary text-white border-brand-accent-strong ring-2 ring-brand-accent-strong/30 shadow-lg'
+          : 'bg-white text-brand-ink border-brand-primary/10'
       }`}
     >
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-2 min-h-[26px]">
           <h2 className="font-display font-bold text-lg">{plan.nome}</h2>
           {isProfissional && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#FF6A00] text-white text-[11px] font-bold">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-accent-strong text-white text-[11px] font-bold">
               <Sparkles className="w-3 h-3" />
               Mais escolhido
             </span>
           )}
           {isPadrinho && (
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#1D6FE0]/10 text-[#1D6FE0] text-[10px] font-bold">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-brand-link/10 text-brand-link text-[10px] font-bold">
               <Award className="w-3 h-3" />
               Opção avançada
             </span>
@@ -300,7 +300,7 @@ export const PlanCard: React.FC<{
                   </span>
                   <span
                     className={`text-xs ${
-                      isProfissional ? 'text-white/75' : 'text-[#0A2540]/70'
+                      isProfissional ? 'text-white/75' : 'text-brand-ink/70'
                     }`}
                   >
                     /mês
@@ -308,21 +308,21 @@ export const PlanCard: React.FC<{
                 </div>
                 <p
                   className={`text-[11px] font-semibold ${
-                    isProfissional ? 'text-[#FF6A00]' : 'text-[#1D6FE0]'
+                    isProfissional ? 'text-brand-accent-contrast' : 'text-brand-link'
                   }`}
                 >
                   Válido nos {launchOffer?.durationCycles || 3} primeiros meses
                 </p>
                 <p
                   className={`text-[11px] line-through ${
-                    isProfissional ? 'text-white/55' : 'text-[#0A2540]/50'
+                    isProfissional ? 'text-white/55' : 'text-brand-ink/50'
                   }`}
                 >
                   Preço normal: {formatCentavosBRL(plan.precoMensalCentavos)}/mês
                 </p>
                 <p
                   className={`text-[11px] ${
-                    isProfissional ? 'text-white/80' : 'text-[#0A2540]/75'
+                    isProfissional ? 'text-white/80' : 'text-brand-ink/75'
                   }`}
                 >
                   A partir do 4º mês:{' '}
@@ -340,7 +340,7 @@ export const PlanCard: React.FC<{
                   </span>
                   <span
                     className={`text-xs ${
-                      isProfissional ? 'text-white/70' : 'text-[#0A2540]/60'
+                      isProfissional ? 'text-white/70' : 'text-brand-ink/60'
                     }`}
                   >
                     /mês
@@ -348,7 +348,7 @@ export const PlanCard: React.FC<{
                 </div>
                 <p
                   className={`text-[11px] ${
-                    isProfissional ? 'text-white/75' : 'text-[#0A2540]/65'
+                    isProfissional ? 'text-white/75' : 'text-brand-ink/65'
                   }`}
                 >
                   {plan.precoMensalCentavos === 0
@@ -367,7 +367,7 @@ export const PlanCard: React.FC<{
                 </span>
                 <span
                   className={`text-xs ${
-                    isProfissional ? 'text-white/70' : 'text-[#0A2540]/60'
+                    isProfissional ? 'text-white/70' : 'text-brand-ink/60'
                   }`}
                 >
                   /ano
@@ -377,7 +377,7 @@ export const PlanCard: React.FC<{
                 <div className="space-y-0.5 text-[11px]">
                   <p
                     className={`font-semibold ${
-                      isProfissional ? 'text-[#FF6A00]' : 'text-[#1D6FE0]'
+                      isProfissional ? 'text-brand-accent-contrast' : 'text-brand-link'
                     }`}
                   >
                     Equivale a {formatCentavosBRL(monthlyEquivalent)}/mês
@@ -393,7 +393,7 @@ export const PlanCard: React.FC<{
               ) : (
                 <p
                   className={`text-[11px] ${
-                    isProfissional ? 'text-white/75' : 'text-[#0A2540]/65'
+                    isProfissional ? 'text-white/75' : 'text-brand-ink/65'
                   }`}
                 >
                   Gratuito para sempre
@@ -408,10 +408,10 @@ export const PlanCard: React.FC<{
             <li key={item} className="flex items-start gap-2">
               <Check
                 className={`w-4 h-4 shrink-0 mt-0.5 ${
-                  isProfissional ? 'text-[#FF6A00]' : 'text-emerald-600'
+                  isProfissional ? 'text-brand-accent-contrast' : 'text-emerald-600'
                 }`}
               />
-              <span className={isProfissional ? 'text-white/90' : 'text-[#0A2540]/85'}>
+              <span className={isProfissional ? 'text-white/90' : 'text-brand-ink/85'}>
                 {item}
               </span>
             </li>
@@ -424,10 +424,10 @@ export const PlanCard: React.FC<{
         onClick={() => onSelectPlan(plan.slug, cycle)}
         className={`w-full min-h-[44px] px-4 py-2.5 rounded-xl font-display font-semibold text-xs transition-colors cursor-pointer ${
           isProfissional
-            ? 'bg-[#FF6A00] hover:bg-[#e65f00] text-white'
+            ? 'bg-brand-accent-strong hover:bg-brand-accent-hover text-white'
             : plan.slug === 'gratuito'
-              ? 'bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540]'
-              : 'bg-[#0A2540] hover:bg-[#13385d] text-white'
+              ? 'bg-brand-background hover:bg-brand-surface-hover text-brand-ink'
+              : 'bg-brand-primary hover:bg-brand-primary-hover text-white'
         }`}
       >
         {ctaLabel}
@@ -508,12 +508,12 @@ export const PlansComparisonTable: React.FC<{
   ];
 
   return (
-    <section className="bg-white rounded-3xl p-6 sm:p-8 border border-[#0A2540]/10 space-y-5">
+    <section className="bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-5">
       <div>
-        <p className="text-xs font-semibold text-[#1D6FE0]">
+        <p className="text-xs font-semibold text-brand-link">
           Transparência Total
         </p>
-        <h2 className="font-display font-bold text-xl sm:text-2xl text-[#0A2540]">
+        <h2 className="font-display font-bold text-xl sm:text-2xl text-brand-ink">
           Comparativo completo de recursos
         </h2>
       </div>
@@ -521,13 +521,13 @@ export const PlansComparisonTable: React.FC<{
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse text-xs">
           <thead>
-            <tr className="border-b border-[#0A2540]/10 text-[#0A2540]">
+            <tr className="border-b border-brand-primary/10 text-brand-ink">
               <th className="py-3 pr-4 font-display font-bold">Recurso</th>
               {plans.map((p) => (
                 <th
                   key={p.slug}
                   className={`py-3 px-3 font-display font-bold whitespace-nowrap ${
-                    p.slug === 'profissional' ? 'text-[#FF6A00]' : ''
+                    p.slug === 'profissional' ? 'text-brand-accent-strong' : ''
                   }`}
                 >
                   {p.nome}
@@ -535,10 +535,10 @@ export const PlansComparisonTable: React.FC<{
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#0A2540]/10">
+          <tbody className="divide-y divide-brand-primary/10">
             {rows.map((row) => (
-              <tr key={row.label} className="hover:bg-[#F4F2EF]/40">
-                <td className="py-3 pr-4 font-semibold text-[#0A2540] whitespace-nowrap">
+              <tr key={row.label} className="hover:bg-brand-background/40">
+                <td className="py-3 pr-4 font-semibold text-brand-ink whitespace-nowrap">
                   {row.label}
                 </td>
                 {plans.map((p) => (
@@ -546,8 +546,8 @@ export const PlansComparisonTable: React.FC<{
                     key={`${row.label}-${p.slug}`}
                     className={`py-3 px-3 whitespace-nowrap ${
                       p.slug === 'profissional'
-                        ? 'font-semibold text-[#0A2540]'
-                        : 'text-[#0A2540]/80'
+                        ? 'font-semibold text-brand-ink'
+                        : 'text-brand-ink/80'
                     }`}
                   >
                     {row.render(p)}
@@ -612,7 +612,13 @@ export const PlansPricingPage: React.FC<{
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
         if (body?.ok && Array.isArray(body.plans) && body.plans.length > 0) {
-          setPlans(body.plans);
+          setPlans(
+            body.plans.map((plan: PlanPricingDisplay) => ({
+              ...plan,
+              descricao: plan.descricao.replace(/Confiare/g, 'Recontrate'),
+              selo: plan.selo?.replace(/Confiare/g, 'Recontrate') ?? null,
+            }))
+          );
         }
       })
       .catch(() => null);
@@ -799,17 +805,17 @@ export const PlansPricingPage: React.FC<{
   return (
     <div className="space-y-10 pb-12">
       {/* Cabeçalho + Toggle Visível Acima da Dobra */}
-      <section className="bg-white rounded-3xl p-6 sm:p-10 border border-[#0A2540]/10 text-center space-y-5">
+      <section className="bg-white rounded-3xl p-6 sm:p-10 border border-brand-primary/10 text-center space-y-5">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
           <ShieldCheck className="w-4 h-4" />
-          <span>A Confiare não cobra comissão sobre o valor do seu serviço.</span>
+          <span>O Recontrate não cobra comissão sobre o valor do seu serviço.</span>
         </div>
 
         <div className="max-w-3xl mx-auto space-y-2">
-          <h1 className="font-display font-bold text-2xl sm:text-4xl text-[#0A2540]">
-            Escolha o plano ideal para crescer com a Confiare
+          <h1 className="font-display font-bold text-2xl sm:text-4xl text-brand-ink">
+            Escolha o plano ideal para crescer com o Recontrate
           </h1>
-          <p className="text-xs sm:text-base text-[#0A2540]/75">
+          <p className="text-xs sm:text-base text-brand-ink/75">
             Receba oportunidades compatíveis, construa reputação e apareça para clientes da sua região.
           </p>
         </div>
@@ -817,8 +823,8 @@ export const PlansPricingPage: React.FC<{
         <BillingCycleToggle cycle={cycle} onChange={setCycle} />
 
         {cycle === 'mensal' && launchOffer?.eligible && (
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6A00]/10 border border-[#FF6A00]/30 text-[#0A2540] text-xs font-bold">
-            <Sparkles className="w-4 h-4 text-[#FF6A00]" />
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-brand-accent-strong/10 border border-brand-accent-strong/30 text-brand-ink text-xs font-bold">
+            <Sparkles className="w-4 h-4 text-brand-accent-strong" />
             <span>
               Oferta de lançamento: 50% off nos 3 primeiros meses para novos prestadores
             </span>
@@ -826,17 +832,17 @@ export const PlansPricingPage: React.FC<{
         )}
 
         {isLoggedProvider && providerContext && (
-          <div className="max-w-4xl mx-auto pt-3 border-t border-[#0A2540]/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-left text-xs">
+          <div className="max-w-4xl mx-auto pt-3 border-t border-brand-primary/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-left text-xs">
             <div className="space-y-0.5">
-              <p className="font-semibold text-[#0A2540]">
+              <p className="font-semibold text-brand-ink">
                 Plano atual:{' '}
-                <span className="text-[#FF6A00]">
+                <span className="text-brand-accent-strong">
                   {subSummary?.plan?.nome || 'Gratuito'}
                 </span>{' '}
                 ({subSummary?.subscription?.status || 'ativa'})
               </p>
               {subSummary?.usage && (
-                <p className="text-[#0A2540]/70">
+                <p className="text-brand-ink/70">
                   Oportunidades neste ciclo: {subSummary.usage.used}/
                   {subSummary.usage.limit} ({subSummary.usage.remaining}{' '}
                   restantes)
@@ -850,14 +856,14 @@ export const PlansPricingPage: React.FC<{
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <label className="font-semibold text-[#0A2540]">Pagamento:</label>
+              <label className="font-semibold text-brand-ink">Pagamento:</label>
               <select
                 value={paymentMethod}
                 onChange={(e) =>
                   setPaymentMethod(e.target.value as 'pix' | 'cartao' | 'boleto')
                 }
                 disabled={actionLoading}
-                className="px-3 py-1.5 rounded-xl border border-[#0A2540]/15 bg-white font-semibold"
+                className="px-3 py-1.5 rounded-xl border border-brand-primary/15 bg-white font-semibold"
               >
                 <option value="pix">PIX</option>
                 <option value="cartao">Cartão de Crédito</option>
@@ -921,44 +927,44 @@ export const PlansPricingPage: React.FC<{
       <PlansComparisonTable plans={plans} />
 
       {/* FAQ */}
-      <section className="bg-white rounded-3xl p-6 sm:p-8 border border-[#0A2540]/10 space-y-5">
-        <h2 className="font-display font-bold text-xl sm:text-2xl text-[#0A2540]">
+      <section className="bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-5">
+        <h2 className="font-display font-bold text-xl sm:text-2xl text-brand-ink">
           Perguntas frequentes sobre planos e cobrança
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-          <div className="p-4 rounded-2xl bg-[#F4F2EF]/60 space-y-1.5">
-            <h3 className="font-bold text-sm text-[#0A2540] flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-[#FF6A00]" />
+          <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
+            <h3 className="font-bold text-sm text-brand-ink flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-brand-accent-strong" />
               Como funciona a cobrança mensal ou anual?
             </h3>
-            <p className="text-[#0A2540]/75 leading-relaxed">
+            <p className="text-brand-ink/75 leading-relaxed">
               No ciclo mensal você paga mês a mês e pode cancelar quando quiser. No ciclo anual você faz um único pagamento anual equivalente a 10 meses (2 meses grátis).
             </p>
           </div>
-          <div className="p-4 rounded-2xl bg-[#F4F2EF]/60 space-y-1.5">
-            <h3 className="font-bold text-sm text-[#0A2540] flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-[#FF6A00]" />
+          <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
+            <h3 className="font-bold text-sm text-brand-ink flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-brand-accent-strong" />
               Se eu cancelar, perco meu acesso na hora?
             </h3>
-            <p className="text-[#0A2540]/75 leading-relaxed">
+            <p className="text-brand-ink/75 leading-relaxed">
               Não. O cancelamento interrompe apenas a próxima renovação e mantém todos os benefícios do seu plano ativos até o fim do período já pago.
             </p>
           </div>
-          <div className="p-4 rounded-2xl bg-[#F4F2EF]/60 space-y-1.5">
-            <h3 className="font-bold text-sm text-[#0A2540] flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-[#FF6A00]" />
+          <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
+            <h3 className="font-bold text-sm text-brand-ink flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-brand-accent-strong" />
               O que acontece ao atingir o limite de oportunidades do mês?
             </h3>
-            <p className="text-[#0A2540]/75 leading-relaxed">
+            <p className="text-brand-ink/75 leading-relaxed">
               Seu perfil nunca é excluído. Você continua visível para recontratações e o contador reinicia automaticamente no próximo ciclo — ou você pode fazer upgrade imediato.
             </p>
           </div>
-          <div className="p-4 rounded-2xl bg-[#F4F2EF]/60 space-y-1.5">
-            <h3 className="font-bold text-sm text-[#0A2540] flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-[#FF6A00]" />
+          <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
+            <h3 className="font-bold text-sm text-brand-ink flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-brand-accent-strong" />
               Onde os anúncios são exibidos?
             </h3>
-            <p className="text-[#0A2540]/75 leading-relaxed">
+            <p className="text-brand-ink/75 leading-relaxed">
               Apenas no painel interno de prestadores do plano Gratuito, de forma moderada. Clientes nunca veem anúncios e planos pagos são 100% livres de publicidade.
             </p>
           </div>

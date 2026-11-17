@@ -1,6 +1,6 @@
 {
-  "name": "Confiare — Rede de Profissionais de Confiança",
-  "description": "Marketplace de serviços locais baseado em confiança, recompra do mesmo profissional e indicação rastreável de substitutos.",
+  "name": "Recontrate — Profissionais para contar de novo",
+  "description": "Plataforma para encontrar profissionais de serviços locais, conversar diretamente e manter o histórico de quem já atendeu bem.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
