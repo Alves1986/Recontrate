@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ensureSchemaAndSeed, neonEnv, pool } from '../db/index';
 import { withRlsContext } from '../db/rls';
 import { assetsFiles } from '../server/neonServices';
@@ -51,8 +52,64 @@ export interface DatabaseBackupSnapshotResult {
   backupId: string;
   objectKey: string;
   sizeBytes: number;
+  sha256: string;
   tablesBackedUp: Record<string, number>;
   createdAt: string;
+}
+
+export async function collectFullDatabaseSnapshotPayload(
+  backupId: string,
+  createdAt: string
+): Promise<{
+  tablesBackedUp: Record<string, number>;
+  payloadJson: string;
+  sha256: string;
+}> {
+  const { rows: tableRows } = await pool.query<{ table_name: string }>(
+    `SELECT table_name
+     FROM information_schema.tables
+     WHERE table_schema = 'public'
+       AND table_type = 'BASE TABLE'
+     ORDER BY table_name ASC`
+  );
+
+  const tablesBackedUp: Record<string, number> = {};
+  const data: Record<string, unknown[]> = {};
+
+  for (const row of tableRows) {
+    const tbl = row.table_name;
+    const { rows } = await pool.query(`SELECT * FROM public."${tbl}"`);
+    tablesBackedUp[tbl] = rows.length;
+    data[tbl] = rows;
+  }
+
+  // Metadados seguros de neon_auth (sem hashes/tokens de sessão)
+  let neonAuthUsers: unknown[] = [];
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, email, name, role, "emailVerified", "createdAt" FROM neon_auth."user" ORDER BY "createdAt" ASC`
+    );
+    neonAuthUsers = rows;
+  } catch {
+    neonAuthUsers = [];
+  }
+
+  const payloadJson = JSON.stringify(
+    {
+      backupId,
+      generatedAt: createdAt,
+      branch: neonEnv.branch?.name || 'production',
+      environment: process.env.NODE_ENV || 'development',
+      tablesBackedUp,
+      neonAuthUsersCount: neonAuthUsers.length,
+      data,
+      neonAuthUsers,
+    },
+    null,
+    2
+  );
+  const sha256 = createHash('sha256').update(payloadJson, 'utf-8').digest('hex');
+  return { tablesBackedUp, payloadJson, sha256 };
 }
 
 /**
@@ -162,42 +219,6 @@ export class MonitoringAndBackupService {
   ): Promise<DatabaseBackupSnapshotResult> {
     await ensureSchemaAndSeed();
 
-    const [
-      plansRes,
-      categoriesRes,
-      providersRes,
-      subscriptionsRes,
-      invoicesRes,
-      auditLogsRes,
-    ] = await Promise.all([
-      pool.query(`SELECT * FROM plans ORDER BY ordem_exibicao ASC`),
-      pool.query(`SELECT * FROM categories ORDER BY name ASC`),
-      pool.query(
-        `SELECT id, slug, name, category, city, plan_slug, rating_avg,
-                reviews_count, completed_jobs, verification_status, is_verified, created_at
-         FROM provider_profiles
-         WHERE deleted_at IS NULL
-         ORDER BY created_at DESC`
-      ),
-      pool.query(`SELECT * FROM subscriptions ORDER BY criado_em DESC`),
-      pool.query(`SELECT * FROM invoices ORDER BY criado_em DESC`),
-      pool.query(
-        `SELECT id, actor_user_id, actor_role, action, target_type, target_id, created_at
-         FROM audit_logs
-         ORDER BY created_at DESC
-         LIMIT 250`
-      ),
-    ]);
-
-    const tablesBackedUp = {
-      plans: plansRes.rows.length,
-      categories: categoriesRes.rows.length,
-      provider_profiles: providersRes.rows.length,
-      subscriptions: subscriptionsRes.rows.length,
-      invoices: invoicesRes.rows.length,
-      audit_logs: auditLogsRes.rows.length,
-    };
-
     const createdAt = new Date().toISOString();
     const timestampMs = Date.now();
     const backupId = `backup-${timestampMs}-${Math.random()
@@ -205,27 +226,10 @@ export class MonitoringAndBackupService {
       .slice(2, 6)}`;
     const objectKey = `backups/confiare-backup-${timestampMs}.json`;
 
-    const snapshotPayload = JSON.stringify(
-      {
-        backupId,
-        generatedAt: createdAt,
-        branch: neonEnv.branch?.name || 'production',
-        environment: process.env.NODE_ENV || 'development',
-        tablesBackedUp,
-        data: {
-          plans: plansRes.rows,
-          categories: categoriesRes.rows,
-          provider_profiles: providersRes.rows,
-          subscriptions: subscriptionsRes.rows,
-          invoices: invoicesRes.rows,
-          audit_logs: auditLogsRes.rows,
-        },
-      },
-      null,
-      2
-    );
+    const { tablesBackedUp, payloadJson, sha256 } =
+      await collectFullDatabaseSnapshotPayload(backupId, createdAt);
 
-    const bytes = Buffer.from(snapshotPayload, 'utf-8');
+    const bytes = Buffer.from(payloadJson, 'utf-8');
     await assetsFiles.upload(objectKey, bytes, {
       contentType: 'application/json',
     });
@@ -260,6 +264,7 @@ export class MonitoringAndBackupService {
             JSON.stringify({
               objectKey,
               sizeBytes: bytes.byteLength,
+              sha256,
               tablesBackedUp,
             }),
           ]
@@ -271,6 +276,7 @@ export class MonitoringAndBackupService {
       backupId,
       objectKey,
       sizeBytes: bytes.byteLength,
+      sha256,
       tablesBackedUp,
       createdAt,
     };

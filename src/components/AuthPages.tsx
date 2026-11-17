@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { authClient } from '../lib/neonClient';
 import type { AuthenticatedUserSession } from '../services/authService';
+import { INITIAL_TAXONOMY_CATEGORIES } from '../data/taxonomySeed';
 import { ProviderSpecialtiesManager } from './ProviderSpecialtiesManager';
 
 export const LoginPage: React.FC<{
@@ -190,7 +191,7 @@ export const SignupPage: React.FC<{
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
   const [neighborhood, setNeighborhood] = useState('Pinheiros');
-  const [category, setCategory] = useState('Eletricista');
+  const [category, setCategory] = useState('Elétrica');
   const [lgpdConsent, setLgpdConsent] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -424,13 +425,11 @@ export const SignupPage: React.FC<{
               onChange={(e) => setCategory(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl border border-[#0A2540]/15 text-sm bg-white"
             >
-              <option value="Eletricista">Eletricista</option>
-              <option value="Encanador">Encanador</option>
-              <option value="Diarista">Diarista</option>
-              <option value="Pintor">Pintor</option>
-              <option value="Técnico de ar-condicionado">
-                Técnico de ar-condicionado
-              </option>
+              {INITIAL_TAXONOMY_CATEGORIES.map((cat) => (
+                <option key={cat.slug} value={cat.nome}>
+                  {cat.nome}
+                </option>
+              ))}
             </select>
           </div>
         </div>

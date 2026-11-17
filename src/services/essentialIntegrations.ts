@@ -1,4 +1,5 @@
 import { pool } from '../db/index';
+import { isDemoModeEnabled } from '../config/environment';
 
 export interface GeoCoordinates {
   latitude: number;
@@ -159,6 +160,15 @@ export class TransactionalEmailService {
     const messageId = `email-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2, 7)}`;
+
+    if (isDemoModeEnabled()) {
+      return {
+        delivered: false,
+        provider: 'demo-mode-suppressed',
+        messageId,
+      };
+    }
+
     const resendApiKey = process.env.RESEND_API_KEY;
     let provider = 'confiare-transactional-outbox';
 
@@ -228,6 +238,15 @@ export class WhatsAppBusinessService {
     const messageId = `waba-${Date.now()}-${Math.random()
       .toString(36)
       .slice(2, 7)}`;
+
+    if (isDemoModeEnabled()) {
+      return {
+        sent: false,
+        channel: 'demo-mode-suppressed',
+        messageId,
+      };
+    }
+
     const token = process.env.WHATSAPP_BUSINESS_TOKEN;
     const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
     let channel = 'whatsapp-business-outbox';

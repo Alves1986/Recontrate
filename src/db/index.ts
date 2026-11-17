@@ -11,6 +11,10 @@ import {
   INITIAL_TAXONOMY_CATEGORIES,
   slugifyTaxonomyTerm,
 } from '../data/taxonomySeed';
+import {
+  isDemoModeEnabled,
+  isProductionEnvironment,
+} from '../config/environment';
 
 if (existsSync('.env.local')) {
   dotenv.config({ path: '.env.local' });
@@ -153,6 +157,96 @@ export const INITIAL_PLANS_SEED = [
 ];
 
 let schemaInitialized = false;
+
+export async function seedInitialTaxonomy(
+  targetPool: Pool = pool
+): Promise<{ categoriesCount: number; specialtiesCount: number }> {
+  let categoriesCount = 0;
+  let specialtiesCount = 0;
+
+  for (const cat of INITIAL_TAXONOMY_CATEGORIES) {
+    if (cat.legacySlug) {
+      await targetPool.query(
+        `UPDATE categories
+         SET slug = $1,
+             name = $2,
+             nome = $2,
+             short_desc = $3,
+             descricao = $3,
+             icone = $4,
+             ordem_exibicao = $5,
+             ativo = true,
+             active = true,
+             atualizado_em = NOW()
+         WHERE slug = $6
+           AND NOT EXISTS (SELECT 1 FROM categories WHERE slug = $1)`,
+        [
+          cat.slug,
+          cat.nome,
+          cat.descricao,
+          cat.icone,
+          cat.ordemExibicao,
+          cat.legacySlug,
+        ]
+      );
+    }
+
+    const { rows: catRows } = await targetPool.query<{ id: string }>(
+      `INSERT INTO categories (
+        slug, name, nome, short_desc, descricao, icone,
+        avg_response_min, verified_count, active, ativo, ordem_exibicao
+      ) VALUES ($1,$2,$2,$3,$3,$4,$5,$6,true,true,$7)
+      ON CONFLICT (slug) DO UPDATE SET
+        name = EXCLUDED.name,
+        nome = EXCLUDED.nome,
+        short_desc = EXCLUDED.short_desc,
+        descricao = EXCLUDED.descricao,
+        icone = EXCLUDED.icone,
+        ordem_exibicao = EXCLUDED.ordem_exibicao,
+        active = true,
+        ativo = true,
+        atualizado_em = NOW()
+      RETURNING id`,
+      [
+        cat.slug,
+        cat.nome,
+        cat.descricao,
+        cat.icone,
+        cat.avgResponseMin,
+        cat.verifiedCount,
+        cat.ordemExibicao,
+      ]
+    );
+    const categoryId = catRows[0].id;
+    categoriesCount += 1;
+
+    for (const spec of cat.specialties) {
+      const specSlug = slugifyTaxonomyTerm(spec.nome);
+      await targetPool.query(
+        `INSERT INTO specialties (
+          category_id, nome, slug, descricao, sinonimos, ativo, oficial, criado_por
+        ) VALUES ($1, $2, $3, $4, $5, true, true, 'sistema')
+        ON CONFLICT (slug) DO UPDATE SET
+          category_id = EXCLUDED.category_id,
+          nome = EXCLUDED.nome,
+          sinonimos = EXCLUDED.sinonimos,
+          ativo = true,
+          oficial = true,
+          atualizado_em = NOW()`,
+        [
+          categoryId,
+          spec.nome,
+          specSlug,
+          spec.descricao || '',
+          spec.sinonimos || [],
+        ]
+      );
+      specialtiesCount += 1;
+    }
+  }
+
+  return { categoriesCount, specialtiesCount };
+}
 
 /**
  * Uses the direct (unpooled) connection string to apply schema migrations and seed data,
@@ -414,88 +508,46 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       }
     }
 
-    const { rows: specCountRows } = await directPool.query<{ total: string }>(
-      `SELECT COUNT(*)::text AS total FROM specialties`
+    const migration6Path = path.resolve(
+      process.cwd(),
+      'migrations/006_platform_settings_and_roles.sql'
     );
-    if (Number(specCountRows[0]?.total || 0) < 80) {
-      for (const cat of INITIAL_TAXONOMY_CATEGORIES) {
-        if (cat.legacySlug) {
-          await directPool.query(
-            `UPDATE categories
-             SET slug = $1,
-                 name = $2,
-                 nome = $2,
-                 short_desc = $3,
-                 descricao = $3,
-                 icone = $4,
-                 ordem_exibicao = $5,
-                 ativo = true,
-                 active = true,
-                 atualizado_em = NOW()
-             WHERE slug = $6
-               AND NOT EXISTS (SELECT 1 FROM categories WHERE slug = $1)`,
-            [
-              cat.slug,
-              cat.nome,
-              cat.descricao,
-              cat.icone,
-              cat.ordemExibicao,
-              cat.legacySlug,
-            ]
-          );
-        }
+    if (existsSync(migration6Path)) {
+      const migration6Sql = readFileSync(migration6Path, 'utf-8');
+      await directPool.query(migration6Sql);
+    }
 
-        const { rows: catRows } = await directPool.query<{ id: string }>(
-          `INSERT INTO categories (
-            slug, name, nome, short_desc, descricao, icone,
-            avg_response_min, verified_count, active, ativo, ordem_exibicao
-          ) VALUES ($1,$2,$2,$3,$3,$4,$5,$6,true,true,$7)
-          ON CONFLICT (slug) DO UPDATE SET
-            name = EXCLUDED.name,
-            nome = EXCLUDED.nome,
-            short_desc = EXCLUDED.short_desc,
-            descricao = EXCLUDED.descricao,
-            icone = EXCLUDED.icone,
-            ordem_exibicao = EXCLUDED.ordem_exibicao,
-            active = true,
-            ativo = true,
-            atualizado_em = NOW()
-          RETURNING id`,
-          [
-            cat.slug,
-            cat.nome,
-            cat.descricao,
-            cat.icone,
-            cat.avgResponseMin,
-            cat.verifiedCount,
-            cat.ordemExibicao,
-          ]
-        );
-        const categoryId = catRows[0].id;
-
-        for (const spec of cat.specialties) {
-          const specSlug = slugifyTaxonomyTerm(spec.nome);
-          await directPool.query(
-            `INSERT INTO specialties (
-              category_id, nome, slug, descricao, sinonimos, ativo, oficial, criado_por
-            ) VALUES ($1, $2, $3, $4, $5, true, true, 'sistema')
-            ON CONFLICT (slug) DO UPDATE SET
-              category_id = EXCLUDED.category_id,
-              nome = EXCLUDED.nome,
-              sinonimos = EXCLUDED.sinonimos,
-              ativo = true,
-              oficial = true,
-              atualizado_em = NOW()`,
-            [
-              categoryId,
-              spec.nome,
-              specSlug,
-              spec.descricao || '',
-              spec.sinonimos || [],
-            ]
-          );
-        }
+    // Seed de Referência: platform_settings e roles (idempotente em todos os ambientes)
+    const refSqlFiles = [
+      'database/seeds/reference/04-platform-settings.sql',
+      'database/seeds/reference/05-roles.sql',
+    ];
+    for (const relPath of refSqlFiles) {
+      const fullPath = path.resolve(process.cwd(), relPath);
+      if (existsSync(fullPath)) {
+        await directPool.query(readFileSync(fullPath, 'utf-8'));
       }
+    }
+
+    const expectedCategorySlugs = INITIAL_TAXONOMY_CATEGORIES.map((c) => c.slug);
+    const expectedSpecialtySlugs = INITIAL_TAXONOMY_CATEGORIES.flatMap((c) =>
+      c.specialties.map((s) => slugifyTaxonomyTerm(s.nome))
+    );
+    const [{ rows: catMatchRows }, { rows: specMatchRows }] = await Promise.all([
+      directPool.query<{ total: string }>(
+        `SELECT COUNT(*)::text AS total FROM categories WHERE slug = ANY($1::text[]) AND ativo = true AND active = true`,
+        [expectedCategorySlugs]
+      ),
+      directPool.query<{ total: string }>(
+        `SELECT COUNT(*)::text AS total FROM specialties WHERE slug = ANY($1::text[]) AND ativo = true AND oficial = true`,
+        [expectedSpecialtySlugs]
+      ),
+    ]);
+    if (
+      Number(catMatchRows[0]?.total || 0) < expectedCategorySlugs.length ||
+      Number(specMatchRows[0]?.total || 0) < expectedSpecialtySlugs.length
+    ) {
+      await seedInitialTaxonomy(directPool);
     }
 
     for (const p of INITIAL_PLANS_SEED) {
@@ -572,7 +624,7 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       ON CONFLICT (slug) DO NOTHING`
     );
 
-    if (process.env.NODE_ENV !== 'production') {
+    if (!isProductionEnvironment() && isDemoModeEnabled()) {
       const devProviders = [
         [
           'prov-joao',

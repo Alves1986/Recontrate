@@ -1,0 +1,22 @@
+{
+  "name": "Confiare — Rede de Profissionais de Confiança",
+  "short_name": "Confiare",
+  "description": "Acesse sua conta Confiare para contratar profissionais de confiança ou gerenciar seus atendimentos.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "/entrar",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#0A2540",
+  "background_color": "#F4F2EF",
+  "categories": ["business", "lifestyle", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

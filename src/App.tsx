@@ -43,6 +43,7 @@ import {
   TermsAndPrivacyPage,
 } from './components/PublicPages';
 import { PlansPricingPage } from './components/PlansPricingPage';
+import { DemoShowcasePage } from './components/DemoShowcasePage';
 import {
   ForgotAndResetPasswordPage,
   LoginPage,
@@ -54,6 +55,10 @@ import type {
   AuthenticatedUserSession,
   UserRole,
 } from './services/authService';
+import {
+  detectStandaloneDisplayMode,
+  shouldRenderMobileLoginOnly,
+} from './utils/pwaMobileMode';
 
 export function isProtectedRoutePath(pathname: string): boolean {
   return (
@@ -112,11 +117,19 @@ export default function App() {
     null
   );
   const [authToken, setAuthToken] = useState<string>('');
+  const [demoMode, setDemoMode] = useState<boolean>(false);
+  const [viewportWidth, setViewportWidth] = useState<number>(() =>
+    typeof window !== 'undefined' ? window.innerWidth : 1024
+  );
+  const [isStandalonePwa, setIsStandalonePwa] = useState<boolean>(() =>
+    detectStandaloneDisplayMode()
+  );
+  const [installPromptEvent, setInstallPromptEvent] = useState<
+    (Event & { prompt: () => Promise<void> }) | null
+  >(null);
 
-  const [providers, setProviders] =
-    useState<ProviderProfile[]>(INITIAL_PROVIDERS);
-  const [selectedProviderId, setSelectedProviderId] =
-    useState<string>('prov-joao');
+  const [providers, setProviders] = useState<ProviderProfile[]>([]);
+  const [selectedProviderId, setSelectedProviderId] = useState<string>('');
 
   // Filter & Search state
   const [activeCategory, setActiveCategory] = useState<CategoryName | 'Todas'>(
@@ -126,17 +139,13 @@ export default function App() {
   const [locationQuery, setLocationQuery] = useState<string>('Pinheiros');
 
   // Service requests & Repeat requests state
-  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>(
-    INITIAL_SERVICE_REQUESTS
-  );
+  const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [repeatRequests, setRepeatRequests] = useState<RepeatServiceRequest[]>(
     []
   );
   const [substituteReferral, setSubstituteReferral] =
     useState<SubstituteReferral>(INITIAL_SUBSTITUTE_REFERRAL);
-  const [opportunities, setOpportunities] = useState<ProviderOpportunity[]>(
-    INITIAL_PROVIDER_OPPORTUNITIES
-  );
+  const [opportunities, setOpportunities] = useState<ProviderOpportunity[]>([]);
 
   const [clientProfile] = useState<ClientRegistration>({
     name: 'Mariana Souza',
@@ -177,6 +186,114 @@ export default function App() {
       })
       .catch(() => null);
   }, []);
+
+  // Load runtime DEMO_MODE config and load demo fixtures ONLY when DEMO_MODE=true
+  useEffect(() => {
+    let active = true;
+    fetch('/api/public/runtime-config')
+      .then((r) => (r.ok ? r.json() : null))
+      .then(async (cfg) => {
+        if (!active) return;
+        const isDemo = Boolean(cfg?.demoMode);
+        setDemoMode(isDemo);
+        if (isDemo) {
+          setProviders(INITIAL_PROVIDERS);
+          setSelectedProviderId(INITIAL_PROVIDERS[0]?.id || '');
+          setServiceRequests(INITIAL_SERVICE_REQUESTS);
+          setOpportunities(INITIAL_PROVIDER_OPPORTUNITIES);
+          return;
+        }
+        const provRes = await fetch('/api/public/providers')
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+        if (!active || !provRes?.ok || !Array.isArray(provRes.providers)) return;
+        const realProviders: ProviderProfile[] = provRes.providers.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          initials: String(p.name || 'PR')
+            .split(' ')
+            .slice(0, 2)
+            .map((w: string) => w[0]?.toUpperCase() || '')
+            .join(''),
+          category: p.category,
+          specialties: [],
+          neighborhoods: p.neighborhoods || ['Pinheiros'],
+          city: p.city || 'São Paulo, SP',
+          yearsExperience: Number(p.years_experience || 5),
+          bio: p.bio || '',
+          isVerified: Boolean(p.is_verified),
+          isTopRegion: Boolean(p.is_top_region),
+          isMentor: Boolean(p.is_mentor),
+          menteesCount: 0,
+          plan:
+            p.plan_slug === 'padrinho'
+              ? 'Padrinho'
+              : p.plan_slug === 'premium'
+                ? 'Premium'
+                : p.plan_slug === 'profissional'
+                  ? 'Profissional'
+                  : p.plan_slug === 'essencial'
+                    ? 'Essencial'
+                    : 'Gratuito',
+          ratingAvg: Number(p.rating_avg || 5),
+          reviewsCount: Number(p.reviews_count || 0),
+          completedJobs: Number(p.completed_jobs || 0),
+          responseTimeMinutes: Number(p.response_time_minutes || 15),
+          responseRatePercent: Number(p.response_rate_percent || 100),
+          attendanceRatePercent: Number(p.attendance_rate_percent || 100),
+          profileCompletenessPercent: 90,
+          availableToday: Boolean(p.available_today),
+          whatsapp: '',
+          trustedSubstitutesIds: [],
+          portfolio: [],
+          reviews: [],
+        }));
+        setProviders(realProviders);
+        if (realProviders[0]?.id) {
+          setSelectedProviderId(realProviders[0].id);
+        }
+      })
+      .catch(() => null);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // Track mobile viewport / PWA standalone mode & install prompt
+  useEffect(() => {
+    const syncViewport = () => {
+      setViewportWidth(window.innerWidth);
+      setIsStandalonePwa(detectStandaloneDisplayMode());
+    };
+    const onBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setInstallPromptEvent(event as Event & { prompt: () => Promise<void> });
+    };
+    window.addEventListener('resize', syncViewport);
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+    return () => {
+      window.removeEventListener('resize', syncViewport);
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+    };
+  }, []);
+
+  const showMobileLoginHome = shouldRenderMobileLoginOnly({
+    pathname,
+    width: viewportWidth,
+    isStandalone: isStandalonePwa,
+    isAuthenticated: Boolean(authUser),
+  });
+
+  // Redirect already authenticated mobile/PWA users away from "/" to their workspace
+  useEffect(() => {
+    if (
+      authUser &&
+      (isStandalonePwa || viewportWidth < 768) &&
+      pathname === '/'
+    ) {
+      navigateUrl(authUser.redirectTo || '/app');
+    }
+  }, [authUser, isStandalonePwa, viewportWidth, pathname, navigateUrl]);
 
   // Client-side route protection guard
   useEffect(() => {
@@ -307,135 +424,201 @@ export default function App() {
       (p) => p.id === (slugFromProfileRoute || selectedProviderId)
     ) || providers[0];
 
+  const isDemoRoute = pathname === '/demo';
+  const showDemoBanner = demoMode || isDemoRoute;
+
   return (
     <div className="min-h-screen flex flex-col bg-[#F4F2EF] text-[#0A2540] overflow-x-hidden">
+      {showDemoBanner && (
+        <div
+          role="status"
+          className="bg-amber-500 text-[#0A2540] text-xs font-display font-bold px-4 py-1.5 text-center tracking-wide border-b border-amber-600/30"
+        >
+          Ambiente de demonstração · Dados fictícios · Sem cobrança, e-mail ou WhatsApp reais
+        </div>
+      )}
       {/* HEADER PÚBLICO / AUTENTICADO */}
-      <header className="bg-white border-b border-[#0A2540]/10">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-4">
-          <button
-            type="button"
-            onClick={() => navigateUrl('/')}
-            className="text-left focus:outline-none cursor-pointer shrink-0"
-            aria-label="Confiare Início"
-          >
-            <ConfiareLogo variant="dark-text" size="sm" />
-          </button>
-
-          <nav
-            aria-label="Navegação Principal"
-            className="hidden md:flex items-center gap-6 text-sm font-medium text-[#0A2540]/80"
-          >
-            <button
-              type="button"
-              onClick={() => navigateUrl('/como-funciona')}
-              className={`hover:text-[#0A2540] cursor-pointer ${
-                pathname === '/como-funciona'
-                  ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
-                  : ''
-              }`}
-            >
-              Como funciona
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateUrl('/para-prestadores')}
-              className={`hover:text-[#0A2540] cursor-pointer ${
-                pathname === '/para-prestadores'
-                  ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
-                  : ''
-              }`}
-            >
-              Para prestadores
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateUrl('/encontrar-profissional')}
-              className={`hover:text-[#0A2540] cursor-pointer ${
-                pathname === '/encontrar-profissional'
-                  ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
-                  : ''
-              }`}
-            >
-              Encontrar profissional
-            </button>
-            <button
-              type="button"
-              onClick={() => navigateUrl('/planos')}
-              className={`hover:text-[#0A2540] cursor-pointer ${
-                pathname === '/planos'
-                  ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
-                  : ''
-              }`}
-            >
-              Planos
-            </button>
-          </nav>
-
-          {/* Ações de Autenticação / Sessão */}
-          <div className="flex items-center gap-2.5 shrink-0">
-            {!authUser ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => navigateUrl('/entrar')}
-                  className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-display font-semibold text-xs sm:text-sm cursor-pointer"
-                >
-                  Entrar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigateUrl('/criar-conta')}
-                  className="min-h-[40px] px-4 py-2 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-xs sm:text-sm cursor-pointer"
-                >
-                  Criar conta
-                </button>
-              </>
-            ) : (
-              <div className="flex items-center gap-2 text-xs">
-                <button
-                  type="button"
-                  onClick={() => navigateUrl(authUser.redirectTo)}
-                  className="px-3 py-2 rounded-xl bg-[#0A2540] text-white font-semibold cursor-pointer"
-                >
-                  Painel ({authUser.activeRole})
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleSwitchRole(
-                      authUser.activeRole === 'cliente'
-                        ? 'prestador'
-                        : 'cliente'
-                    )
+      {showMobileLoginHome ? (
+        <header className="bg-white/95 backdrop-blur border-b border-[#0A2540]/10">
+          <div className="max-w-md mx-auto flex items-center justify-between gap-3 px-4 py-3.5">
+            <div className="flex items-center gap-2.5">
+              <ConfiareLogo variant="dark-text" size="sm" />
+            </div>
+            {installPromptEvent ? (
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await installPromptEvent.prompt();
+                    setInstallPromptEvent(null);
+                  } catch {
+                    // ignore cancelled prompt
                   }
-                  className="px-3 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold cursor-pointer"
-                >
-                  Alternar para{' '}
-                  {authUser.activeRole === 'cliente' ? 'Prestador' : 'Cliente'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="px-3 py-2 rounded-xl border border-[#0A2540]/15 text-[#0A2540] hover:bg-red-50 cursor-pointer"
-                >
-                  Sair
-                </button>
-              </div>
+                }}
+                className="px-3 py-1.5 rounded-xl bg-[#FF6A00] text-white font-display font-semibold text-xs cursor-pointer"
+              >
+                Instalar App
+              </button>
+            ) : (
+              <span className="text-[11px] font-mono uppercase tracking-wider text-[#0A2540]/55">
+                App Mobile
+              </span>
             )}
           </div>
-        </div>
-      </header>
+        </header>
+      ) : (
+        <header className="bg-white border-b border-[#0A2540]/10">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 py-4">
+            <button
+              type="button"
+              onClick={() => navigateUrl('/')}
+              className="text-left focus:outline-none cursor-pointer shrink-0"
+              aria-label="Confiare Início"
+            >
+              <ConfiareLogo variant="dark-text" size="sm" />
+            </button>
+
+            <nav
+              aria-label="Navegação Principal"
+              className="hidden md:flex items-center gap-6 text-sm font-medium text-[#0A2540]/80"
+            >
+              <button
+                type="button"
+                onClick={() => navigateUrl('/como-funciona')}
+                className={`hover:text-[#0A2540] cursor-pointer ${
+                  pathname === '/como-funciona'
+                    ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
+                    : ''
+                }`}
+              >
+                Como funciona
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateUrl('/para-prestadores')}
+                className={`hover:text-[#0A2540] cursor-pointer ${
+                  pathname === '/para-prestadores'
+                    ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
+                    : ''
+                }`}
+              >
+                Para prestadores
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateUrl('/encontrar-profissional')}
+                className={`hover:text-[#0A2540] cursor-pointer ${
+                  pathname === '/encontrar-profissional'
+                    ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
+                    : ''
+                }`}
+              >
+                Encontrar profissional
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateUrl('/planos')}
+                className={`hover:text-[#0A2540] cursor-pointer ${
+                  pathname === '/planos'
+                    ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
+                    : ''
+                }`}
+              >
+                Planos
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateUrl('/demo')}
+                className={`hover:text-[#0A2540] cursor-pointer ${
+                  pathname === '/demo'
+                    ? 'text-[#0A2540] font-semibold underline underline-offset-8 decoration-2 decoration-[#FF6A00]'
+                    : ''
+                }`}
+              >
+                Demonstração
+              </button>
+            </nav>
+
+            {/* Ações de Autenticação / Sessão */}
+            <div className="flex items-center gap-2.5 shrink-0">
+              {!authUser ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => navigateUrl('/entrar')}
+                    className="min-h-[40px] px-3.5 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-display font-semibold text-xs sm:text-sm cursor-pointer"
+                  >
+                    Entrar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateUrl('/criar-conta')}
+                    className="min-h-[40px] px-4 py-2 rounded-xl bg-[#FF6A00] hover:bg-[#e65f00] text-white font-display font-semibold text-xs sm:text-sm cursor-pointer"
+                  >
+                    Criar conta
+                  </button>
+                </>
+              ) : (
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => navigateUrl(authUser.redirectTo)}
+                    className="px-3 py-2 rounded-xl bg-[#0A2540] text-white font-semibold cursor-pointer"
+                  >
+                    Painel ({authUser.activeRole})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleSwitchRole(
+                        authUser.activeRole === 'cliente'
+                          ? 'prestador'
+                          : 'cliente'
+                      )
+                    }
+                    className="px-3 py-2 rounded-xl bg-[#F4F2EF] hover:bg-[#e5e2dc] text-[#0A2540] font-semibold cursor-pointer"
+                  >
+                    Alternar para{' '}
+                    {authUser.activeRole === 'cliente' ? 'Prestador' : 'Cliente'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="px-3 py-2 rounded-xl border border-[#0A2540]/15 text-[#0A2540] hover:bg-red-50 cursor-pointer"
+                  >
+                    Sair
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+      )}
 
       {/* MAIN ROUTER VIEWPORT */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
         {/* ÁREA PÚBLICA */}
-        {pathname === '/' && (
-          <PublicLandingPage
-            providers={providers}
-            onStartSearch={handleStartSearchFromHome}
-            onSelectCategory={handleSelectCategoryFromHome}
-            onNavigateUrl={navigateUrl}
-          />
+        {pathname === '/' &&
+          (showMobileLoginHome ? (
+            <LoginPage
+              onAuthenticated={(user, token, redirectTo) => {
+                setAuthUser(user);
+                setAuthToken(token);
+                navigateUrl(redirectTo);
+              }}
+              onNavigateUrl={navigateUrl}
+            />
+          ) : (
+            <PublicLandingPage
+              providers={providers}
+              onStartSearch={handleStartSearchFromHome}
+              onSelectCategory={handleSelectCategoryFromHome}
+              onNavigateUrl={navigateUrl}
+            />
+          ))}
+
+        {pathname === '/demo' && (
+          <DemoShowcasePage onNavigateUrl={navigateUrl} />
         )}
 
         {pathname === '/para-prestadores' && (
@@ -489,14 +672,24 @@ export default function App() {
           />
         )}
 
-        {pathname.startsWith('/profissionais/') && (
-          <ProviderProfileScreen
-            provider={activeProvider}
-            allProviders={providers}
-            onSelectProvider={(id) => navigateUrl(`/profissionais/${id}`)}
-            onNavigate={handleLegacyScreenNavigate}
-          />
-        )}
+        {pathname.startsWith('/profissionais/') &&
+          (activeProvider ? (
+            <ProviderProfileScreen
+              provider={activeProvider}
+              allProviders={providers}
+              onSelectProvider={(id) => navigateUrl(`/profissionais/${id}`)}
+              onNavigate={handleLegacyScreenNavigate}
+            />
+          ) : (
+            <div className="max-w-xl mx-auto bg-white rounded-3xl p-8 border border-[#0A2540]/10 text-center space-y-3 my-8">
+              <h2 className="font-display font-bold text-xl text-[#0A2540]">
+                Nenhum prestador público cadastrado ainda
+              </h2>
+              <p className="text-xs text-[#0A2540]/70">
+                Os perfis profissionais aparecerão aqui assim que forem aprovados em produção.
+              </p>
+            </div>
+          ))}
 
         {pathname === '/entrar' && (
           <LoginPage
@@ -663,37 +856,48 @@ export default function App() {
           />
         )}
 
-        {authUser && pathname.startsWith('/app/prestador') && (
-          <ProviderDashboardScreen
-            activeProvider={activeProvider}
-            opportunities={opportunities}
-            onAddRealtimeOpportunity={(newOpp) =>
-              setOpportunities((prev) => [newOpp, ...prev])
-            }
-            onUpdateOpportunityStatus={(oppId, status) =>
-              setOpportunities((prev) =>
-                prev.map((o) => (o.id === oppId ? { ...o, status } : o))
-              )
-            }
-            onChangeProviderPlan={(providerId: string, newPlan: PlanTier) =>
-              setProviders((prev) =>
-                prev.map((p) =>
-                  p.id === providerId ? { ...p, plan: newPlan } : p
+        {authUser &&
+          pathname.startsWith('/app/prestador') &&
+          (activeProvider ? (
+            <ProviderDashboardScreen
+              activeProvider={activeProvider}
+              opportunities={opportunities}
+              onAddRealtimeOpportunity={(newOpp) =>
+                setOpportunities((prev) => [newOpp, ...prev])
+              }
+              onUpdateOpportunityStatus={(oppId, status) =>
+                setOpportunities((prev) =>
+                  prev.map((o) => (o.id === oppId ? { ...o, status } : o))
                 )
-              )
-            }
-            onToggleProviderAvailability={(providerId: string) =>
-              setProviders((prev) =>
-                prev.map((p) =>
-                  p.id === providerId
-                    ? { ...p, availableToday: !p.availableToday }
-                    : p
+              }
+              onChangeProviderPlan={(providerId: string, newPlan: PlanTier) =>
+                setProviders((prev) =>
+                  prev.map((p) =>
+                    p.id === providerId ? { ...p, plan: newPlan } : p
+                  )
                 )
-              )
-            }
-            onNavigate={handleLegacyScreenNavigate}
-          />
-        )}
+              }
+              onToggleProviderAvailability={(providerId: string) =>
+                setProviders((prev) =>
+                  prev.map((p) =>
+                    p.id === providerId
+                      ? { ...p, availableToday: !p.availableToday }
+                      : p
+                  )
+                )
+              }
+              onNavigate={handleLegacyScreenNavigate}
+            />
+          ) : (
+            <div className="max-w-xl mx-auto bg-white rounded-3xl p-8 border border-[#0A2540]/10 text-center space-y-3 my-8">
+              <h2 className="font-display font-bold text-xl text-[#0A2540]">
+                Painel do Prestador pronto para atendimento
+              </h2>
+              <p className="text-xs text-[#0A2540]/70">
+                Complete seu perfil e especialidades oficiais para começar a receber oportunidades reais.
+              </p>
+            </div>
+          ))}
 
         {authUser && pathname.startsWith('/app/padrinho') && (
           <PadrinhoDashboardPage user={authUser} token={authToken} />
@@ -705,14 +909,9 @@ export default function App() {
       </main>
 
       {/* FOOTER COM TERMOS, PRIVACIDADE, CONTATO E REDES SOCIAIS */}
-      <footer className="bg-white border-t border-[#0A2540]/10 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#0A2540]/70">
-          <div className="flex items-center gap-3">
-            <ConfiareLogo variant="dark-text" size="sm" />
-            <span>·</span>
-            <span>Marketplace Brasileiro de Serviços Locais de Confiança</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
+      {showMobileLoginHome ? (
+        <footer className="py-5 px-4 text-center text-xs text-[#0A2540]/60">
+          <div className="flex items-center justify-center gap-4">
             <button
               type="button"
               onClick={() => navigateUrl('/termos')}
@@ -720,6 +919,7 @@ export default function App() {
             >
               Termos de Uso
             </button>
+            <span>·</span>
             <button
               type="button"
               onClick={() => navigateUrl('/privacidade')}
@@ -727,17 +927,43 @@ export default function App() {
             >
               Privacidade LGPD
             </button>
-            <button
-              type="button"
-              onClick={() => navigateUrl('/para-prestadores')}
-              className="hover:text-[#0A2540] cursor-pointer"
-            >
-              Para Prestadores
-            </button>
-            <span>contato@confiare.com.br · @confiare.br</span>
           </div>
-        </div>
-      </footer>
+        </footer>
+      ) : (
+        <footer className="bg-white border-t border-[#0A2540]/10 mt-12">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#0A2540]/70">
+            <div className="flex items-center gap-3">
+              <ConfiareLogo variant="dark-text" size="sm" />
+              <span>·</span>
+              <span>Marketplace Brasileiro de Serviços Locais de Confiança</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <button
+                type="button"
+                onClick={() => navigateUrl('/termos')}
+                className="hover:text-[#0A2540] cursor-pointer"
+              >
+                Termos de Uso
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateUrl('/privacidade')}
+                className="hover:text-[#0A2540] cursor-pointer"
+              >
+                Privacidade LGPD
+              </button>
+              <button
+                type="button"
+                onClick={() => navigateUrl('/para-prestadores')}
+                className="hover:text-[#0A2540] cursor-pointer"
+              >
+                Para Prestadores
+              </button>
+              <span>contato@confiare.com.br · @confiare.br</span>
+            </div>
+          </div>
+        </footer>
+      )}
     </div>
   );
 }

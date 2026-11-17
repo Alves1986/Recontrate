@@ -1,6 +1,11 @@
 import express from 'express';
 import { z } from 'zod';
 import { ensureSchemaAndSeed, neonEnv, pool } from '../db/index';
+import {
+  assertRealExternalActionAllowed,
+  getRuntimeConfigSnapshot,
+  isDemoModeEnabled,
+} from '../config/environment';
 import { withRlsContext } from '../db/rls';
 import {
   AuthService,
@@ -156,6 +161,13 @@ export function createPhase1Router(): express.Router {
   // =========================================================================
   // 1. PUBLIC ENDPOINTS (Anonymous visitors — Only public showcase & categories)
   // =========================================================================
+  router.get('/public/runtime-config', (_req, res) => {
+    res.json({
+      ok: true,
+      ...getRuntimeConfigSnapshot(),
+    });
+  });
+
   router.get('/public/categories', async (_req, res) => {
     try {
       await ensureSchemaAndSeed();
@@ -179,6 +191,18 @@ export function createPhase1Router(): express.Router {
         : undefined;
       const params: unknown[] = [];
       let whereClause = `WHERE deleted_at IS NULL`;
+      if (!isDemoModeEnabled()) {
+        whereClause += ` AND id NOT IN ('prov-joao', 'prov-carlos', 'prov-ana')
+          AND id NOT LIKE 'demo-%'
+          AND id NOT LIKE 'prov-launch-%'
+          AND id NOT LIKE 'prov-abuse-%'
+          AND id NOT LIKE 'prov-notice-%'
+          AND NOT EXISTS (
+            SELECT 1 FROM users u
+            WHERE u.id = provider_profiles.user_id
+              AND (u.email LIKE '%@example.com' OR u.email LIKE '%@demo.confiare.invalid')
+          )`;
+      }
       if (category && category !== 'Todas') {
         params.push(category);
         whereClause += ` AND category = $1`;
@@ -319,6 +343,11 @@ export function createPhase1Router(): express.Router {
   // =========================================================================
   router.post('/auth/register', authRateLimit(25), async (req, res) => {
     try {
+      const signupGuard = assertRealExternalActionAllowed('signup', req.headers as Record<string, string | string[] | undefined>);
+      if (!signupGuard.allowed) {
+        res.status(403).json({ ok: false, error: signupGuard.reason });
+        return;
+      }
       const parsed = RegisterSchema.parse(req.body);
       const result = await authService.registerUser({
         ...parsed,

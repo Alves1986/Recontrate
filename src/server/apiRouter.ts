@@ -33,6 +33,10 @@ import { extractBearerOrCookieToken } from './authMiddleware';
 import { AuthService } from '../services/authService';
 import { MonitoringAndBackupService } from '../services/monitoringAndBackupService';
 import {
+  assertNonProductionGuard,
+  assertRealExternalActionAllowed,
+} from '../config/environment';
+import {
   checkLaunchOfferEligibility,
   getLaunchOfferAdminAnalytics,
   notifyUpcomingLaunchOfferEnd,
@@ -178,6 +182,11 @@ export function createApiRouter(): express.Router {
     express.raw({ type: '*/*' }),
     async (req, res) => {
       try {
+        const webhookGuard = assertRealExternalActionAllowed('webhook', req.headers as Record<string, string | string[] | undefined>);
+        if (!webhookGuard.allowed) {
+          res.status(403).json({ ok: false, error: webhookGuard.reason });
+          return;
+        }
         const rawBody = Buffer.isBuffer(req.body)
           ? req.body
           : Buffer.from(
@@ -315,6 +324,11 @@ export function createApiRouter(): express.Router {
     rateLimit(30),
     async (req, res) => {
       try {
+        const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
+        if (!payGuard.allowed) {
+          res.status(403).json({ ok: false, error: payGuard.reason });
+          return;
+        }
         const parsed = CheckoutSchema.parse(req.body);
         const result = await lifecycleService.startCheckout({
           ...parsed,
@@ -330,6 +344,11 @@ export function createApiRouter(): express.Router {
 
   router.post('/subscriptions/:id/upgrade', async (req, res) => {
     try {
+      const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
+      if (!payGuard.allowed) {
+        res.status(403).json({ ok: false, error: payGuard.reason });
+        return;
+      }
       const parsed = UpgradeSchema.parse(req.body);
       const result = await lifecycleService.upgradeSubscription({
         subscriptionId: req.params.id,
@@ -343,6 +362,11 @@ export function createApiRouter(): express.Router {
 
   router.post('/subscriptions/:id/downgrade', async (req, res) => {
     try {
+      const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
+      if (!payGuard.allowed) {
+        res.status(403).json({ ok: false, error: payGuard.reason });
+        return;
+      }
       const parsed = DowngradeSchema.parse(req.body);
       const result = await lifecycleService.scheduleDowngrade({
         subscriptionId: req.params.id,
@@ -356,6 +380,11 @@ export function createApiRouter(): express.Router {
 
   router.post('/subscriptions/:id/cancel', async (req, res) => {
     try {
+      const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
+      if (!payGuard.allowed) {
+        res.status(403).json({ ok: false, error: payGuard.reason });
+        return;
+      }
       const reason = req.body?.reason || 'Cancelamento solicitado no painel';
       const updated = await lifecycleService.cancelSubscription(
         req.params.id,
@@ -692,9 +721,10 @@ export function createApiRouter(): express.Router {
 
   router.post('/neon/auth', requireAdminInProd, async (_req, res) => {
     try {
+      assertNonProductionGuard('POST /api/neon/auth');
       res.json(await testAuthService());
     } catch (err) {
-      res.status(500).json({ ok: false, error: (err as Error).message });
+      res.status(403).json({ ok: false, error: (err as Error).message });
     }
   });
 
@@ -742,6 +772,7 @@ export function createApiRouter(): express.Router {
 
   router.get('/neon/verify-all', requireAdminInProd, async (_req, res) => {
     try {
+      assertNonProductionGuard('GET /api/neon/verify-all');
       const [postgres, auth, storage, aiGateway, functions, realtime] =
         await Promise.all([
           testPostgresService(),

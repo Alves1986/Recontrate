@@ -1,5 +1,6 @@
 import { and, desc, eq, gte } from 'drizzle-orm';
 import { db, ensureSchemaAndSeed } from '../db/index';
+import { isDemoModeEnabled, isProductionEnvironment } from '../config/environment';
 import {
   adClicks,
   adImpressions,
@@ -214,6 +215,9 @@ export class AdAndMetricsService {
 
   async ensureDefaultAdSlots() {
     await ensureSchemaAndSeed();
+    if (isProductionEnvironment() || !isDemoModeEnabled()) {
+      return;
+    }
     const existing = await db.select().from(adSlots);
     const now = new Date();
     const nextYear = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
