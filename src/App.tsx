@@ -177,6 +177,12 @@ export default function App() {
 
   // Restore session on mount if cookie exists
   useEffect(() => {
+    if (
+      typeof document !== 'undefined' &&
+      !document.cookie.includes('confiare_session')
+    ) {
+      return;
+    }
     fetch('/api/auth/me')
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
@@ -486,14 +492,14 @@ export default function App() {
             >
               <button
                 type="button"
-                onClick={() => navigateUrl('/como-funciona')}
+                onClick={() => navigateUrl('/encontrar-profissional')}
                 className={`hover:text-brand-ink cursor-pointer ${
-                  pathname === '/como-funciona'
+                  pathname === '/encontrar-profissional'
                     ? 'text-brand-ink font-semibold underline underline-offset-8 decoration-2 decoration-brand-accent-strong'
                     : ''
                 }`}
               >
-                Como funciona
+                Para clientes
               </button>
               <button
                 type="button"
@@ -504,18 +510,18 @@ export default function App() {
                     : ''
                 }`}
               >
-                Para prestadores
+                Para profissionais
               </button>
               <button
                 type="button"
-                onClick={() => navigateUrl('/encontrar-profissional')}
+                onClick={() => navigateUrl('/como-funciona')}
                 className={`hover:text-brand-ink cursor-pointer ${
-                  pathname === '/encontrar-profissional'
+                  pathname === '/como-funciona'
                     ? 'text-brand-ink font-semibold underline underline-offset-8 decoration-2 decoration-brand-accent-strong'
                     : ''
                 }`}
               >
-                Encontrar profissional
+                Como funciona
               </button>
               <button
                 type="button"
@@ -557,10 +563,11 @@ export default function App() {
                     onClick={() => navigateUrl('/criar-conta')}
                     className="min-h-[40px] px-3 sm:px-4 py-2 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs sm:text-sm cursor-pointer whitespace-nowrap"
                   >
-                    Criar conta
+                    Participar do piloto
                   </button>
                 </>
               ) : (
+
                 <div className="flex items-center gap-2 text-xs">
                   <button
                     type="button"
@@ -912,7 +919,10 @@ export default function App() {
 
       {/* FOOTER COM TERMOS, PRIVACIDADE, CONTATO E REDES SOCIAIS */}
       {showMobileLoginHome ? (
-        <footer className="py-5 px-4 text-center text-xs text-brand-ink/60">
+        <footer className="py-5 px-4 text-center text-xs text-brand-ink/60 space-y-2">
+          <div className="flex justify-center">
+            <BrandLogo variant="dark" size="sm" decorative />
+          </div>
           <div className="flex items-center justify-center gap-4">
             <button
               type="button"
@@ -933,34 +943,62 @@ export default function App() {
         </footer>
       ) : (
         <footer className="bg-white border-t border-brand-primary/10 mt-12">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-brand-ink/70">
-            <div className="flex items-center gap-3">
-              <BrandLogo variant="dark" size="sm" />
-              <span>·</span>
-              <span>Profissionais para contar de novo</span>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4 text-xs text-brand-ink/70">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <BrandLogo variant="dark" size="sm" />
+                <span>·</span>
+                <span>Encontrar, guardar e recontratar bons profissionais</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => navigateUrl('/encontrar-profissional')}
+                  className="hover:text-brand-ink cursor-pointer"
+                >
+                  Para Clientes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigateUrl('/para-prestadores')}
+                  className="hover:text-brand-ink cursor-pointer"
+                >
+                  Para Profissionais
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigateUrl('/planos')}
+                  className="hover:text-brand-ink cursor-pointer"
+                >
+                  Planos e Piloto
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigateUrl('/termos')}
+                  className="hover:text-brand-ink cursor-pointer"
+                >
+                  Termos de Uso
+                </button>
+                <button
+                  type="button"
+                  onClick={() => navigateUrl('/privacidade')}
+                  className="hover:text-brand-ink cursor-pointer"
+                >
+                  Privacidade LGPD
+                </button>
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <button
-                type="button"
-                onClick={() => navigateUrl('/termos')}
-                className="hover:text-brand-ink cursor-pointer"
-              >
-                Termos de Uso
-              </button>
-              <button
-                type="button"
-                onClick={() => navigateUrl('/privacidade')}
-                className="hover:text-brand-ink cursor-pointer"
-              >
-                Privacidade LGPD
-              </button>
-              <button
-                type="button"
-                onClick={() => navigateUrl('/para-prestadores')}
-                className="hover:text-brand-ink cursor-pointer"
-              >
-                Para Prestadores
-              </button>
+            <div className="pt-4 border-t border-brand-primary/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-brand-ink/60">
+              <p>
+                Recontrate é uma identidade provisória de trabalho em ambiente de desenvolvimento/piloto (sem registro de marca concluído ou cobrança ativa).
+              </p>
+              <p>
+                Contato do projeto:{' '}
+                <span className="font-mono text-brand-ink/75">
+                  {import.meta.env.VITE_PROJECT_CONTACT_EMAIL ||
+                    'Canal oficial em configuração (VITE_PROJECT_CONTACT_EMAIL)'}
+                </span>
+              </p>
             </div>
           </div>
         </footer>
@@ -968,3 +1006,4 @@ export default function App() {
     </div>
   );
 }
+

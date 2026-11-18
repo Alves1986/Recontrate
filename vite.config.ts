@@ -6,16 +6,22 @@ import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { createApiRouter } from './src/server/apiRouter';
 
 function neonApiPlugin(): Plugin {
-  const apiApp = express();
-  apiApp.use('/api', createApiRouter());
+  let apiApp: express.Express | null = null;
+  const getApiApp = () => {
+    if (!apiApp) {
+      apiApp = express();
+      apiApp.use('/api', createApiRouter());
+    }
+    return apiApp;
+  };
 
   return {
     name: 'confiare-neon-api',
     configureServer(server) {
-      server.middlewares.use(apiApp);
+      server.middlewares.use(getApiApp());
     },
     configurePreviewServer(server) {
-      server.middlewares.use(apiApp);
+      server.middlewares.use(getApiApp());
     },
   };
 }

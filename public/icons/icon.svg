@@ -1,5 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="R de Recontrate, marca provisória">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Recontrate">
   <rect width="512" height="512" rx="112" fill="#123B3A" />
-  <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" fill="#F6F1E8" font-family="Manrope, Arial, sans-serif" font-size="340" font-weight="800" letter-spacing="-28">R</text>
-  <circle cx="396" cy="111" r="24" fill="#E97A4B" />
+  <g transform="translate(56, 56) scale(4)">
+    <path
+      d="M 15 44 C 15 23 30 9 50 9 C 70 9 85 23 85 43 C 85 55 79 64 71 70 L 77 70 C 85 70 90 75 90 81 C 90 87 84 91 76 91 C 60 91 48 81 43 67 C 41 62 44 58 50 58 C 60 58 67 51 67 42 C 67 33 60 26 50 26 C 39 26 33 33 33 44 L 33 80 C 33 86 29 91 24 91 C 19 91 15 86 15 80 Z"
+      fill="none"
+      stroke="#F6F1E8"
+      stroke-width="8.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </g>
 </svg>
+

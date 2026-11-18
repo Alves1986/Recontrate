@@ -29,6 +29,7 @@ import { ProviderRealtimeNotifications } from './ProviderRealtimeNotifications';
 import { NeonServicesPanel } from './NeonServicesPanel';
 import { GoogleModeratedAdSlot } from './GoogleModeratedAdSlot';
 import { ProviderSpecialtiesManager } from './ProviderSpecialtiesManager';
+import { BrandLogo } from './BrandLogo';
 
 interface ProviderDashboardScreenProps {
   activeProvider: ProviderProfile;
@@ -104,36 +105,21 @@ const PLANS_CONFIG: {
   {
     tier: 'Premium',
     slug: 'premium',
-    audience: 'Para profissionais estabelecidos',
-    priceMonthly: 'R$ 99,90/mês',
-    priceAnnual: 'R$ 999,00/ano',
+    audience: 'Em definição para lançamento',
+    priceMonthly: 'R$ 99,90/mês (Em definição)',
+    priceAnnual: 'R$ 999,00/ano (Em definição)',
     monthlyLimit: 100,
-    limitLabel: 'Até 100 oportunidades/mês',
-    badge: 'Top Recontrate',
+    limitLabel: 'Escopo premium em definição',
+    badge: 'Em definição',
     showsAds: false,
     features: [
-      'Prioridade alta justa sem monopolizar a fila (+8 pts)',
-      'Destaque regional e relatórios avançados',
-      'Suporte prioritário, agenda/follow-up e selo Top Recontrate',
-    ],
-  },
-  {
-    tier: 'Padrinho',
-    slug: 'padrinho',
-    audience: 'Mentores verificados da rede',
-    priceMonthly: 'R$ 109,90/mês',
-    priceAnnual: 'R$ 1.099,00/ano',
-    monthlyLimit: 100,
-    limitLabel: 'Até 100 oportunidades/mês',
-    badge: 'Padrinho Verificado',
-    showsAds: false,
-    features: [
-      'Todos os recursos do plano Premium (+9 pts)',
-      'Selo Padrinho Verificado na vitrine pública',
-      'Ferramentas de indicação e acompanhamento de apadrinhados',
+      'Aguardando validação de entregáveis mensuráveis',
+      'Gestão avançada e relatórios dedicados em desenho',
+      'Sem comercialização ativa durante o piloto inicial',
     ],
   },
 ];
+
 
 export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = ({
   activeProvider,
@@ -217,28 +203,18 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   );
 
   const handleSelectPlanWithAsaas = async (planItem: (typeof PLANS_CONFIG)[number]) => {
+    if (planItem.slug === 'premium') {
+      setCheckoutNotice(
+        'O plano Premium está em definição e permanece bloqueado durante a fase de piloto.'
+      );
+      return;
+    }
     onChangeProviderPlan(activeProvider.id, planItem.tier);
     setCheckoutNotice(
-      `Plano ${planItem.tier} (${billingCycle} via ${paymentMethod.toUpperCase()}) configurado no gateway Asaas — novo limite de ${planItem.monthlyLimit} oportunidades/mês ativo.`
+      `Plano ${planItem.tier} (${billingCycle}) selecionado em modo Piloto Controlado (60 a 90 dias gratuitos, sem cobrança real e sem conversão automática neste preview).`
     );
-    try {
-      await fetch('/api/subscriptions/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          providerProfileId: activeProvider.id,
-          providerName: activeProvider.name,
-          providerEmail: `${activeProvider.id}@confiare.com.br`,
-          providerPhone: activeProvider.whatsapp,
-          planSlug: planItem.slug,
-          cycle: billingCycle,
-          paymentMethod,
-        }),
-      });
-    } catch {
-      // Offline preview fallback
-    }
   };
+
 
   const scoreBreakdown = calculateCompositeScore(activeProvider);
   const hasCompositeData =
@@ -278,7 +254,9 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       <div className="bg-brand-primary text-white rounded-3xl p-6 sm:p-8">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-brand-accent-contrast font-semibold">
+            <div className="flex flex-wrap items-center gap-2.5 text-xs text-brand-accent-contrast font-semibold">
+              <BrandLogo variant="light" size="sm" decorative />
+              <span aria-hidden="true">·</span>
               <span>Tela 09 · Central de Comando do Prestador</span>
               <span aria-hidden="true">·</span>
               <span>Plano Atual: {activeProvider.plan}</span>
@@ -286,6 +264,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
               <span>0% comissão sobre serviços</span>
             </div>
             <h1 className="font-display font-bold text-2xl sm:text-3xl text-white">
+
               Painel do prestador — {activeProvider.name}
             </h1>
             <p className="text-xs sm:text-sm text-white/80">

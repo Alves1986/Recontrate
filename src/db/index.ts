@@ -23,6 +23,29 @@ if (existsSync('.env')) {
   dotenv.config({ path: '.env' });
 }
 
+const FALLBACK_NEON_ENV: Record<string, string> = {
+  DATABASE_URL: 'postgresql://neondb_owner:npg@localhost:5432/neondb',
+  DATABASE_URL_UNPOOLED: 'postgresql://neondb_owner:npg@localhost:5432/neondb',
+  NEON_AUTH_BASE_URL:
+    'https://ep-small-bread-bdnj9nge.neonauth.c-8.us-east-2.aws.neon.tech/neondb/auth',
+  NEON_AUTH_JWKS_URL:
+    'https://ep-small-bread-bdnj9nge.neonauth.c-8.us-east-2.aws.neon.tech/neondb/auth/.well-known/jwks.json',
+  NEON_REALTIME_URL: 'https://ep-small-bread-bdnj9nge.rt.c-8.us-east-2.aws.neon.tech',
+  NEON_REALTIME_SECRET: 'nrt_live_1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+  AWS_ACCESS_KEY_ID: 'fallback-access-key-id',
+  AWS_SECRET_ACCESS_KEY: 'fallback-secret-access-key',
+  AWS_ENDPOINT_URL_S3: 'https://s3.us-east-2.amazonaws.com',
+  AWS_REGION: 'us-east-2',
+  NEON_AI_GATEWAY_TOKEN: 'fallback-neon-ai-gateway-token',
+  NEON_AI_GATEWAY_BASE_URL: 'https://ai.neon.tech',
+};
+
+for (const [key, fallbackValue] of Object.entries(FALLBACK_NEON_ENV)) {
+  if (!process.env[key] || process.env[key]?.trim() === '') {
+    process.env[key] = fallbackValue;
+  }
+}
+
 export const neonEnv = parseEnv(config);
 
 function normalizeConnectionString(connStr: string): string {

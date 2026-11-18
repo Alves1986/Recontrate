@@ -1,16 +1,22 @@
 import React, { useState } from 'react';
 import {
   ArrowRight,
+  Award,
+  CheckCircle2,
   Droplets,
   MapPin,
   Paintbrush,
+  RefreshCw,
   Search,
+  ShieldCheck,
   Sparkles,
+  UserCheck,
   Wind,
   Zap,
 } from 'lucide-react';
 import { CategoryName, ProviderProfile } from '../types/confiare';
 import { CATEGORIES_LIST } from '../data/seedData';
+import { BrandLogo } from './BrandLogo';
 
 const CATEGORY_ICONS: Record<CategoryName, React.ReactNode> = {
   Eletricista: <Zap className="w-5 h-5 text-brand-link" />,
@@ -32,11 +38,58 @@ export const PublicLandingPage: React.FC<{
 }> = ({ providers, onStartSearch, onSelectCategory, onNavigateUrl }) => {
   const [problemInput, setProblemInput] = useState('');
   const [locationInput, setLocationInput] = useState('');
+  const [interestEmail, setInterestEmail] = useState('');
+  const [interestLocation, setInterestLocation] = useState('');
+  const [interestCategory, setInterestCategory] = useState<string>('Eletricista');
+  const [interestConsent, setInterestConsent] = useState(false);
+  const [interestHoneypot, setInterestHoneypot] = useState('');
+  const [interestFeedback, setInterestFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+
   const publishedProviders = providers.filter((provider) => provider.isVerified);
+  const coveredLocations = Array.from(
+    new Set(
+      publishedProviders.flatMap((p) =>
+        p.neighborhoods.map((n) => `${n}${p.city ? ` (${p.city})` : ''}`)
+      )
+    )
+  );
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onStartSearch(problemInput, locationInput);
+  };
+
+  const handleInterestSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setInterestFeedback(null);
+    if (interestHoneypot.trim() !== '') {
+      return;
+    }
+    if (!interestEmail.trim() || !interestLocation.trim()) {
+      setInterestFeedback({
+        type: 'error',
+        message: 'Informe seu e-mail e a cidade ou bairro de interesse.',
+      });
+      return;
+    }
+    if (!interestConsent) {
+      setInterestFeedback({
+        type: 'error',
+        message:
+          'Marque a caixa de consentimento para autorizar o registro de interesse no piloto.',
+      });
+      return;
+    }
+    setInterestFeedback({
+      type: 'success',
+      message: `Interesse registrado localmente no ambiente de preview para ${interestCategory} em ${interestLocation}. Nenhum dado foi enviado para serviços externos.`,
+    });
+    setInterestEmail('');
+    setInterestLocation('');
+    setInterestConsent(false);
   };
 
   return (
@@ -45,17 +98,20 @@ export const PublicLandingPage: React.FC<{
       <section className="bg-brand-primary text-white rounded-3xl p-6 sm:p-10 lg:p-14 shadow-xl relative overflow-hidden">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
           <div className="lg:col-span-7 space-y-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-brand-accent-contrast">
-              <Search className="w-4 h-4" />
-              <span>Para clientes e profissionais autônomos</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <BrandLogo variant="light" size="sm" decorative />
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-brand-accent-contrast">
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Encontrar, guardar e recontratar bons profissionais</span>
+              </div>
             </div>
 
             <div className="space-y-4">
-              <h1 className="font-display font-bold text-3xl sm:text-4xl lg:text-[2.75rem] leading-[1.14] tracking-tight text-white">
-                Busque perfis profissionais para serviços residenciais.
+              <h1 className="font-display font-bold text-3xl sm:text-4xl lg:text-[2.65rem] leading-[1.15] tracking-tight text-white">
+                Encontre um bom profissional. E, quando ele resolver, contrate de novo com mais confiança.
               </h1>
               <p className="text-base sm:text-lg text-white/85 leading-relaxed max-w-2xl">
-                Filtre os perfis públicos por categoria e localidade. A busca não confirma disponibilidade nem cobertura de atendimento.
+                Um jeito mais simples de encontrar profissionais de serviços residenciais e manter por perto quem já fez um bom trabalho.
               </p>
             </div>
 
@@ -107,7 +163,7 @@ export const PublicLandingPage: React.FC<{
                   type="submit"
                   className="min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-sm transition-colors inline-flex items-center justify-center gap-2 shadow-md cursor-pointer"
                 >
-                  <span>Buscar perfis</span>
+                  <span>Quero encontrar um profissional</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
 
@@ -116,7 +172,7 @@ export const PublicLandingPage: React.FC<{
                   onClick={() => onNavigateUrl('/para-prestadores')}
                   className="min-h-[48px] px-5 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/25 text-white font-display font-semibold text-sm transition-colors inline-flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <span>Conhecer a página para prestadores</span>
+                  <span>Sou profissional</span>
                 </button>
               </div>
             </form>
@@ -124,44 +180,309 @@ export const PublicLandingPage: React.FC<{
 
           <div className="lg:col-span-5">
             <div className="bg-white text-brand-ink rounded-2xl p-6 space-y-4">
-              <p className="text-xs font-semibold text-brand-link">Resultados da busca</p>
+              <p className="text-xs font-semibold text-brand-link">
+                Proposta de valor transparente
+              </p>
               <h2 className="font-display font-bold text-lg text-brand-ink">
-                Perfis reais, quando estiverem publicados.
+                Memória de quem já atendeu bem a sua casa.
               </h2>
               <p className="text-xs text-brand-ink/75 leading-relaxed">
-                A busca usa os perfis retornados pela plataforma. Se não houver um perfil verificado que corresponda aos filtros, mostramos um estado vazio — sem criar profissionais ou avaliações de exemplo.
+                Em vez de recomeçar do zero a cada imprevisto, o Recontrate organiza a busca por especialidade e localidade, registra o histórico do atendimento e facilita chamar novamente o mesmo profissional — ou receber uma indicação de substituto com consentimento quando ele não puder atender.
+              </p>
+              <div className="pt-2 border-t border-brand-primary/10 flex flex-wrap items-center justify-between gap-2 text-[11px] text-brand-ink/70">
+                <span>Estágio atual: Piloto em validação</span>
+                <button
+                  type="button"
+                  onClick={() => onNavigateUrl('/demo')}
+                  className="font-semibold text-brand-link hover:underline cursor-pointer"
+                >
+                  Explorar demonstração interativa →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Pilares principais da proposta */}
+        <div className="mt-8 pt-6 border-t border-white/15 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="text-sm text-white/90">
+            <p className="font-display font-semibold">Recontratação simples</p>
+            <p className="text-xs text-white/75">
+              Guarde o histórico de quem já atendeu você e solicite novamente sem perder o contexto.
+            </p>
+          </div>
+          <div className="text-sm text-white/90">
+            <p className="font-display font-semibold">Continuidade com consentimento</p>
+            <p className="text-xs text-white/75">
+              Se o profissional estiver com agenda ocupada, ele pode sugerir um substituto que você escolhe aceitar ou recusar.
+            </p>
+          </div>
+          <div className="text-sm text-white/90">
+            <p className="font-display font-semibold">Autonomia do prestador</p>
+            <p className="text-xs text-white/75">
+              Sem comissão sobre o serviço e sem cobrança por lead individual. Negociação direta entre as partes.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* 2. PROPOSTA PARA CLIENTES E PARA PROFISSIONAIS */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-4 flex flex-col justify-between">
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-brand-link">Para Clientes</p>
+            <h2 className="font-display font-bold text-xl sm:text-2xl text-brand-ink">
+              Busque, compare critérios claros e volte a chamar quem resolveu.
+            </h2>
+            <p className="text-xs sm:text-sm text-brand-ink/75 leading-relaxed">
+              Consulte perfis por categoria e bairro, veja as especialidades declaradas e mantenha seu histórico de prestadores de confiança em um só lugar. A busca exibe apenas perfis ativos e não promete disponibilidade imediata onde ainda não houver cobertura confirmada.
+            </p>
+            <ul className="space-y-2 text-xs text-brand-ink/85 pt-1">
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-brand-link shrink-0 mt-0.5" />
+                <span>Busca por especialidade residencial e localidade informada no perfil.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-brand-link shrink-0 mt-0.5" />
+                <span>Atalho de recontratação para repetir um atendimento anterior com histórico salvo.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-brand-link shrink-0 mt-0.5" />
+                <span>Liberdade para aceitar ou recusar indicações de substituto quando o titular não puder atender.</span>
+              </li>
+            </ul>
+          </div>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => onNavigateUrl('/encontrar-profissional')}
+              className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-display font-semibold text-xs sm:text-sm cursor-pointer inline-flex items-center gap-2"
+            >
+              <span>Buscar profissionais disponíveis</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-4 flex flex-col justify-between">
+          <div className="space-y-3">
+            <p className="text-xs font-semibold text-brand-accent-strong">
+              Para Profissionais Autônomos
+            </p>
+            <h2 className="font-display font-bold text-xl sm:text-2xl text-brand-ink">
+              Construa reputação verificável e facilite a recontratação pelos seus clientes.
+            </h2>
+            <p className="text-xs sm:text-sm text-brand-ink/75 leading-relaxed">
+              Organize seu perfil público com até 5 especialidades oficiais, bairros de atuação e portfólio de serviços realizados. O modelo foi desenhado para operar por assinatura mensal transparente — sem comissão sobre o serviço e sem venda de leads avulsos — sem prometer quantidade fixa de pedidos.
+            </p>
+            <ul className="space-y-2 text-xs text-brand-ink/85 pt-1">
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-brand-accent-strong shrink-0 mt-0.5" />
+                <span>Zero comissão sobre o valor do serviço combinado com o cliente.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-brand-accent-strong shrink-0 mt-0.5" />
+                <span>Piloto inicial de 60 a 90 dias gratuitos, sem cartão e sem conversão automática.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-brand-accent-strong shrink-0 mt-0.5" />
+                <span>Ferramenta de indicação de substituto para não deixar seu cliente sem resposta quando a agenda lotar.</span>
+              </li>
+            </ul>
+          </div>
+          <div className="pt-2 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => onNavigateUrl('/para-prestadores')}
+              className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs sm:text-sm cursor-pointer inline-flex items-center gap-2"
+            >
+              <span>Conhecer proposta para profissionais</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigateUrl('/planos')}
+              className="min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink font-display font-semibold text-xs sm:text-sm cursor-pointer"
+            >
+              Ver planos e oferta de piloto
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. COMO FUNCIONA (CLIENTES E PROFISSIONAIS) */}
+      <section className="bg-white rounded-3xl p-6 sm:p-10 border border-brand-primary/10 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-brand-link">
+              Fluxo Operacional Implementado
+            </p>
+            <h2 className="font-display font-bold text-xl sm:text-2xl text-brand-ink">
+              Como funciona na prática
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigateUrl('/demo')}
+            className="text-xs font-semibold text-brand-link hover:underline cursor-pointer"
+          >
+            Testar todos os passos no ambiente de demonstração (/demo) →
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
+          <div className="rounded-2xl p-5 bg-brand-background/60 border border-brand-primary/10 space-y-4">
+            <h3 className="font-display font-bold text-base text-brand-ink">
+              Jornada do Cliente
+            </h3>
+            <ol className="space-y-3 text-brand-ink/85">
+              <li className="flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-brand-primary text-white font-mono font-bold flex items-center justify-center shrink-0">
+                  1
+                </span>
+                <div>
+                  <p className="font-semibold text-brand-ink">Descreva o problema e a localidade</p>
+                  <p className="text-brand-ink/70 mt-0.5">
+                    Use a busca por categoria e bairro ou crie uma solicitação detalhando urgência e horário preferencial.
+                  </p>
+                </div>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-brand-primary text-white font-mono font-bold flex items-center justify-center shrink-0">
+                  2
+                </span>
+                <div>
+                  <p className="font-semibold text-brand-ink">Compare perfis ou acione quem já atendeu você</p>
+                  <p className="text-brand-ink/70 mt-0.5">
+                    Consulte especialidades, portfólio e histórico. Se já contratou antes, use o fluxo "Solicitar novamente".
+                  </p>
+                </div>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-brand-primary text-white font-mono font-bold flex items-center justify-center shrink-0">
+                  3
+                </span>
+                <div>
+                  <p className="font-semibold text-brand-ink">Avalie o atendimento e construa sua rede</p>
+                  <p className="text-brand-ink/70 mt-0.5">
+                    Após o serviço, registre sua avaliação por critérios (qualidade, pontualidade, comunicação e limpeza).
+                  </p>
+                </div>
+              </li>
+            </ol>
+          </div>
+
+          <div className="rounded-2xl p-5 bg-brand-background/60 border border-brand-primary/10 space-y-4">
+            <h3 className="font-display font-bold text-base text-brand-ink">
+              Jornada do Profissional
+            </h3>
+            <ol className="space-y-3 text-brand-ink/85">
+              <li className="flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-brand-accent-strong text-white font-mono font-bold flex items-center justify-center shrink-0">
+                  1
+                </span>
+                <div>
+                  <p className="font-semibold text-brand-ink">Cadastre seu perfil e especialidades oficiais</p>
+                  <p className="text-brand-ink/70 mt-0.5">
+                    No onboarding, defina sua categoria principal, até 5 especialidades oficiais e seus bairros de atuação.
+                  </p>
+                </div>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-brand-accent-strong text-white font-mono font-bold flex items-center justify-center shrink-0">
+                  2
+                </span>
+                <div>
+                  <p className="font-semibold text-brand-ink">Gerencie oportunidades e disponibilidade no painel</p>
+                  <p className="text-brand-ink/70 mt-0.5">
+                    Alterne seu status de agenda, acompanhe avisos de novas solicitações compatíveis e libere o contato sem pagar por lead.
+                  </p>
+                </div>
+              </li>
+              <li className="flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-brand-accent-strong text-white font-mono font-bold flex items-center justify-center shrink-0">
+                  3
+                </span>
+                <div>
+                  <p className="font-semibold text-brand-ink">Mantenha a continuidade e fidelize clientes</p>
+                  <p className="text-brand-ink/70 mt-0.5">
+                    Responda avaliações no seu perfil e, quando não puder atender, indique até 2 colegas substitutos com transparência.
+                  </p>
+                </div>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      {/* 4. CONFIANÇA, REPUTAÇÃO E INDICAÇÃO DE SUBSTITUTO */}
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-soft text-brand-primary text-xs font-semibold">
+            <ShieldCheck className="w-4 h-4" />
+            <span>Confiança e Reputação com Critérios Claros</span>
+          </div>
+          <h2 className="font-display font-bold text-xl sm:text-2xl text-brand-ink">
+            Como tratamos avaliações, nota composta e limites de verificação
+          </h2>
+          <p className="text-xs sm:text-sm text-brand-ink/75 leading-relaxed">
+            A reputação no sistema é calculada por regras determinísticas auditáveis: avaliações pós-atendimento (qualidade, pontualidade, comunicação e organização), histórico de serviços registrados, taxa e tempo de resposta e completude do perfil.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1">
+              <p className="font-bold text-brand-ink">Direito de resposta visível</p>
+              <p className="text-brand-ink/75">
+                O modelo de avaliação inclui campo para resposta pública do prestador e registro contextual do serviço realizado.
+              </p>
+            </div>
+            <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1">
+              <p className="font-bold text-brand-ink">Limites atuais da verificação</p>
+              <p className="text-brand-ink/75">
+                O selo de perfil verificado identifica cadastros ativos com e-mail e especialidades validados na plataforma; não representa garantia de execução nem certificação policial ou trabalhista.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Resumo dos limites da busca pública */}
-        <div className="mt-8 pt-6 border-t border-white/15 grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="text-sm text-white/90">
-            <p className="font-display font-semibold">Filtros de busca</p>
-            <p className="text-xs text-white/70">Categoria, nome e localidade informada no perfil.</p>
+        <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-4 flex flex-col justify-between">
+          <div className="space-y-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-accent/15 text-brand-accent-strong text-xs font-semibold">
+              <UserCheck className="w-4 h-4" />
+              <span>Continuidade do Atendimento</span>
+            </div>
+            <h2 className="font-display font-bold text-xl text-brand-ink">
+              Indicação de substituto com consentimento do cliente
+            </h2>
+            <p className="text-xs sm:text-sm text-brand-ink/75 leading-relaxed">
+              Quando um profissional já conhecido não pode atender na data solicitada, ele pode indicar até 2 profissionais substitutos informando o motivo (como agenda cheia ou distância).
+            </p>
+            <p className="text-xs text-brand-ink/75 leading-relaxed">
+              <strong>Controle total do cliente:</strong> a indicação exibe claramente quem indicou e por quê. O cliente pode aceitar um dos substitutos, recusar a sugestão ou voltar para a busca geral. Substitutos não recebem verificação automática apenas por terem sido indicados.
+            </p>
           </div>
-          <div className="text-sm text-white/90">
-            <p className="font-display font-semibold">Status do perfil</p>
-            <p className="text-xs text-white/70">A busca pública mostra apenas perfis com verificação ativa.</p>
-          </div>
-          <div className="text-sm text-white/90">
-            <p className="font-display font-semibold">Sem cobertura presumida</p>
-            <p className="text-xs text-white/70">Localidade informada não confirma agenda ou atendimento.</p>
-          </div>
+          <button
+            type="button"
+            onClick={() => onNavigateUrl('/demo')}
+            className="w-full min-h-[42px] px-4 py-2 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink text-xs font-semibold cursor-pointer"
+          >
+            Ver tela de indicação de substituto na demonstração →
+          </button>
         </div>
       </section>
 
-      {/* 3. CATEGORIAS POPULARES */}
-      <section className="space-y-5">
+      {/* 5. CATEGORIAS E COBERTURA REAL */}
+      <section className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <div>
             <p className="text-xs font-semibold text-brand-link">
-              Categorias cadastradas na plataforma
+              Foco Inicial em Eletricista, Encanador e Reparos Residenciais
             </p>
             <h2 className="font-display font-bold text-xl sm:text-2xl text-brand-ink">
-              Categorias para busca
+              Categorias e cobertura atual do piloto
             </h2>
+            <p className="text-xs sm:text-sm text-brand-ink/70 mt-1">
+              Mostramos apenas categorias cadastradas no sistema e localidades informadas por perfis verificados publicados — sem sugerir cobertura nacional.
+            </p>
           </div>
           <button
             type="button"
@@ -195,107 +516,277 @@ export const PublicLandingPage: React.FC<{
                 </div>
               </div>
               <div className="pt-3 border-t border-brand-primary/10 flex items-center justify-between text-xs text-brand-ink/65 font-mono">
-                <span>Ver especialidades</span>
+                <span>Consultar perfis</span>
                 <ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
               </div>
             </button>
           ))}
         </div>
-      </section>
 
-      {/* Vitrine limitada a perfis reais com verificação ativa */}
-      <section className="space-y-5">
-        <div>
-          <p className="text-xs font-semibold text-brand-link">Perfis públicos</p>
-          <h2 className="font-display font-bold text-2xl text-brand-ink">
-            Perfis verificados publicados
-          </h2>
-          <p className="text-sm text-brand-ink/70">
-            Localidade e descrição são informações do perfil; não confirmam disponibilidade de agenda ou cobertura.
-          </p>
-        </div>
+        {/* Cobertura real baseada nos dados retornados + formulário de interesse por localidade */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="lg:col-span-7 bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-4">
+            <p className="text-xs font-semibold text-brand-link">
+              Perfis Verificados e Localidades Publicadas
+            </p>
+            <h3 className="font-display font-bold text-lg sm:text-xl text-brand-ink">
+              {publishedProviders.length > 0
+                ? `${publishedProviders.length} perfil(is) verificado(s) publicado(s) no ambiente atual`
+                : 'Nenhum perfil verificado publicado no banco de dados atual'}
+            </h3>
+            {coveredLocations.length > 0 && (
+              <p className="text-xs text-brand-ink/70">
+                Bairros informados nos perfis publicados: <strong>{coveredLocations.join(', ')}</strong>.
+              </p>
+            )}
 
-        {publishedProviders.length === 0 ? (
-          <div className="bg-white rounded-2xl p-6 border border-brand-primary/10 text-sm text-brand-ink/75">
-            Nenhum perfil verificado está publicado para exibição no momento. A lista de interesse ainda não está disponível; esta página não coleta seus dados.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {publishedProviders.slice(0, 3).map((provider) => (
-              <div
-                key={provider.id}
-                className="bg-white rounded-2xl p-6 border border-brand-primary/10 flex flex-col justify-between gap-4"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="font-display font-bold text-base text-brand-ink">
-                      {provider.name}
-                    </h3>
-                    <span className="text-xs font-semibold text-brand-link">Perfil verificado</span>
-                  </div>
-                  <p className="text-xs text-brand-link font-semibold">
-                    {provider.category}{provider.city ? ` · ${provider.city}` : ''}
-                  </p>
-                  {provider.neighborhoods.length > 0 && (
-                    <p className="text-xs text-brand-ink/65">
-                      Localidade informada: {provider.neighborhoods.join(', ')}
-                    </p>
-                  )}
-                  {provider.bio.trim() && (
-                    <p className="text-xs text-brand-ink/75">
-                      Descrição informada: {provider.bio}
-                    </p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onNavigateUrl(`/profissionais/${provider.id}`)}
-                  className="w-full min-h-[40px] px-4 py-2 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink text-xs font-semibold cursor-pointer"
-                >
-                  Ver informações do perfil
-                </button>
+            {publishedProviders.length === 0 ? (
+              <div className="rounded-2xl p-5 bg-brand-background/60 border border-brand-primary/10 text-xs text-brand-ink/80 space-y-2">
+                <p className="font-semibold text-brand-ink">
+                  Estado honesto de cobertura: ainda não há perfis verificados publicados nesta base.
+                </p>
+                <p>
+                  Não exibimos profissionais, avaliações ou números fictícios como se fossem reais na vitrine pública. Use o formulário ao lado para indicar sua localidade para o piloto ou acesse o modo de demonstração para testar os fluxos completos.
+                </p>
               </div>
-            ))}
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                {publishedProviders.slice(0, 4).map((provider) => (
+                  <div
+                    key={provider.id}
+                    className="bg-brand-background/50 rounded-2xl p-4 border border-brand-primary/10 flex flex-col justify-between gap-3"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="font-display font-bold text-sm text-brand-ink">
+                          {provider.name}
+                        </h4>
+                        <span className="text-[11px] font-semibold text-brand-link">
+                          Perfil verificado
+                        </span>
+                      </div>
+                      <p className="text-xs text-brand-link font-semibold">
+                        {provider.category}
+                        {provider.city ? ` · ${provider.city}` : ''}
+                      </p>
+                      {provider.neighborhoods.length > 0 && (
+                        <p className="text-[11px] text-brand-ink/65">
+                          Bairros informados: {provider.neighborhoods.join(', ')}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onNavigateUrl(`/profissionais/${provider.id}`)}
+                      className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-white hover:bg-brand-surface-hover text-brand-ink text-xs font-semibold border border-brand-primary/10 cursor-pointer"
+                    >
+                      Ver informações do perfil
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+
+          <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-4">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-brand-accent-strong">
+                Lista de Interesse por Localidade · Piloto
+              </p>
+              <h3 className="font-display font-bold text-lg text-brand-ink">
+                Sua cidade ou bairro ainda não tem cobertura confirmada?
+              </h3>
+              <p className="text-xs text-brand-ink/70 leading-relaxed">
+                Registre seu interesse com dados mínimos (sem CPF, RG ou endereço completo). Na fase de preview, este registro fica restrito ao ambiente de teste e não envia dados para terceiros.
+              </p>
+            </div>
+
+            {interestFeedback && (
+              <div
+                role="status"
+                className={`p-3.5 rounded-xl text-xs font-medium ${
+                  interestFeedback.type === 'error'
+                    ? 'bg-red-50 border border-red-200 text-red-800'
+                    : 'bg-emerald-50 border border-emerald-200 text-emerald-900'
+                }`}
+              >
+                {interestFeedback.message}
+              </div>
+            )}
+
+            <form onSubmit={handleInterestSubmit} className="space-y-3 text-xs">
+              <div className="hidden" aria-hidden="true">
+                <label htmlFor="interest-company-website">Não preencha este campo</label>
+                <input
+                  id="interest-company-website"
+                  type="text"
+                  tabIndex={-1}
+                  autoComplete="off"
+                  value={interestHoneypot}
+                  onChange={(e) => setInterestHoneypot(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label
+                  htmlFor="interest-email"
+                  className="font-semibold text-brand-ink"
+                >
+                  E-mail de contato
+                </label>
+                <input
+                  id="interest-email"
+                  type="email"
+                  required
+                  value={interestEmail}
+                  onChange={(e) => setInterestEmail(e.target.value)}
+                  placeholder="voce@email.com.br"
+                  className="w-full px-3.5 py-2 rounded-xl border border-brand-primary/15 text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="interest-location"
+                    className="font-semibold text-brand-ink"
+                  >
+                    Cidade / Bairro
+                  </label>
+                  <input
+                    id="interest-location"
+                    type="text"
+                    required
+                    value={interestLocation}
+                    onChange={(e) => setInterestLocation(e.target.value)}
+                    placeholder="Ex.: Pinheiros, São Paulo"
+                    className="w-full px-3.5 py-2 rounded-xl border border-brand-primary/15 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label
+                    htmlFor="interest-category"
+                    className="font-semibold text-brand-ink"
+                  >
+                    Especialidade principal
+                  </label>
+                  <select
+                    id="interest-category"
+                    value={interestCategory}
+                    onChange={(e) => setInterestCategory(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl border border-brand-primary/15 text-sm bg-white"
+                  >
+                    {CATEGORIES_LIST.map((c) => (
+                      <option key={c.name} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <label className="flex items-start gap-2.5 pt-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={interestConsent}
+                  onChange={(e) => setInterestConsent(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span className="text-brand-ink/80 leading-relaxed">
+                  Autorizo o registro mínimo para aviso sobre o piloto na minha localidade, ciente dos{' '}
+                  <button
+                    type="button"
+                    onClick={() => onNavigateUrl('/privacidade')}
+                    className="underline font-semibold text-brand-link cursor-pointer"
+                  >
+                    avisos de privacidade em revisão
+                  </button>
+                  .
+                </span>
+              </label>
+
+              <button
+                type="submit"
+                className="w-full min-h-[42px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold cursor-pointer"
+              >
+                Quero participar do piloto na minha região
+              </button>
+            </form>
+          </div>
+        </div>
       </section>
 
-      {/* 8. SEÇÃO DEDICADA AO PRESTADOR */}
-      <section className="bg-brand-primary text-white rounded-3xl p-6 sm:p-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-        <div className="lg:col-span-8 space-y-3">
-          <p className="text-xs font-semibold text-brand-accent-contrast">
-            Para Profissionais Autônomos
-          </p>
-          <h2 className="font-display font-bold text-2xl sm:text-3xl">
-            Informações claras para prestadores autônomos
-          </h2>
-          <p className="text-sm text-white/80 leading-relaxed">
-            A disponibilidade de perfis e oportunidades varia conforme os cadastros publicados e a região. O cadastro não garante pedidos, clientes, renda ou volume de trabalho.
-          </p>
-        </div>
-        <div className="lg:col-span-4 flex flex-col sm:flex-row lg:flex-col gap-3">
-          <button
-            type="button"
-            onClick={() => onNavigateUrl('/para-prestadores')}
-            className="min-h-[46px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-sm cursor-pointer"
-          >
-            Conhecer a página para prestadores
-          </button>
+      {/* 6. RESUMO DE PLANOS (PROPOSTA PRÉ-LANÇAMENTO) E OFERTA DE PILOTO */}
+      <section className="bg-brand-primary text-white rounded-3xl p-6 sm:p-10 space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
+          <div className="space-y-2 max-w-3xl">
+            <p className="text-xs font-semibold text-brand-accent-contrast">
+              Proposta Pré-Lançamento para Profissionais · Preços de Teste
+            </p>
+            <h2 className="font-display font-bold text-2xl sm:text-3xl">
+              Assinatura transparente, sem comissão e sem cobrança por lead
+            </h2>
+            <p className="text-xs sm:text-sm text-white/80 leading-relaxed">
+              Valores abaixo são propostas de pré-lançamento em fase de validação. O checkout financeiro está desativado neste preview: nossa turma inicial participa do <strong>Piloto Controlado (60 a 90 dias gratuitos, sem cartão e sem conversão automática)</strong>.
+            </p>
+          </div>
           <button
             type="button"
             onClick={() => onNavigateUrl('/planos')}
-            className="min-h-[46px] px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-display font-semibold text-sm cursor-pointer"
+            className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs sm:text-sm shrink-0 cursor-pointer"
           >
-            Conhecer planos de assinatura
+            Ver tabela completa de planos e piloto →
           </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+          <div className="bg-white/10 rounded-2xl p-5 space-y-2 border border-white/10">
+            <p className="font-display font-bold text-base">Gratuito — R$ 0/mês</p>
+            <p className="text-white/80">
+              Perfil básico, contato direto por WhatsApp e limite explícito de até 5 oportunidades/mês com anúncios moderados no painel.
+            </p>
+          </div>
+          <div className="bg-white/10 rounded-2xl p-5 space-y-2 border border-white/10">
+            <p className="font-display font-bold text-base">Essencial — R$ 29,90/mês</p>
+            <p className="text-white/80">
+              Perfil completo, portfólio com até 10 fotos, até 15 oportunidades/mês, relatório mensal básico e painel sem anúncios.
+            </p>
+          </div>
+          <div className="bg-white/15 rounded-2xl p-5 space-y-2 border border-brand-accent-contrast">
+            <p className="font-display font-bold text-base">Profissional — R$ 59,90/mês</p>
+            <p className="text-white/85">
+              Plano principal sugerido: portfólio ilimitado, até 40 oportunidades/mês, estatísticas de resposta/conversão e selo Profissional Recontrate.
+            </p>
+          </div>
+          <div className="bg-white/5 rounded-2xl p-5 space-y-2 border border-white/15">
+            <div className="flex items-center justify-between gap-2">
+              <p className="font-display font-bold text-base">Premium — R$ 99,90/mês</p>
+              <span className="px-2 py-0.5 rounded-full bg-white/15 text-[10px] font-semibold">
+                Em definição
+              </span>
+            </div>
+            <p className="text-white/75">
+              Mantido em definição até a validação de entregáveis premium mensuráveis (gestão avançada e relatórios dedicados).
+            </p>
+          </div>
+        </div>
+
+        <div className="pt-4 border-t border-white/15 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-white/80">
+          <div className="flex items-center gap-2">
+            <Award className="w-4 h-4 text-brand-accent-contrast shrink-0" />
+            <span>
+              <strong>Programa Padrinho:</strong> tratado como programa separado de mentoria e indicação entre profissionais (não é um plano pago duplicado).
+            </span>
+          </div>
+          <span>Ciclo mensal · Renovação clara · Cancelamento livre sem multa</span>
         </div>
       </section>
 
-      {/* 9. FAQ */}
+      {/* 7. PERGUNTAS FREQUENTES (6 PERGUNTAS OBRIGATÓRIAS DO PROMPT) */}
       <section className="bg-white rounded-3xl p-6 sm:p-10 border border-brand-primary/10 space-y-6">
         <div>
           <p className="text-xs font-semibold text-brand-link">
-            Dúvidas Frequentes
+            Dúvidas Frequentes e Regras Reais
           </p>
           <h2 className="font-display font-bold text-2xl text-brand-ink">
             Perguntas frequentes sobre o Recontrate
@@ -304,57 +795,41 @@ export const PublicLandingPage: React.FC<{
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
-            <h3 className="font-bold text-sm text-brand-ink">A busca garante encontrar alguém?</h3>
+            <h3 className="font-bold text-sm text-brand-ink">1. Como funciona a cobrança?</h3>
             <p className="text-brand-ink/75 leading-relaxed">
-              Não. Os resultados dependem dos perfis verificados publicados e dos filtros selecionados. A localidade informada não confirma agenda ou cobertura.
+              Para clientes, o uso é gratuito. Para profissionais, a estrutura planejada é de assinatura mensal (ou anual opcional) com valores de teste pré-lançamento. Nesta etapa de preview e piloto (60 a 90 dias gratuitos), o checkout financeiro está desativado e não há conversão automática para cobrança.
             </p>
           </div>
           <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
-            <h3 className="font-bold text-sm text-brand-ink">As informações do perfil são garantias de atendimento?</h3>
+            <h3 className="font-bold text-sm text-brand-ink">2. Há comissão sobre o serviço ou cobrança por lead?</h3>
             <p className="text-brand-ink/75 leading-relaxed">
-              Não. Descrições e localidade são informações publicadas no perfil e não garantem disponibilidade, contratação ou resultado.
+              Não. O Recontrate não cobra comissão sobre o valor do serviço nem vende pacotes de moedas ou leads avulsos. O orçamento e o pagamento do serviço são combinados diretamente entre cliente e profissional.
             </p>
           </div>
           <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
-            <h3 className="font-bold text-sm text-brand-ink">Há avaliações ou pontuações públicas?</h3>
+            <h3 className="font-bold text-sm text-brand-ink">3. Como cancelo minha assinatura ou participação?</h3>
             <p className="text-brand-ink/75 leading-relaxed">
-              Não exibimos avaliações ou pontuações nesta versão enquanto não houver validação suficiente dos registros.
+              Durante o piloto gratuito não há cobrança nem necessidade de cartão. Quando os planos pagos estiverem ativos, o cancelamento poderá ser feito a qualquer momento no painel, sem fidelidade ou multa, mantendo os recursos até o fim do ciclo já pago.
             </p>
           </div>
           <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
-            <h3 className="font-bold text-sm text-brand-ink">Posso entrar em uma lista de interesse?</h3>
+            <h3 className="font-bold text-sm text-brand-ink">4. Como são feitas avaliações e verificações?</h3>
             <p className="text-brand-ink/75 leading-relaxed">
-              A lista de interesse ainda não está disponível. Esta página não coleta seus dados quando não há perfis correspondentes.
+              As avaliações registram qualidade, pontualidade, comunicação e limpeza após o atendimento, com direito de resposta pública do prestador. A verificação atual valida cadastro, e-mail e especialidades declaradas no onboarding; procedimentos adicionais de verificação documental estão em configuração para o lançamento.
             </p>
           </div>
-        </div>
-      </section>
-
-      {/* 10. CTA FINAL DUPLO */}
-      <section className="bg-white rounded-3xl p-6 sm:p-10 border border-brand-primary/10 flex flex-col md:flex-row items-center justify-between gap-6">
-        <div className="space-y-1">
-          <h2 className="font-display font-bold text-xl sm:text-2xl text-brand-ink">
-            Consulte os perfis disponíveis na busca.
-          </h2>
-          <p className="text-xs sm:text-sm text-brand-ink/75">
-            Os resultados dependem dos perfis públicos verificados disponíveis.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => onNavigateUrl('/encontrar-profissional')}
-            className="min-h-[46px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs sm:text-sm cursor-pointer"
-          >
-            Encontrar um profissional
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigateUrl('/criar-conta')}
-            className="min-h-[46px] px-6 py-3 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-display font-semibold text-xs sm:text-sm cursor-pointer"
-          >
-            Criar conta e escolher perfil
-          </button>
+          <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
+            <h3 className="font-bold text-sm text-brand-ink">5. Em quais localidades funciona?</h3>
+            <p className="text-brand-ink/75 leading-relaxed">
+              O piloto prioriza serviços residenciais locais conforme os bairros informados pelos perfis verificados publicados (inicialmente com foco em bairros de São Paulo na base de teste). Não há cobertura nacional automática; se sua região ainda não tiver perfis ativos, você pode registrar interesse para a expansão do piloto.
+            </p>
+          </div>
+          <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
+            <h3 className="font-bold text-sm text-brand-ink">6. O que acontece se o profissional não puder atender?</h3>
+            <p className="text-brand-ink/75 leading-relaxed">
+              Se o profissional estiver sem agenda na data solicitada, ele pode sugerir até 2 profissionais substitutos informando o motivo da indicação. O cliente visualiza o perfil e decide livremente se aceita o substituto ou se prefere buscar outro prestador.
+            </p>
+          </div>
         </div>
       </section>
     </div>
@@ -367,14 +842,17 @@ export const ForProvidersPage: React.FC<{
   return (
     <div className="space-y-8 pb-12">
       <section className="bg-brand-primary text-white rounded-3xl p-8 sm:p-12 space-y-6">
-        <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-brand-accent-contrast">
-          Recontrate para Prestadores Autônomos
-        </span>
+        <div className="flex flex-wrap items-center gap-3">
+          <BrandLogo variant="light" size="sm" decorative />
+          <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-brand-accent-contrast">
+            Recontrate para Profissionais Autônomos · Piloto Controlado
+          </span>
+        </div>
         <h1 className="font-display font-bold text-3xl sm:text-4xl max-w-3xl leading-tight">
-          Conheça a plataforma antes de criar seu perfil
+          Mantenha seus clientes por perto, construa reputação e trabalhe sem comissão
         </h1>
         <p className="text-sm sm:text-base text-white/80 max-w-2xl leading-relaxed">
-          A disponibilidade de oportunidades varia conforme os perfis publicados e a região. O cadastro não garante pedidos, clientes, renda ou posição em resultados.
+          Organize seu perfil profissional com suas especialidades e bairros de atuação, facilite que clientes satisfeitos voltem a contratar você e indique substitutos de confiança quando sua agenda estiver cheia. O cadastro não garante volume fixo de pedidos nem colocação no topo de buscadores externos.
         </p>
         <div className="flex flex-wrap items-center gap-3 pt-2">
           <button
@@ -382,23 +860,46 @@ export const ForProvidersPage: React.FC<{
             onClick={() => onNavigateUrl('/criar-conta')}
             className="min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-sm cursor-pointer"
           >
-            Criar conta (selecione Prestador)
+            Quero participar do piloto (Criar conta)
           </button>
           <button
             type="button"
             onClick={() => onNavigateUrl('/planos')}
             className="min-h-[48px] px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-display font-semibold text-sm cursor-pointer"
           >
-            Consultar planos e valores
+            Consultar proposta de planos e piloto
           </button>
         </div>
       </section>
 
-      <section className="bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-3">
-        <h2 className="font-display font-bold text-xl text-brand-ink">Informações antes do cadastro</h2>
-        <p className="text-sm text-brand-ink/75 leading-relaxed">
-          Na tela de criação de conta, selecione manualmente o perfil Prestador. A busca pública exibe apenas perfis com status de verificação ativo. Categoria e localidade são informações declaradas no perfil e não confirmam agenda ou área de atendimento.
-        </p>
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-5 text-xs">
+        <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-2">
+          <p className="font-semibold text-brand-accent-strong">Piloto sem cartão</p>
+          <h2 className="font-display font-bold text-base text-brand-ink">
+            60 a 90 dias gratuitos sem conversão automática
+          </h2>
+          <p className="text-brand-ink/75 leading-relaxed">
+            A turma inicial participa sem informar cartão de crédito. Ao final do período de piloto, você escolhe conscientemente se deseja assinar um plano pago ou permanecer no plano Gratuito.
+          </p>
+        </div>
+        <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-2">
+          <p className="font-semibold text-brand-link">Autonomia financeira</p>
+          <h2 className="font-display font-bold text-base text-brand-ink">
+            0% de comissão e R$ 0 por lead
+          </h2>
+          <p className="text-brand-ink/75 leading-relaxed">
+            O valor do serviço é 100% seu, combinado diretamente com o cliente. A plataforma opera apenas com planos de assinatura claros e limites mensais conhecidos antes da adesão.
+          </p>
+        </div>
+        <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-2">
+          <p className="font-semibold text-brand-link">Programa Padrinho</p>
+          <h2 className="font-display font-bold text-base text-brand-ink">
+            Mentoria e indicação como programa separado
+          </h2>
+          <p className="text-brand-ink/75 leading-relaxed">
+            Profissionais experientes podem atuar como Padrinhos para orientar e indicar apadrinhados na rede por mérito e elegibilidade — sem custo de plano duplicado.
+          </p>
+        </div>
       </section>
     </div>
   );
@@ -408,18 +909,44 @@ export const TermsAndPrivacyPage: React.FC<{
   mode: 'termos' | 'privacidade';
 }> = ({ mode }) => {
   const isTerms = mode === 'termos';
+  const projectContact =
+    import.meta.env.VITE_PROJECT_CONTACT_EMAIL ||
+    'Canal oficial de contato em configuração (definido via VITE_PROJECT_CONTACT_EMAIL)';
+
   return (
     <div className="max-w-4xl mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 space-y-6 mb-12">
-      <p className="text-xs font-semibold text-brand-link">Informações provisórias</p>
+      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold">
+        <span>Aviso de Bloqueio Operacional · Documento em Revisão Pré-Lançamento</span>
+      </div>
       <h1 className="font-display font-bold text-2xl sm:text-3xl text-brand-ink">
-        {isTerms ? 'Termos de uso em revisão' : 'Informações de privacidade em revisão'}
+        {isTerms ? 'Termos de Uso (Versão Provisória de Piloto)' : 'Política de Privacidade e LGPD (Versão Provisória de Piloto)'}
       </h1>
       <div className="space-y-4 text-xs sm:text-sm text-brand-ink/80 leading-relaxed">
-        <p>
-          {isTerms
-            ? 'Os termos completos de uso ainda estão em revisão. Esta página não confirma disponibilidade de pedidos, contato direto, contratação ou resultado. Consulte os valores e condições exibidos na página de planos antes de qualquer decisão.'
-            : 'O aviso completo de privacidade ainda está em revisão. A lista de interesse não está disponível e esta página não coleta dados para esse fim. Antes de habilitar novas formas de coleta, serão descritos os dados tratados, finalidades, compartilhamentos, retenção e canal de atendimento.'}
-        </p>
+        {isTerms ? (
+          <>
+            <p>
+              <strong>1. Estágio do produto e marca provisória:</strong> O sistema <strong>Recontrate</strong> encontra-se em ambiente de desenvolvimento e validação de piloto. O nome Recontrate é uma identidade provisória de trabalho. Nenhuma garantia de volume de clientes, disponibilidade nacional ou faturamento é oferecida.
+            </p>
+            <p>
+              <strong>2. Ausência de intermediação financeira e checkout desativado:</strong> Nesta etapa de preview, nenhuma cobrança real é processada. Os preços exibidos na página de planos constituem proposta de teste pré-lançamento, e o acesso da turma inicial ocorre em regime de piloto controlado (60 a 90 dias gratuitos, sem conversão automática).
+            </p>
+            <p>
+              <strong>3. Relação direta entre cliente e prestador:</strong> Orçamentos, execução técnica, prazos e pagamentos pelo serviço residencial ocorrem diretamente entre cliente e profissional autônomo, sem comissão da plataforma.
+            </p>
+          </>
+        ) : (
+          <>
+            <p>
+              <strong>1. Coleta mínima de dados no piloto:</strong> Enquanto a política definitiva passa por validação jurídica, os formulários de pré-cadastro e interesse coletam apenas o mínimo necessário (nome, e-mail, cidade/bairro e categoria de serviço), sem solicitar CPF, RG, endereço residencial completo ou dados de cartão.
+            </p>
+            <p>
+              <strong>2. Proteção de contato pessoal:</strong> O telefone ou e-mail pessoal do prestador não é exposto publicamente sem autorização e contexto de atendimento, e nenhum dado é enviado para e-mails de terceiros ou domínios externos não controlados pelo projeto.
+            </p>
+            <p>
+              <strong>3. Consentimento explícito e canal do projeto:</strong> Nenhum formulário marca o consentimento por padrão. Canal de atendimento configurável do projeto: <code className="font-mono">{projectContact}</code>.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );

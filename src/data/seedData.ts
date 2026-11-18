@@ -156,7 +156,8 @@ export const INITIAL_PROVIDERS: ProviderProfile[] = [
         },
         wouldRecommend: true,
         comment:
-          'O João chegou exatamente no horário combinado, usou propé e deixou o quadro elétrico impecável com etiquetas em cada disjuntor. Já virou meu eletricista oficial na Confiare.',
+          'O João chegou exatamente no horário combinado, usou propé e deixou o quadro elétrico impecável com etiquetas em cada disjuntor. Já virou meu eletricista oficial no Recontrate.',
+
         providerReply:
           'Muito obrigado pela confiança, Helena! Sempre que precisar revisar qualquer circuito, estou à disposição.',
       },
@@ -248,7 +249,8 @@ export const INITIAL_PROVIDERS: ProviderProfile[] = [
         },
         wouldRecommend: true,
         comment:
-          'O João não podia atender no mesmo dia e me indicou o Carlos pela Confiare. Mesma postura, super educado e resolveu o curto em menos de 1 hora!',
+          'O João não podia atender no mesmo dia e me indicou o Carlos pelo Recontrate. Mesma postura, super educado e resolveu o curto em menos de 1 hora!',
+
       },
     ],
   },
@@ -644,7 +646,8 @@ export const INITIAL_SUBSTITUTE_REFERRAL: SubstituteReferral = {
   substituteProviderIds: ['prov-carlos', 'prov-marcos'],
   reasonCategory: 'Agenda cheia na data',
   customNote:
-    'Estou finalizando a montagem de um quadro trifásico hoje à tarde, mas indico com total confiança o Carlos Eduardo (meu apadrinhado na Confiare) e o Marcos Vinícius, que atendem em Pinheiros hoje mesmo.',
+    'Estou finalizando a montagem de um quadro trifásico hoje à tarde, mas indico com total confiança o Carlos Eduardo (meu apadrinhado no Recontrate) e o Marcos Vinícius, que atendem em Pinheiros hoje mesmo.',
+
   serviceContext: 'Disjuntor do chuveiro desarmando e revisão de tomada 20A',
   neighborhood: 'Pinheiros',
   urgency: 'Hoje · Tarde (13h–18h)',
@@ -675,8 +678,9 @@ export const INITIAL_PROVIDER_NOTIFICATIONS: ProviderRealtimeNotification[] = [
     clientName: 'Helena Vasconcelos',
     neighborhood: 'Pinheiros',
     urgencyOrScope: 'Escopo aprovado · Atendimento confirmado',
-    timestamp: 'Há 11 min',
+    timestamp: 'Há 12 min',
     read: false,
+
     clientWhatsapp: '(11) 99418-2201',
   },
   {

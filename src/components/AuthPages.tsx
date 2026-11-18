@@ -13,6 +13,7 @@ import { authClient } from '../lib/neonClient';
 import type { AuthenticatedUserSession } from '../services/authService';
 import { INITIAL_TAXONOMY_CATEGORIES } from '../data/taxonomySeed';
 import { ProviderSpecialtiesManager } from './ProviderSpecialtiesManager';
+import { BrandLogo } from './BrandLogo';
 
 export const LoginPage: React.FC<{
   onAuthenticated: (
@@ -64,17 +65,21 @@ export const LoginPage: React.FC<{
 
   return (
     <div className="max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-6 my-6">
-      <div className="space-y-1">
-        <p className="text-xs font-semibold text-brand-link">
-          Acesso seguro
-        </p>
-        <h1 className="font-display font-bold text-2xl text-brand-ink">
-          Entrar na sua conta
-        </h1>
-        <p className="text-xs text-brand-ink/70">
-          Acesse sua área de cliente, painel do prestador ou mentoria.
-        </p>
+      <div className="space-y-3">
+        <BrandLogo variant="dark" size="sm" />
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-brand-link">
+            Acesso seguro
+          </p>
+          <h1 className="font-display font-bold text-2xl text-brand-ink">
+            Entrar na sua conta
+          </h1>
+          <p className="text-xs text-brand-ink/70">
+            Acesse sua área de cliente, painel do prestador ou mentoria.
+          </p>
+        </div>
       </div>
+
 
       {error && (
         <div
@@ -192,7 +197,8 @@ export const SignupPage: React.FC<{
   const [phone, setPhone] = useState('');
   const [neighborhood, setNeighborhood] = useState('Pinheiros');
   const [category, setCategory] = useState('Elétrica');
-  const [lgpdConsent, setLgpdConsent] = useState(true);
+  const [lgpdConsent, setLgpdConsent] = useState(false);
+  const [websiteHoneypot, setWebsiteHoneypot] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [pendingVerification, setPendingVerification] = useState<{
@@ -204,7 +210,17 @@ export const SignupPage: React.FC<{
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (websiteHoneypot.trim() !== '') {
+      return;
+    }
+    if (!lgpdConsent) {
+      setError(
+        'Para continuar no pré-cadastro/piloto, marque a caixa de consentimento concordando com os avisos de uso e privacidade.'
+      );
+      return;
+    }
     setLoading(true);
+
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
@@ -266,6 +282,7 @@ export const SignupPage: React.FC<{
   if (pendingVerification) {
     return (
       <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 space-y-5 my-6 text-xs">
+        <BrandLogo variant="dark" size="sm" />
         <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
           <CheckCircle2 className="w-6 h-6" />
         </div>
@@ -291,14 +308,18 @@ export const SignupPage: React.FC<{
 
   return (
     <div className="max-w-xl mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-6 my-6">
-      <div className="space-y-1">
-        <p className="text-xs font-semibold text-brand-link">
-          Cadastro Real · Cliente e/ou Prestador
-        </p>
-        <h1 className="font-display font-bold text-2xl text-brand-ink">
-          Criar conta no Recontrate
-        </h1>
+      <div className="space-y-3">
+        <BrandLogo variant="dark" size="sm" />
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-brand-link">
+            Cadastro Real · Cliente e/ou Prestador
+          </p>
+          <h1 className="font-display font-bold text-2xl text-brand-ink">
+            Criar conta no Recontrate
+          </h1>
+        </div>
       </div>
+
 
       {/* Role Selector */}
       <div className="grid grid-cols-2 gap-3 text-xs">
@@ -446,6 +467,18 @@ export const SignupPage: React.FC<{
           </span>
         </label>
 
+        <div className="hidden" aria-hidden="true">
+          <label htmlFor="signup-company-site">Não preencher</label>
+          <input
+            id="signup-company-site"
+            type="text"
+            tabIndex={-1}
+            autoComplete="off"
+            value={websiteHoneypot}
+            onChange={(e) => setWebsiteHoneypot(e.target.value)}
+          />
+        </div>
+
         <label className="flex items-start gap-2.5 cursor-pointer">
           <input
             type="checkbox"
@@ -453,8 +486,24 @@ export const SignupPage: React.FC<{
             onChange={(e) => setLgpdConsent(e.target.checked)}
             className="mt-0.5"
           />
-          <span className="text-brand-ink/80">
-            Aceito os Termos de Uso e a Política de Privacidade LGPD do Recontrate.
+          <span className="text-brand-ink/80 leading-relaxed">
+            Autorizo o uso dos dados mínimos informados acima para acesso ao ambiente de piloto do Recontrate, ciente dos{' '}
+            <button
+              type="button"
+              onClick={() => onNavigateUrl('/termos')}
+              className="underline font-semibold text-brand-link cursor-pointer"
+            >
+              Termos de Uso
+            </button>{' '}
+            e da{' '}
+            <button
+              type="button"
+              onClick={() => onNavigateUrl('/privacidade')}
+              className="underline font-semibold text-brand-link cursor-pointer"
+            >
+              Política de Privacidade LGPD (em revisão)
+            </button>
+            .
           </span>
         </label>
 
@@ -463,9 +512,10 @@ export const SignupPage: React.FC<{
           disabled={loading}
           className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs transition-colors cursor-pointer disabled:opacity-60"
         >
-          {loading ? 'Criando conta segura...' : 'Criar minha conta'}
+          {loading ? 'Registrando participação...' : 'Participar do piloto / Criar conta'}
         </button>
       </form>
+
 
       <p className="text-center text-xs text-brand-ink/70">
         Já possui conta?{' '}
@@ -531,14 +581,18 @@ export const ForgotAndResetPasswordPage: React.FC<{
 
   return (
     <div className="max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-6 my-6 text-xs">
-      <div className="space-y-1">
-        <p className="text-xs font-semibold text-brand-link">
-          Recuperação Segura de Credenciais
-        </p>
-        <h1 className="font-display font-bold text-2xl text-brand-ink">
-          Recuperar senha
-        </h1>
+      <div className="space-y-3">
+        <BrandLogo variant="dark" size="sm" />
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-brand-link">
+            Recuperação Segura de Credenciais
+          </p>
+          <h1 className="font-display font-bold text-2xl text-brand-ink">
+            Recuperar senha
+          </h1>
+        </div>
       </div>
+
 
       {error && (
         <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800">
@@ -691,20 +745,24 @@ export const OnboardingPage: React.FC<{
       } mx-auto space-y-6 my-6 text-xs`}
     >
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-6">
-        <div className="space-y-1">
-          <p className="text-xs font-semibold text-brand-accent-strong">
-            Onboarding Obrigatório de Primeiro Acesso
-          </p>
-          <h1 className="font-display font-bold text-2xl text-brand-ink">
-            Bem-vindo(a), {user.fullName}!
-          </h1>
-          <p className="text-brand-ink/70">
-            Papel ativo: <strong>{user.activeRole.toUpperCase()}</strong>. Confirme seus dados locais
-            {isProviderOnboarding
-              ? ' e escolha de 1 a 5 especialidades oficiais para liberar o acesso ao painel.'
-              : ' para liberar o acesso ao painel.'}
-          </p>
+        <div className="space-y-3">
+          <BrandLogo variant="dark" size="sm" />
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-brand-accent-strong">
+              Onboarding Obrigatório de Primeiro Acesso
+            </p>
+            <h1 className="font-display font-bold text-2xl text-brand-ink">
+              Bem-vindo(a), {user.fullName}!
+            </h1>
+            <p className="text-brand-ink/70">
+              Papel ativo: <strong>{user.activeRole.toUpperCase()}</strong>. Confirme seus dados locais
+              {isProviderOnboarding
+                ? ' e escolha de 1 a 5 especialidades oficiais para liberar o acesso ao painel.'
+                : ' para liberar o acesso ao painel.'}
+            </p>
+          </div>
         </div>
+
 
         {error && (
           <div
@@ -837,7 +895,8 @@ export const PadrinhoDashboardPage: React.FC<{
 
   return (
     <div className="space-y-6 pb-12">
-      <div className="bg-brand-primary text-white rounded-3xl p-8 space-y-2">
+      <div className="bg-brand-primary text-white rounded-3xl p-8 space-y-3">
+        <BrandLogo variant="light" size="sm" decorative />
         <p className="text-xs font-semibold text-brand-accent-strong">
           Área Autenticada Restrita · Papel: Padrinho Verificado (/app/padrinho)
         </p>
@@ -848,6 +907,7 @@ export const PadrinhoDashboardPage: React.FC<{
           Acompanhe apenas os seus apadrinhados autorizados (protegido por RLS na tabela mentorships).
         </p>
       </div>
+
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-xs">
         <form
