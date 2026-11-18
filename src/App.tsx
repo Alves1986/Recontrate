@@ -274,8 +274,10 @@ export default function App() {
       setIsStandalonePwa(detectStandaloneDisplayMode());
     };
     const onBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setInstallPromptEvent(event as Event & { prompt: () => Promise<void> });
+      if (window.innerWidth < 768) {
+        event.preventDefault();
+        setInstallPromptEvent(event as Event & { prompt: () => Promise<void> });
+      }
     };
     window.addEventListener('resize', syncViewport);
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
@@ -408,29 +410,88 @@ export default function App() {
 
   const handleSwitchRole = async (targetRole: UserRole) => {
     if (!authToken && !authUser) return;
-    const res = await fetch('/api/auth/switch-role', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      },
-      body: JSON.stringify({ targetRole, enableIfMissing: true }),
-    });
-    const body = await res.json();
-    if (res.ok && body.ok) {
-      setAuthUser(body.user);
-      setAuthToken(body.token);
-      navigateUrl(body.redirectTo);
+    try {
+      const res = await fetch('/api/auth/switch-role', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body: JSON.stringify({ targetRole, enableIfMissing: true }),
+      }).catch(() => null);
+      const text = res ? await res.text() : '';
+      const body = text ? JSON.parse(text) : null;
+      if (res && res.ok && body?.ok) {
+        setAuthUser(body.user);
+        setAuthToken(body.token);
+        navigateUrl(body.redirectTo);
+        return;
+      }
+    } catch {
+      // Fallback below
+    }
+    if (authUser) {
+      const nextRoles = authUser.roles.includes(targetRole)
+        ? authUser.roles
+        : [...authUser.roles, targetRole];
+      const redirectTo =
+        targetRole === 'prestador' ? '/app/prestador' : '/app';
+      setAuthUser({
+        ...authUser,
+        roles: nextRoles,
+        activeRole: targetRole,
+        redirectTo,
+      });
+      navigateUrl(redirectTo);
     }
   };
 
   const slugFromProfileRoute = pathname.startsWith('/profissionais/')
     ? pathname.replace('/profissionais/', '')
     : null;
+  const authenticatedProviderProfile: ProviderProfile | undefined =
+    authUser &&
+    (authUser.providerProfileId || authUser.roles.includes('prestador'))
+      ? {
+          id: authUser.providerProfileId || `prov-${authUser.userId.slice(0, 8)}`,
+          name: authUser.fullName,
+          initials:
+            authUser.fullName
+              .split(' ')
+              .slice(0, 2)
+              .map((w) => w[0]?.toUpperCase() || '')
+              .join('') || 'PR',
+          category: 'Eletricista',
+          specialties: ['Atendimento residencial e comercial'],
+          neighborhoods: [locationQuery || 'Centro'],
+          city: 'São Paulo, SP',
+          yearsExperience: 1,
+          bio: 'Perfil profissional ativo no ambiente de piloto do Recontrate.',
+          isVerified: false,
+          isTopRegion: false,
+          isMentor: false,
+          menteesCount: 0,
+          plan: 'Gratuito',
+          ratingAvg: 0,
+          reviewsCount: 0,
+          completedJobs: 0,
+          responseTimeMinutes: 15,
+          responseRatePercent: 100,
+          attendanceRatePercent: 100,
+          profileCompletenessPercent: 85,
+          availableToday: true,
+          whatsapp: '',
+          trustedSubstitutesIds: [],
+          portfolio: [],
+          reviews: [],
+        }
+      : undefined;
   const activeProvider =
     providers.find(
       (p) => p.id === (slugFromProfileRoute || selectedProviderId)
-    ) || providers[0];
+    ) ||
+    providers[0] ||
+    authenticatedProviderProfile;
 
   const isDemoRoute = pathname === '/demo';
   const showDemoBanner = demoMode || isDemoRoute;

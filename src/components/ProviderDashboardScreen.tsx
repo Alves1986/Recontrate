@@ -26,7 +26,6 @@ import {
   createRealtimeNotification,
 } from '../utils/marketplaceRules';
 import { ProviderRealtimeNotifications } from './ProviderRealtimeNotifications';
-import { NeonServicesPanel } from './NeonServicesPanel';
 import { GoogleModeratedAdSlot } from './GoogleModeratedAdSlot';
 import { ProviderSpecialtiesManager } from './ProviderSpecialtiesManager';
 import { BrandLogo } from './BrandLogo';
@@ -346,9 +345,6 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
           </div>
         </div>
       </div>
-
-      {/* PAINEL DE SERVIÇOS NEON CLOUD (POSTGRES, AUTH, STORAGE, AI GATEWAY, FUNCTIONS, REALTIME) */}
-      <NeonServicesPanel providerId={activeProvider.id} />
 
       {/* COMPONENTE DE NOTIFICAÇÕES DE STATUS EM TEMPO REAL */}
       <ProviderRealtimeNotifications

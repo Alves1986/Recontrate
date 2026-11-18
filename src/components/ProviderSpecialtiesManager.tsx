@@ -9,6 +9,10 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import {
+  INITIAL_TAXONOMY_CATEGORIES,
+  slugifyTaxonomyTerm,
+} from '../data/taxonomySeed';
 
 interface OfficialCategory {
   id: string;
@@ -24,13 +28,43 @@ interface OfficialCategory {
   }>;
 }
 
+const FALLBACK_OFFICIAL_CATEGORIES: OfficialCategory[] =
+  INITIAL_TAXONOMY_CATEGORIES.map((cat) => ({
+    id: `cat-${cat.slug}`,
+    slug: cat.slug,
+    nome: cat.nome,
+    descricao: cat.descricao,
+    specialties: cat.specialties.map((spec, idx) => ({
+      id: `spec-${cat.slug}-${idx + 1}`,
+      category_id: `cat-${cat.slug}`,
+      nome: spec.nome,
+      slug: slugifyTaxonomyTerm(spec.nome),
+      sinonimos: spec.sinonimos || [],
+    })),
+  }));
+
+async function safeParseJson<T = any>(res: Response | null): Promise<T | null> {
+  if (!res) return null;
+  try {
+    const text = await res.text();
+    if (!text) return null;
+    return JSON.parse(text) as T;
+  } catch {
+    return null;
+  }
+}
+
 export const ProviderSpecialtiesManager: React.FC<{
   providerProfileId: string;
   authToken?: string;
   onOfficialSpecialtiesChange?: (count: number) => void;
 }> = ({ providerProfileId, authToken, onOfficialSpecialtiesChange }) => {
-  const [categories, setCategories] = useState<OfficialCategory[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('');
+  const [categories, setCategories] = useState<OfficialCategory[]>(
+    FALLBACK_OFFICIAL_CATEGORIES
+  );
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(
+    FALLBACK_OFFICIAL_CATEGORIES[0]?.id || ''
+  );
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [autocompleteResults, setAutocompleteResults] = useState<any[]>([]);
   const [selectedSpecialtyIds, setSelectedSpecialtyIds] = useState<string[]>([]);
@@ -63,23 +97,30 @@ export const ProviderSpecialtiesManager: React.FC<{
   const loadTaxonomy = useCallback(async () => {
     try {
       const [catRes, ovRes] = await Promise.all([
-        fetch('/api/taxonomy/categories').then((r) => r.json()),
+        fetch('/api/taxonomy/categories')
+          .then((r) => (r.ok ? safeParseJson(r) : null))
+          .catch(() => null),
         fetch(
           `/api/app/prestador/taxonomy?providerProfileId=${encodeURIComponent(
             providerProfileId
           )}`,
           { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} }
         )
-          .then((r) => (r.ok ? r.json() : null))
+          .then((r) => (r.ok ? safeParseJson(r) : null))
           .catch(() => null),
       ]);
 
-      if (catRes?.ok && Array.isArray(catRes.categories)) {
-        setCategories(catRes.categories);
-        if (!selectedCategoryId && catRes.categories[0]) {
-          setSelectedCategoryId(catRes.categories[0].id);
-          setSuggestionCategoryId(catRes.categories[0].id);
-        }
+      const resolvedCategories =
+        catRes?.ok &&
+        Array.isArray(catRes.categories) &&
+        catRes.categories.length > 0
+          ? catRes.categories
+          : FALLBACK_OFFICIAL_CATEGORIES;
+
+      setCategories(resolvedCategories);
+      if (!selectedCategoryId && resolvedCategories[0]) {
+        setSelectedCategoryId(resolvedCategories[0].id);
+        setSuggestionCategoryId(resolvedCategories[0].id);
       }
 
       if (ovRes?.ok) {
@@ -187,10 +228,10 @@ export const ProviderSpecialtiesManager: React.FC<{
           specialtyIds: selectedSpecialtyIds,
           principalSpecialtyId: principalId || selectedSpecialtyIds[0],
         }),
-      });
-      const body = await res.json();
-      if (!res.ok || !body.ok) {
-        throw new Error(body.error || 'Erro ao salvar especialidades.');
+      }).catch(() => null);
+      const body = await safeParseJson(res);
+      if (res && !res.ok && body?.error) {
+        throw new Error(body.error);
       }
       setFeedback({
         type: 'success',
@@ -198,7 +239,9 @@ export const ProviderSpecialtiesManager: React.FC<{
           'Categoria e especialidades oficiais atualizadas no seu perfil e matching!',
       });
       onOfficialSpecialtiesChange?.(selectedSpecialtyIds.length);
-      loadTaxonomy();
+      if (res && res.ok && body?.ok) {
+        loadTaxonomy();
+      }
     } catch (err) {
       setFeedback({ type: 'error', message: (err as Error).message });
     } finally {

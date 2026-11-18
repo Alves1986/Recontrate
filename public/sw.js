@@ -1,4 +1,4 @@
-const CACHE_NAME = 'recontrate-pwa-v1';
+const CACHE_NAME = 'recontrate-pwa-v2';
 const APP_SHELL_ASSETS = [
   '/',
   '/entrar',
@@ -41,30 +41,70 @@ self.addEventListener('fetch', (event) => {
 
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response && response.ok) {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => null);
+      (async () => {
+        try {
+          const networkResponse = await fetch(request);
+          if (networkResponse && networkResponse.ok) {
+            const copy = networkResponse.clone();
+            caches
+              .open(CACHE_NAME)
+              .then((cache) => cache.put(request, copy))
+              .catch(() => null);
           }
-          return response;
-        })
-        .catch(() =>
-          caches.match(request).then((cached) => cached || caches.match('/entrar') || caches.match('/'))
-        )
+          if (networkResponse) {
+            return networkResponse;
+          }
+        } catch {
+          // Network offline fallback below
+        }
+
+        const cachedExact = await caches.match(request);
+        if (cachedExact) return cachedExact;
+
+        const cachedLogin = await caches.match('/entrar');
+        if (cachedLogin) return cachedLogin;
+
+        const cachedRoot = await caches.match('/');
+        if (cachedRoot) return cachedRoot;
+
+        return new Response(
+          '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Recontrate</title></head><body><p>Conexão indisponível no momento. Recarregue a página.</p></body></html>',
+          {
+            status: 200,
+            headers: { 'Content-Type': 'text/html; charset=utf-8' },
+          }
+        );
+      })()
     );
     return;
   }
 
   event.respondWith(
-    fetch(request)
-      .then((response) => {
-        if (response && response.ok && response.type === 'basic') {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => null);
+    (async () => {
+      try {
+        const networkResponse = await fetch(request);
+        if (
+          networkResponse &&
+          networkResponse.ok &&
+          networkResponse.type === 'basic'
+        ) {
+          const copy = networkResponse.clone();
+          caches
+            .open(CACHE_NAME)
+            .then((cache) => cache.put(request, copy))
+            .catch(() => null);
         }
-        return response;
-      })
-      .catch(() => caches.match(request))
+        if (networkResponse) {
+          return networkResponse;
+        }
+      } catch {
+        // Fallback to cache below
+      }
+
+      const cachedAsset = await caches.match(request);
+      if (cachedAsset) return cachedAsset;
+
+      return new Response('', { status: 504, statusText: 'Offline' });
+    })()
   );
 });

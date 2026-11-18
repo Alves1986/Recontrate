@@ -33,6 +33,11 @@
     {
       "source": "/((?!api|ads\\.txt|manifest\\.webmanifest|sw\\.js|icons/).*)",
       "destination": "/index.html"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index"
     }
   ]
 }
+
