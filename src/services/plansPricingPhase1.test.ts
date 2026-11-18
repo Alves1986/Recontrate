@@ -74,7 +74,7 @@ test('1. API GET /api/plans retorna os 5 planos com valores exatos em centavos, 
   assert.equal(bySlug.profissional.permiteDestaque, true);
   assert.equal(bySlug.profissional.permitePortfolioIlimitado, true);
   assert.equal(bySlug.profissional.exibeAnuncios, false);
-  assert.equal(bySlug.profissional.selo, 'Profissional Confiare');
+  assert.equal(bySlug.profissional.selo, 'Profissional Recontrate');
 
   // Premium
   assert.equal(bySlug.premium.precoMensalCentavos, 9990);
@@ -84,7 +84,7 @@ test('1. API GET /api/plans retorna os 5 planos com valores exatos em centavos, 
   assert.equal(bySlug.premium.permiteRelatoriosAvancados, true);
   assert.equal(bySlug.premium.suportePrioritario, true);
   assert.equal(bySlug.premium.exibeAnuncios, false);
-  assert.equal(bySlug.premium.selo, 'Top Confiare');
+  assert.equal(bySlug.premium.selo, 'Top Recontrate');
 
   // Padrinho
   assert.equal(bySlug.padrinho.precoMensalCentavos, 10990);

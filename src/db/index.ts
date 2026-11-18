@@ -119,7 +119,7 @@ export const INITIAL_PLANS_SEED = [
     slug: 'profissional',
     nome: 'Profissional',
     descricao:
-      'Prioridade média no matching, destaque em buscas locais, portfólio ilimitado, estatísticas de resposta e conversão e selo Profissional Confiare.',
+      'Prioridade média no matching, destaque em buscas locais, portfólio ilimitado, estatísticas de resposta e conversão e selo Profissional Recontrate.',
     precoMensalCentavos: 5990,
     precoAnualCentavos: 59900,
     limiteOportunidadesMensal: 40,
@@ -130,7 +130,7 @@ export const INITIAL_PLANS_SEED = [
     permitePortfolioIlimitado: true,
     limiteFotosPortfolio: null as number | null,
     suportePrioritario: false,
-    selo: 'Profissional Confiare',
+    selo: 'Profissional Recontrate',
     exibeAnuncios: false,
     ativo: true,
     ordemExibicao: 3,
@@ -140,7 +140,7 @@ export const INITIAL_PLANS_SEED = [
     slug: 'premium',
     nome: 'Premium',
     descricao:
-      'Prioridade alta no matching, destaque regional e por categoria, relatórios avançados, portfólio ilimitado, suporte prioritário e selo Top Confiare.',
+      'Prioridade alta no matching, destaque regional e por categoria, relatórios avançados, portfólio ilimitado, suporte prioritário e selo Top Recontrate.',
     precoMensalCentavos: 9990,
     precoAnualCentavos: 99900,
     limiteOportunidadesMensal: 100,
@@ -151,7 +151,7 @@ export const INITIAL_PLANS_SEED = [
     permitePortfolioIlimitado: true,
     limiteFotosPortfolio: null as number | null,
     suportePrioritario: true,
-    selo: 'Top Confiare',
+    selo: 'Top Recontrate',
     exibeAnuncios: false,
     ativo: true,
     ordemExibicao: 4,
@@ -180,6 +180,7 @@ export const INITIAL_PLANS_SEED = [
 ];
 
 let schemaInitialized = false;
+let schemaInitPromise: Promise<void> | null = null;
 
 export async function seedInitialTaxonomy(
   targetPool: Pool = pool
@@ -277,6 +278,17 @@ export async function seedInitialTaxonomy(
  */
 export async function ensureSchemaAndSeed(): Promise<void> {
   if (schemaInitialized) return;
+  if (schemaInitPromise) return schemaInitPromise;
+
+  schemaInitPromise = runEnsureSchemaAndSeed().catch((err) => {
+    schemaInitPromise = null;
+    throw err;
+  });
+  return schemaInitPromise;
+}
+
+async function runEnsureSchemaAndSeed(): Promise<void> {
+  if (schemaInitialized) return;
 
   const directPool = new Pool({
     connectionString: normalizeConnectionString(
@@ -285,8 +297,10 @@ export async function ensureSchemaAndSeed(): Promise<void> {
     max: 2,
   });
 
+  const client = await directPool.connect();
   try {
-    await directPool.query(`
+    await client.query('SELECT pg_advisory_lock(84729103)');
+    await client.query(`
       CREATE TABLE IF NOT EXISTS plans (
         id TEXT PRIMARY KEY,
         slug TEXT NOT NULL UNIQUE,
@@ -452,7 +466,7 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       );
     `);
 
-    const { rows: migCheck } = await directPool.query(
+    const { rows: migCheck } = await client.query(
       `SELECT 1 FROM information_schema.columns
        WHERE table_schema = 'public'
          AND table_name = 'storage_assets'
@@ -466,7 +480,7 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       );
       if (existsSync(phase1MigrationPath)) {
         const migrationSql = readFileSync(phase1MigrationPath, 'utf-8');
-        await directPool.query(migrationSql);
+        await client.query(migrationSql);
       }
 
       const phase2MigrationPath = path.resolve(
@@ -475,11 +489,11 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       );
       if (existsSync(phase2MigrationPath)) {
         const migration2Sql = readFileSync(phase2MigrationPath, 'utf-8');
-        await directPool.query(migration2Sql);
+        await client.query(migration2Sql);
       }
     }
 
-    const { rows: mig3Check } = await directPool.query(
+    const { rows: mig3Check } = await client.query(
       `SELECT 1 FROM information_schema.columns
        WHERE table_schema = 'public'
          AND table_name = 'plans'
@@ -492,11 +506,11 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       );
       if (existsSync(phase3PlansMigrationPath)) {
         const migration3Sql = readFileSync(phase3PlansMigrationPath, 'utf-8');
-        await directPool.query(migration3Sql);
+        await client.query(migration3Sql);
       }
     }
 
-    const { rows: mig4Check } = await directPool.query(
+    const { rows: mig4Check } = await client.query(
       `SELECT 1 FROM information_schema.tables
        WHERE table_schema = 'public'
          AND table_name = 'promotional_campaigns'`
@@ -508,11 +522,11 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       );
       if (existsSync(phase4CampaignMigrationPath)) {
         const migration4Sql = readFileSync(phase4CampaignMigrationPath, 'utf-8');
-        await directPool.query(migration4Sql);
+        await client.query(migration4Sql);
       }
     }
 
-    const { rows: mig5Check } = await directPool.query(
+    const { rows: mig5Check } = await client.query(
       `SELECT 1 FROM information_schema.tables
        WHERE table_schema = 'public'
          AND table_name = 'specialty_suggestions'`
@@ -527,28 +541,35 @@ export async function ensureSchemaAndSeed(): Promise<void> {
           phase5TaxonomyMigrationPath,
           'utf-8'
         );
-        await directPool.query(migration5Sql);
+        await client.query(migration5Sql);
       }
     }
 
-    const migration6Path = path.resolve(
-      process.cwd(),
-      'migrations/006_platform_settings_and_roles.sql'
+    const { rows: mig6Check } = await client.query(
+      `SELECT 1 FROM information_schema.tables
+       WHERE table_schema = 'public'
+         AND table_name = 'platform_settings'`
     );
-    if (existsSync(migration6Path)) {
-      const migration6Sql = readFileSync(migration6Path, 'utf-8');
-      await directPool.query(migration6Sql);
-    }
+    if (mig6Check.length === 0) {
+      const migration6Path = path.resolve(
+        process.cwd(),
+        'migrations/006_platform_settings_and_roles.sql'
+      );
+      if (existsSync(migration6Path)) {
+        const migration6Sql = readFileSync(migration6Path, 'utf-8');
+        await client.query(migration6Sql);
+      }
 
-    // Seed de Referência: platform_settings e roles (idempotente em todos os ambientes)
-    const refSqlFiles = [
-      'database/seeds/reference/04-platform-settings.sql',
-      'database/seeds/reference/05-roles.sql',
-    ];
-    for (const relPath of refSqlFiles) {
-      const fullPath = path.resolve(process.cwd(), relPath);
-      if (existsSync(fullPath)) {
-        await directPool.query(readFileSync(fullPath, 'utf-8'));
+      // Seed de Referência: platform_settings e roles (idempotente em todos os ambientes)
+      const refSqlFiles = [
+        'database/seeds/reference/04-platform-settings.sql',
+        'database/seeds/reference/05-roles.sql',
+      ];
+      for (const relPath of refSqlFiles) {
+        const fullPath = path.resolve(process.cwd(), relPath);
+        if (existsSync(fullPath)) {
+          await client.query(readFileSync(fullPath, 'utf-8'));
+        }
       }
     }
 
@@ -557,11 +578,11 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       c.specialties.map((s) => slugifyTaxonomyTerm(s.nome))
     );
     const [{ rows: catMatchRows }, { rows: specMatchRows }] = await Promise.all([
-      directPool.query<{ total: string }>(
+      client.query<{ total: string }>(
         `SELECT COUNT(*)::text AS total FROM categories WHERE slug = ANY($1::text[]) AND ativo = true AND active = true`,
         [expectedCategorySlugs]
       ),
-      directPool.query<{ total: string }>(
+      client.query<{ total: string }>(
         `SELECT COUNT(*)::text AS total FROM specialties WHERE slug = ANY($1::text[]) AND ativo = true AND oficial = true`,
         [expectedSpecialtySlugs]
       ),
@@ -574,7 +595,7 @@ export async function ensureSchemaAndSeed(): Promise<void> {
     }
 
     for (const p of INITIAL_PLANS_SEED) {
-      await directPool.query(
+      await client.query(
         `INSERT INTO plans (
           id, slug, nome, descricao, preco_mensal_centavos, preco_anual_centavos,
           limite_oportunidades_mensal, prioridade_matching, prioridade_label, permite_destaque,
@@ -622,7 +643,7 @@ export async function ensureSchemaAndSeed(): Promise<void> {
     }
 
     // Seed da Campanha de Lançamento (50% off nos 3 primeiros meses para novos prestadores)
-    await directPool.query(
+    await client.query(
       `INSERT INTO promotional_campaigns (
         id, nome, slug, descricao, tipo, desconto_percentual, duracao_ciclos,
         planos_elegiveis_json, preco_cheio_json, preco_promocional_json,
@@ -712,7 +733,7 @@ export async function ensureSchemaAndSeed(): Promise<void> {
       ];
 
       for (const dp of devProviders) {
-        await directPool.query(
+        await client.query(
           `INSERT INTO provider_profiles (
             id, slug, name, category, city, plan_slug, rating_avg, reviews_count, completed_jobs,
             response_time_minutes, response_rate_percent, attendance_rate_percent, is_verified, available_today,
@@ -726,7 +747,7 @@ export async function ensureSchemaAndSeed(): Promise<void> {
         );
       }
 
-      await directPool.query(
+      await client.query(
         `INSERT INTO realtime_notifications (
           id, provider_id, type, title, message, client_name, neighborhood, urgency_or_scope, read
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
@@ -747,6 +768,8 @@ export async function ensureSchemaAndSeed(): Promise<void> {
 
     schemaInitialized = true;
   } finally {
+    await client.query('SELECT pg_advisory_unlock(84729103)').catch(() => null);
+    client.release();
     await directPool.end();
   }
 }

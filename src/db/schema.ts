@@ -2,9 +2,11 @@ import {
   boolean,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
+  uuid,
 } from 'drizzle-orm/pg-core';
 
 export const plans = pgTable('plans', {
@@ -38,9 +40,21 @@ export const plans = pgTable('plans', {
 
 export const providerProfiles = pgTable('provider_profiles', {
   id: text('id').primaryKey(),
+  userId: uuid('user_id'),
+  slug: text('slug').unique(),
   name: text('name').notNull(),
+  professionalName: text('professional_name'),
   category: text('category').notNull(),
   city: text('city').notNull(),
+  neighborhoods: text('neighborhoods').array().notNull(),
+  specialties: text('specialties').array().notNull(),
+  radiusKm: integer('radius_km').notNull().default(10),
+  yearsExperience: integer('years_experience').notNull().default(5),
+  bio: text('bio').notNull().default(''),
+  profileCompletenessPercent: integer('profile_completeness_percent')
+    .notNull()
+    .default(90),
+  verificationStatus: text('verification_status').notNull().default('aprovado'),
   planSlug: text('plan_slug').notNull().default('gratuito'),
   ratingAvg: text('rating_avg').notNull().default('5.00'),
   reviewsCount: integer('reviews_count').notNull().default(0),
@@ -49,9 +63,17 @@ export const providerProfiles = pgTable('provider_profiles', {
   responseRatePercent: integer('response_rate_percent').notNull().default(100),
   attendanceRatePercent: integer('attendance_rate_percent').notNull().default(100),
   isVerified: boolean('is_verified').notNull().default(true),
+  isTopRegion: boolean('is_top_region').notNull().default(false),
+  isMentor: boolean('is_mentor').notNull().default(false),
+  mentorName: text('mentor_name'),
   availableToday: boolean('available_today').notNull().default(true),
   whatsapp: text('whatsapp').notNull(),
+  latitude: numeric('latitude', { precision: 9, scale: 6 }),
+  longitude: numeric('longitude', { precision: 9, scale: 6 }),
+  cpfCnpjNormalizado: text('cpf_cnpj_normalizado'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
 export const subscriptions = pgTable('subscriptions', {
@@ -216,7 +238,7 @@ export const promotionalRedemptions = pgTable('promotional_redemptions', {
   id: text('id').primaryKey(),
   campaignId: text('campaign_id').notNull(),
   providerProfileId: text('provider_profile_id').notNull(),
-  userId: text('user_id'),
+  userId: uuid('user_id'),
   subscriptionId: text('subscription_id').notNull(),
   planoId: text('plano_id').notNull(),
   cicloPromocionalAtual: integer('ciclo_promocional_atual').notNull().default(1),
@@ -240,7 +262,7 @@ export const promotionEligibilityChecks = pgTable(
   'promotion_eligibility_checks',
   {
     id: text('id').primaryKey(),
-    userId: text('user_id'),
+    userId: uuid('user_id'),
     providerProfileId: text('provider_profile_id'),
     campaignId: text('campaign_id').notNull(),
     emailNormalizado: text('email_normalizado').notNull().default(''),

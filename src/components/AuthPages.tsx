@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   ArrowRight,
   Award,
-  CheckCircle2,
   KeyRound,
   Lock,
   Mail,
@@ -83,10 +82,15 @@ export const LoginPage: React.FC<{
       }).catch(() => null);
       const body = res ? await safeParseJson(res) : null;
       if (res && res.ok && body?.ok) {
+        writeStoredPilotAccount(email, {
+          user: body.user,
+          password,
+          token: body.token,
+        });
         onAuthenticated(body.user, body.token, body.redirectTo);
         return;
       }
-      if (body?.error) {
+      if (body?.error && res && res.status < 500 && res.status !== 404) {
         setError(body.error);
         return;
       }
@@ -95,11 +99,12 @@ export const LoginPage: React.FC<{
       const stored = readStoredPilotAccounts()[normalizedEmail];
       if (stored && stored.password === password) {
         const redirectTo =
-          stored.user.activeRole === 'prestador' ? '/app/prestador' : '/app';
+          stored.user.redirectTo ||
+          (stored.user.activeRole === 'prestador' ? '/app/prestador' : '/app');
         onAuthenticated(stored.user, stored.token, redirectTo);
         return;
       }
-      setError('E-mail ou senha inválidos.');
+      setError(body?.error || 'E-mail ou senha inválidos.');
     } catch (err) {
       setError((err as Error).message || 'Não foi possível autenticar no momento.');
     } finally {
@@ -257,11 +262,6 @@ export const SignupPage: React.FC<{
   const [websiteHoneypot, setWebsiteHoneypot] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [pendingVerification, setPendingVerification] = useState<{
-    user: AuthenticatedUserSession;
-    token: string;
-    verificationToken: string;
-  } | null>(null);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -295,19 +295,24 @@ export const SignupPage: React.FC<{
       }).catch(() => null);
       const body = res ? await safeParseJson(res) : null;
       if (res && res.ok && body?.ok) {
+        const activeUser: AuthenticatedUserSession = {
+          ...body.user,
+          status: 'ativo',
+          emailVerified: true,
+        };
         writeStoredPilotAccount(email, {
-          user: body.user,
+          user: activeUser,
           password,
           token: body.token,
         });
-        setPendingVerification({
-          user: body.user,
-          token: body.token,
-          verificationToken: body.verificationToken,
-        });
+        onAuthenticated(
+          activeUser,
+          body.token,
+          activeUser.redirectTo || '/app/onboarding'
+        );
         return;
       }
-      if (body?.error) {
+      if (body?.error && res && res.status < 500 && res.status !== 404) {
         setError(body.error);
         return;
       }
@@ -328,8 +333,8 @@ export const SignupPage: React.FC<{
         fullName: fullName.trim(),
         roles,
         activeRole: role,
-        status: 'pendente_confirmacao',
-        emailVerified: false,
+        status: 'ativo',
+        emailVerified: true,
         onboardingCompleted: false,
         providerProfileId: roles.includes('prestador')
           ? `prov-${fallbackId.slice(0, 8)}`
@@ -342,11 +347,7 @@ export const SignupPage: React.FC<{
         password,
         token: fallbackToken,
       });
-      setPendingVerification({
-        user: fallbackUser,
-        token: fallbackToken,
-        verificationToken: `verify-${fallbackId}`,
-      });
+      onAuthenticated(fallbackUser, fallbackToken, '/app/onboarding');
     } catch (err) {
       setError(
         (err as Error).message || 'Não foi possível concluir o cadastro agora.'
@@ -355,62 +356,6 @@ export const SignupPage: React.FC<{
       setLoading(false);
     }
   };
-
-  const handleConfirmEmailAndContinue = async () => {
-    if (!pendingVerification) return;
-    setLoading(true);
-    try {
-      await fetch('/api/auth/verify-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          verificationToken: pendingVerification.verificationToken,
-        }),
-      }).catch(() => null);
-      const verifiedUser: AuthenticatedUserSession = {
-        ...pendingVerification.user,
-        emailVerified: true,
-        status: 'ativo',
-      };
-      const existing =
-        readStoredPilotAccounts()[verifiedUser.email.toLowerCase()];
-      writeStoredPilotAccount(verifiedUser.email, {
-        user: verifiedUser,
-        password: existing?.password || password,
-        token: pendingVerification.token,
-      });
-      onAuthenticated(verifiedUser, pendingVerification.token, '/app/onboarding');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (pendingVerification) {
-    return (
-      <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 space-y-5 my-6 text-xs">
-        <BrandLogo variant="dark" size="sm" />
-        <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
-          <CheckCircle2 className="w-6 h-6" />
-        </div>
-        <h1 className="font-display font-bold text-2xl text-brand-ink">
-          Confirme seu e-mail para ativar a conta
-        </h1>
-        <p className="text-brand-ink/75 leading-relaxed">
-          Enviamos a confirmação para <strong>{pendingVerification.user.email}</strong>. Confirme abaixo para concluir o onboarding obrigatório e acessar seu painel.
-        </p>
-        <button
-          type="button"
-          onClick={handleConfirmEmailAndContinue}
-          disabled={loading}
-          className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold cursor-pointer"
-        >
-          {loading
-            ? 'Confirmando e-mail...'
-            : 'Confirmar E-mail e Continuar para Onboarding →'}
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="max-w-xl mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-6 my-6">

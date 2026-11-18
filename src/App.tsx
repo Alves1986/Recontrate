@@ -55,6 +55,7 @@ import type {
   AuthenticatedUserSession,
   UserRole,
 } from './services/authService';
+import { authClient } from './lib/neonClient';
 import {
   detectStandaloneDisplayMode,
   shouldRenderMobileLoginOnly,
@@ -117,6 +118,7 @@ export default function App() {
     null
   );
   const [authToken, setAuthToken] = useState<string>('');
+  const [authChecked, setAuthChecked] = useState<boolean>(false);
   const [demoMode, setDemoMode] = useState<boolean>(false);
   const [viewportWidth, setViewportWidth] = useState<number>(() =>
     typeof window !== 'undefined' ? window.innerWidth : 1024
@@ -175,22 +177,65 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // Restore session on mount if cookie exists
+  // Restore session on mount (cookie httpOnly via /api/auth/me, Neon Auth session, or pilot storage fallback)
   useEffect(() => {
-    if (
-      typeof document !== 'undefined' &&
-      !document.cookie.includes('confiare_session')
-    ) {
-      return;
-    }
-    fetch('/api/auth/me')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body) => {
-        if (body?.ok && body.user) {
-          setAuthUser(body.user);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/me', {
+          credentials: 'include',
+        }).catch(() => null);
+        if (res && res.ok) {
+          const body = await res.json().catch(() => null);
+          if (!cancelled && body?.ok && body.user) {
+            setAuthUser(body.user);
+            return;
+          }
         }
-      })
-      .catch(() => null);
+
+        // Check Neon Auth client session (e.g., after Google OAuth redirect)
+        try {
+          const neonSession = await authClient.getSession();
+          const jwtToken = (neonSession as any)?.data?.session?.token;
+          if (jwtToken) {
+            const meRes = await fetch('/api/auth/me', {
+              headers: { Authorization: `Bearer ${jwtToken}` },
+            }).catch(() => null);
+            if (meRes && meRes.ok) {
+              const meBody = await meRes.json().catch(() => null);
+              if (!cancelled && meBody?.ok && meBody.user) {
+                setAuthUser(meBody.user);
+                setAuthToken(jwtToken);
+                return;
+              }
+            }
+          }
+        } catch {
+          // ignore Neon Auth client errors when offline
+        }
+
+        // Fallback to local pilot session only if backend API is unavailable
+        if ((!res || res.status >= 500 || res.status === 404) && typeof window !== 'undefined') {
+          const rawPilot = window.localStorage.getItem('recontrate_pilot_session');
+          if (rawPilot) {
+            const parsed = JSON.parse(rawPilot);
+            if (!cancelled && parsed?.user) {
+              setAuthUser(parsed.user);
+              setAuthToken(parsed.token || '');
+            }
+          }
+        }
+      } catch {
+        // ignore session restore failures
+      } finally {
+        if (!cancelled) {
+          setAuthChecked(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Load runtime DEMO_MODE config and load demo fixtures ONLY when DEMO_MODE=true
@@ -307,11 +352,12 @@ export default function App() {
 
   // Client-side route protection guard
   useEffect(() => {
+    if (!authChecked) return;
     const check = canUserAccessRoute(pathname, authUser);
     if (!check.allowed && check.redirectTo && check.redirectTo !== pathname) {
       navigateUrl(check.redirectTo);
     }
-  }, [pathname, authUser, navigateUrl]);
+  }, [authChecked, pathname, authUser, navigateUrl]);
 
   const handleLegacyScreenNavigate = (screen: ScreenId, providerId?: string) => {
     if (providerId) {
@@ -403,6 +449,10 @@ export default function App() {
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => null);
+    await authClient.signOut().catch(() => null);
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('recontrate_pilot_session');
+    }
     setAuthUser(null);
     setAuthToken('');
     navigateUrl('/entrar');
@@ -799,7 +849,9 @@ export default function App() {
             token={authToken}
             onComplete={(redirectTo) => {
               setAuthUser((prev) =>
-                prev ? { ...prev, onboardingCompleted: true } : prev
+                prev
+                  ? { ...prev, onboardingCompleted: true, redirectTo }
+                  : prev
               );
               navigateUrl(redirectTo);
             }}

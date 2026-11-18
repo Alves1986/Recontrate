@@ -156,7 +156,8 @@ export async function executeProductionCleanup(options: {
       SELECT id
       FROM public.ad_slots
       WHERE id IN ('ad-ferramentas-1', 'ad-google-adsense-1')
-         OR id LIKE 'demo-%';
+         OR id LIKE 'demo-%'
+         OR id LIKE 'ad-179%';
 
       CREATE TEMP TABLE tmp_test_requests ON COMMIT DROP AS
       SELECT id
@@ -283,7 +284,7 @@ export async function executeProductionCleanup(options: {
       DELETE FROM public.storage_assets
       WHERE provider_profile_id IN (SELECT id FROM tmp_test_provider_ids_all)
          OR verified_by_admin_id IN (SELECT id FROM tmp_test_users)
-         OR (provider_profile_id = 'system-backup' AND object_key LIKE 'backups/confiare-backup-179484%')
+         OR (provider_profile_id = 'system-backup' AND object_key LIKE 'backups/confiare-backup-%')
       RETURNING object_key
     `);
     for (const a of removedAssets) {

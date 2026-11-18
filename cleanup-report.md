@@ -1,10 +1,10 @@
 # Relatório Final de Limpeza do Banco de Produção — Confiare
 
-- **Data/Hora (UTC):** 2026-11-16T21:45:36.426Z
+- **Data/Hora (UTC):** 2026-11-18T05:47:01.030Z
 - **Ambiente:** `development`
-- **Backup Pré-Limpeza ID:** `full-backup-1794865508940`
-- **Arquivo de Backup Local:** `E:\Anderson\Confiare\backups\confiare-backup-2026-11-16T21-45-08-939Z.json`
-- **Checksum SHA-256:** `fbb4639db68dfd68dad102287816e88a71bcfd56646512ee483dff8aa9bf4156`
+- **Backup Pré-Limpeza ID:** `full-backup-1794980788109`
+- **Arquivo de Backup Local:** `E:\Anderson\Recontrate\backups\confiare-backup-2026-11-18T05-46-28-108Z.json`
+- **Checksum SHA-256:** `efbc346e4072ce7861dd65060c503ab6c6140d3b9386e3da50e3262d85dfbcea`
 
 ## 1. Validação de Dados de Referência e Segurança
 
@@ -25,59 +25,84 @@
 
 | Schema | Tabela | Antes | Removidos | Preservados |
 | :--- | :--- | :---: | :---: | :---: |
-| `neon_auth` | `account` | 103 | 103 | 0 |
+| `neon_auth` | `account` | 191 | 191 | 0 |
 | `neon_auth` | `invitation` | 0 | 0 | 0 |
 | `neon_auth` | `jwks` | 1 | 0 | 1 |
 | `neon_auth` | `member` | 0 | 0 | 0 |
 | `neon_auth` | `organization` | 0 | 0 | 0 |
 | `neon_auth` | `project_config` | 1 | 0 | 1 |
-| `neon_auth` | `session` | 141 | 141 | 0 |
-| `neon_auth` | `user` | 103 | 103 | 0 |
+| `neon_auth` | `session` | 253 | 253 | 0 |
+| `neon_auth` | `user` | 191 | 191 | 0 |
 | `neon_auth` | `verification` | 0 | 0 | 0 |
-| `public` | `ad_clicks` | 0 | 0 | 0 |
-| `public` | `ad_impressions` | 12 | 12 | 0 |
-| `public` | `ad_slots` | 2 | 2 | 0 |
-| `public` | `audit_logs` | 298 | 298 | 0 |
+| `public` | `ad_clicks` | 1 | 1 | 0 |
+| `public` | `ad_impressions` | 27 | 27 | 0 |
+| `public` | `ad_slots` | 1 | 1 | 0 |
+| `public` | `audit_logs` | 576 | 576 | 0 |
 | `public` | `categories` | 10 | 0 | 10 |
-| `public` | `customer_profiles` | 61 | 61 | 0 |
-| `public` | `invoices` | 42 | 42 | 0 |
+| `public` | `customer_profiles` | 115 | 115 | 0 |
+| `public` | `invoices` | 129 | 129 | 0 |
 | `public` | `mentorships` | 0 | 0 | 0 |
-| `public` | `notifications` | 33 | 33 | 0 |
-| `public` | `opportunities` | 19 | 19 | 0 |
-| `public` | `opportunity_usage` | 40 | 40 | 0 |
+| `public` | `notifications` | 41 | 41 | 0 |
+| `public` | `opportunities` | 20 | 20 | 0 |
+| `public` | `opportunity_usage` | 112 | 112 | 0 |
 | `public` | `plans` | 5 | 0 | 5 |
 | `public` | `platform_settings` | 8 | 0 | 8 |
-| `public` | `processed_webhook_events` | 14 | 14 | 0 |
-| `public` | `professional_trust_list` | 2 | 2 | 0 |
-| `public` | `profiles` | 102 | 102 | 0 |
-| `public` | `promotion_eligibility_checks` | 22 | 22 | 0 |
+| `public` | `processed_webhook_events` | 18 | 18 | 0 |
+| `public` | `professional_trust_list` | 8 | 8 | 0 |
+| `public` | `profiles` | 180 | 180 | 0 |
+| `public` | `promotion_eligibility_checks` | 13 | 13 | 0 |
 | `public` | `promotional_campaigns` | 1 | 0 | 1 |
-| `public` | `promotional_redemptions` | 6 | 6 | 0 |
-| `public` | `provider_custom_tags` | 60 | 60 | 0 |
-| `public` | `provider_profiles` | 57 | 57 | 0 |
+| `public` | `promotional_redemptions` | 0 | 0 | 0 |
+| `public` | `provider_custom_tags` | 0 | 0 | 0 |
+| `public` | `provider_profiles` | 70 | 70 | 0 |
 | `public` | `provider_services` | 0 | 0 | 0 |
-| `public` | `provider_specialties` | 30 | 30 | 0 |
-| `public` | `realtime_notifications` | 2 | 2 | 0 |
-| `public` | `repeat_requests` | 2 | 2 | 0 |
-| `public` | `reviews` | 2 | 2 | 0 |
+| `public` | `provider_specialties` | 0 | 0 | 0 |
+| `public` | `realtime_notifications` | 10 | 10 | 0 |
+| `public` | `repeat_requests` | 8 | 8 | 0 |
+| `public` | `reviews` | 8 | 8 | 0 |
 | `public` | `roles` | 4 | 0 | 4 |
 | `public` | `service_assignments` | 0 | 0 | 0 |
-| `public` | `service_requests` | 6 | 6 | 0 |
-| `public` | `specialties` | 86 | 5 | 81 |
-| `public` | `specialty_suggestions` | 37 | 37 | 0 |
-| `public` | `storage_assets` | 5 | 5 | 0 |
-| `public` | `subscription_events` | 84 | 84 | 0 |
-| `public` | `subscriptions` | 40 | 40 | 0 |
-| `public` | `substitute_referrals` | 4 | 4 | 0 |
-| `public` | `users` | 102 | 102 | 0 |
+| `public` | `service_requests` | 15 | 15 | 0 |
+| `public` | `specialties` | 81 | 0 | 81 |
+| `public` | `specialty_suggestions` | 0 | 0 | 0 |
+| `public` | `storage_assets` | 30 | 30 | 0 |
+| `public` | `subscription_events` | 238 | 238 | 0 |
+| `public` | `subscriptions` | 112 | 112 | 0 |
+| `public` | `substitute_referrals` | 16 | 16 | 0 |
+| `public` | `users` | 180 | 180 | 0 |
 
 ## 3. Storage S3 (Bucket `assets`)
 
-- **Objetos de teste/demo/órfãos removidos (5):**
-  - `backups/confiare-backup-1794842598847.json`
-  - `backups/confiare-backup-1794842682464.json`
-  - `portfolio/prov-joao/laudo-1794827693719.json`
-  - `verification-private/prov-8df90d37/certificado_tecnico-1794840612046.txt`
-  - `verification-private/prov-dde3438b/certificado_tecnico-1794842966314.txt`
+- **Objetos de teste/demo/órfãos removidos (30):**
+  - `backups/confiare-backup-1794944907191.json`
+  - `backups/confiare-backup-1794944968853.json`
+  - `backups/confiare-backup-1794945030617.json`
+  - `backups/confiare-backup-1794947751250.json`
+  - `backups/confiare-backup-1794947819489.json`
+  - `backups/confiare-backup-1794947902087.json`
+  - `backups/confiare-backup-1794947962751.json`
+  - `backups/confiare-backup-1794948024639.json`
+  - `backups/confiare-backup-1794948086014.json`
+  - `backups/confiare-backup-1794948148022.json`
+  - `portfolio/prov-joao/laudo-1794944904813.json`
+  - `portfolio/prov-joao/laudo-1794944965877.json`
+  - `portfolio/prov-joao/laudo-1794945028485.json`
+  - `portfolio/prov-joao/laudo-1794947749507.json`
+  - `portfolio/prov-joao/laudo-1794947817557.json`
+  - `portfolio/prov-joao/laudo-1794947899087.json`
+  - `portfolio/prov-joao/laudo-1794947960728.json`
+  - `portfolio/prov-joao/laudo-1794948022171.json`
+  - `portfolio/prov-joao/laudo-1794948084036.json`
+  - `portfolio/prov-joao/laudo-1794948146173.json`
+  - `verification-private/prov-0234de53/certificado_tecnico-1794947833220.txt`
+  - `verification-private/prov-356777d6/certificado_tecnico-1794947929524.txt`
+  - `verification-private/prov-77bf88fa/certificado_tecnico-1794944997257.txt`
+  - `verification-private/prov-7dfac7f9/certificado_tecnico-1794948114205.txt`
+  - `verification-private/prov-898e6b91/certificado_tecnico-1794944935121.txt`
+  - `verification-private/prov-8b1e0e13/certificado_tecnico-1794947783158.txt`
+  - `verification-private/prov-a7cf3a39/certificado_tecnico-1794948175626.txt`
+  - `verification-private/prov-b6feae51/certificado_tecnico-1794945044601.txt`
+  - `verification-private/prov-c88c97a8/certificado_tecnico-1794948053316.txt`
+  - `verification-private/prov-ce88b0b3/certificado_tecnico-1794947991315.txt`
 - **Objetos restantes no bucket (0):**
   - Bucket limpo (`0` objetos órfãos).

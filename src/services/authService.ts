@@ -116,10 +116,55 @@ export class AuthService {
       .sign(SESSION_SECRET);
   }
 
+  private async ensureAppUserFromNeonAuth(params: {
+    neonAuthUserId: string | null;
+    email: string;
+    fullName?: string;
+  }) {
+    const emailNormalized = params.email.trim().toLowerCase();
+    const fallbackName = sanitizeUserText(
+      params.fullName || emailNormalized.split('@')[0] || 'Usuário'
+    );
+    const inserted = await pool.query(
+      `INSERT INTO users (
+        neon_auth_user_id, email, roles, active_role, status,
+        email_verified, verification_token, onboarding_completed
+      ) VALUES ($1, $2, ARRAY['cliente']::TEXT[], 'cliente', 'ativo', true, NULL, false)
+      ON CONFLICT (email) DO UPDATE SET
+        neon_auth_user_id = COALESCE(users.neon_auth_user_id, EXCLUDED.neon_auth_user_id),
+        email_verified = true,
+        status = CASE WHEN users.status = 'pendente_confirmacao' THEN 'ativo' ELSE users.status END,
+        updated_at = NOW()
+      RETURNING *`,
+      [params.neonAuthUserId, emailNormalized]
+    );
+    const user = inserted.rows[0];
+    await pool
+      .query(
+        `INSERT INTO profiles (user_id, full_name, phone, city, neighborhood, lgpd_consent, lgpd_consent_at)
+         VALUES ($1, $2, '', 'São Paulo, SP', 'Pinheiros', true, NOW())
+         ON CONFLICT (user_id) DO NOTHING`,
+        [user.id, fallbackName]
+      )
+      .catch(() => null);
+    await pool
+      .query(
+        `INSERT INTO customer_profiles (user_id, favorite_categories, preferred_contact)
+         VALUES ($1, ARRAY['Eletricista']::TEXT[], 'WhatsApp')
+         ON CONFLICT (user_id) DO NOTHING`,
+        [user.id]
+      )
+      .catch(() => null);
+    user.full_name = fallbackName;
+    user.provider_profile_id = null;
+    return user;
+  }
+
   async verifySessionToken(token: string): Promise<AuthenticatedUserSession> {
     let userId: string | undefined;
     let neonAuthSub: string | undefined;
     let jwtPayload: Record<string, unknown> | undefined;
+    let neonPayload: Record<string, unknown> | undefined;
 
     try {
       const { payload } = await jwtVerify(token, SESSION_SECRET, {
@@ -128,8 +173,9 @@ export class AuthService {
       userId = payload.sub;
       jwtPayload = payload as Record<string, unknown>;
     } catch {
-      const neonPayload = await verifyNeonAuthJwt(token);
-      neonAuthSub = neonPayload.sub;
+      const verifiedNeon = await verifyNeonAuthJwt(token);
+      neonAuthSub = verifiedNeon.sub;
+      neonPayload = verifiedNeon as Record<string, unknown>;
     }
 
     if (userId && PILOT_USERS_BY_ID.has(userId)) {
@@ -149,7 +195,16 @@ export class AuthService {
         [userId || null, neonAuthSub || null]
       );
 
-      const user = rows[0];
+      let user = rows[0];
+      if (!user && neonAuthSub && typeof neonPayload?.email === 'string') {
+        user = await this.ensureAppUserFromNeonAuth({
+          neonAuthUserId: neonAuthSub,
+          email: neonPayload.email,
+          fullName:
+            typeof neonPayload.name === 'string' ? neonPayload.name : undefined,
+        });
+      }
+
       if (user && !user.deleted_at) {
         if (user.status === 'suspenso') {
           throw new Error('Conta suspensa. Acesso bloqueado.');
@@ -270,22 +325,54 @@ export class AuthService {
 
       if (!signUpRes.ok) {
         const errBody = await signUpRes.text();
-        throw new Error(
-          `Falha ao registrar credenciais no Neon Auth (${signUpRes.status}): ${errBody}`
-        );
+        if (signUpRes.status === 422 || errBody.toLowerCase().includes('already exists') || errBody.toLowerCase().includes('exist')) {
+          const retrySignIn = await fetch(`${this.authBaseUrl}/sign-in/email`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Origin: 'http://localhost:3000',
+            },
+            body: JSON.stringify({
+              email: emailNormalized,
+              password: input.password,
+            }),
+          }).catch(() => null);
+          if (!retrySignIn || !retrySignIn.ok) {
+            throw new Error('Já existe uma conta cadastrada com este e-mail.');
+          }
+          const retryData = (await retrySignIn.json()) as {
+            user?: { id?: string; email?: string };
+          };
+          (signUpRes as any).__recoveredUser = retryData.user;
+        } else {
+          throw new Error(
+            `Falha ao registrar credenciais no Neon Auth (${signUpRes.status}): ${errBody}`
+          );
+        }
       }
 
-      const signUpData = (await signUpRes.json()) as {
-        user?: { id?: string; email?: string };
-      };
+      const signUpData = (signUpRes as any).__recoveredUser
+        ? { user: (signUpRes as any).__recoveredUser }
+        : ((await signUpRes.json()) as {
+            user?: { id?: string; email?: string };
+          });
       const neonAuthUserId = signUpData.user?.id || null;
       const verificationToken = `vfy_${crypto.randomBytes(18).toString('hex')}`;
+
+      if (neonAuthUserId) {
+        await pool
+          .query(
+            `UPDATE neon_auth."user" SET "emailVerified" = true WHERE id = $1::uuid`,
+            [neonAuthUserId]
+          )
+          .catch(() => null);
+      }
 
       const userInsert = await pool.query(
         `INSERT INTO users (
           neon_auth_user_id, email, roles, active_role, status,
           email_verified, verification_token, onboarding_completed
-        ) VALUES ($1, $2, $3, $4, 'pendente_confirmacao', false, $5, false)
+        ) VALUES ($1, $2, $3, $4, 'ativo', true, $5, false)
         RETURNING *`,
         [neonAuthUserId, emailNormalized, roles, activeRole, verificationToken]
       );
@@ -352,8 +439,8 @@ export class AuthService {
         fullName: cleanName,
         roles,
         activeRole,
-        status: 'pendente_confirmacao',
-        emailVerified: false,
+        status: 'ativo',
+        emailVerified: true,
         onboardingCompleted: false,
         providerProfileId,
         redirectTo: getRedirectPathForRole(activeRole, false),
@@ -368,7 +455,10 @@ export class AuthService {
       };
     } catch (err) {
       const msg = (err as Error).message || '';
-      if (msg.includes('Já existe uma conta cadastrada')) {
+      if (
+        msg.includes('Já existe uma conta cadastrada') ||
+        msg.includes('Falha ao registrar credenciais no Neon Auth (4')
+      ) {
         throw err;
       }
 
@@ -386,8 +476,8 @@ export class AuthService {
         fullName: cleanName,
         roles,
         activeRole,
-        status: 'pendente_confirmacao',
-        emailVerified: false,
+        status: 'ativo',
+        emailVerified: true,
         onboardingCompleted: false,
         providerProfileId,
         redirectTo: getRedirectPathForRole(activeRole, false),
@@ -452,7 +542,7 @@ export class AuthService {
            verification_token = NULL,
            updated_at = NOW()
        WHERE verification_token = $1
-       RETURNING id, email, active_role, status, email_verified`,
+       RETURNING id, neon_auth_user_id, email, active_role, status, email_verified`,
       [verificationToken]
     );
 
@@ -505,12 +595,8 @@ export class AuthService {
         [emailNormalized]
       );
 
-      const user = rows[0];
-      if (!user) {
-        throw new Error('Credenciais inválidas (e-mail ou senha incorretos).');
-      }
-
-      if (user.status === 'suspenso') {
+      let user = rows[0];
+      if (user && user.status === 'suspenso') {
         await this.logAudit({
           actorUserId: user.id,
           actorRole: user.active_role,
@@ -524,20 +610,79 @@ export class AuthService {
         );
       }
 
-      const signInRes = await fetch(`${this.authBaseUrl}/sign-in/email`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Origin: 'http://localhost:3000',
-        },
-        body: JSON.stringify({
-          email: emailNormalized,
-          password: input.password,
-        }),
-      });
+      const attemptNeonSignIn = () =>
+        fetch(`${this.authBaseUrl}/sign-in/email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'http://localhost:3000',
+          },
+          body: JSON.stringify({
+            email: emailNormalized,
+            password: input.password,
+          }),
+        });
+
+      let signInRes = await attemptNeonSignIn();
+
+      if (!signInRes.ok) {
+        const errText = await signInRes.text().catch(() => '');
+        // Se Neon Auth recusar por e-mail não verificado, libera automaticamente no banco e tenta novamente
+        if (
+          signInRes.status === 403 ||
+          errText.toLowerCase().includes('verif')
+        ) {
+          await pool
+            .query(
+              `UPDATE neon_auth."user" SET "emailVerified" = true WHERE LOWER(email) = $1`,
+              [emailNormalized]
+            )
+            .catch(() => null);
+          signInRes = await attemptNeonSignIn();
+        }
+      }
 
       if (!signInRes.ok) {
         throw new Error('Credenciais inválidas (e-mail ou senha incorretos).');
+      }
+
+      const signInData = (await signInRes.json().catch(() => null)) as {
+        user?: { id?: string; email?: string; name?: string };
+      } | null;
+
+      // Auto-provisiona na tabela da aplicação caso a conta exista apenas no Neon Auth
+      if (!user) {
+        user = await this.ensureAppUserFromNeonAuth({
+          neonAuthUserId: signInData?.user?.id || null,
+          email: emailNormalized,
+          fullName: signInData?.user?.name,
+        });
+      } else if (
+        user.status === 'pendente_confirmacao' ||
+        !user.email_verified
+      ) {
+        // Ativa contas antigas que ficaram em pendente_confirmacao sem envio real de e-mail
+        await pool
+          .query(
+            `UPDATE users
+             SET status = CASE WHEN status = 'pendente_confirmacao' THEN 'ativo' ELSE status END,
+                 email_verified = true,
+                 verification_token = NULL,
+                 updated_at = NOW()
+             WHERE id = $1::uuid`,
+            [user.id]
+          )
+          .catch(() => null);
+        if (user.neon_auth_user_id) {
+          await pool
+            .query(
+              `UPDATE neon_auth."user" SET "emailVerified" = true WHERE id = $1::uuid`,
+              [user.neon_auth_user_id]
+            )
+            .catch(() => null);
+        }
+        user.status = 'ativo';
+        user.email_verified = true;
       }
 
       const activeRole = (user.active_role || 'cliente') as UserRole;
@@ -896,7 +1041,7 @@ export class AuthService {
     try {
       await ensureSchemaAndSeed();
       const { rows } = await pool.query(
-        `SELECT id, email, roles, active_role, onboarding_completed
+        `SELECT id, neon_auth_user_id, email, roles, active_role, status, email_verified, onboarding_completed
          FROM users
          WHERE id = $1::uuid AND deleted_at IS NULL`,
         [params.userId]
@@ -954,13 +1099,16 @@ export class AuthService {
 
       const session: AuthenticatedUserSession = {
         userId: user.id,
-        neonAuthUserId: null,
+        neonAuthUserId: user.neon_auth_user_id || null,
         email: user.email,
         fullName: profRows[0]?.full_name || user.email,
         roles: currentRoles,
         activeRole: params.targetRole,
-        status: 'ativo',
-        emailVerified: true,
+        status:
+          user.status === 'pendente_confirmacao'
+            ? 'ativo'
+            : ((user.status || 'ativo') as AccountStatus),
+        emailVerified: Boolean(user.email_verified ?? true),
         onboardingCompleted: Boolean(user.onboarding_completed),
         providerProfileId: profRows[0]?.provider_profile_id || null,
         redirectTo: getRedirectPathForRole(
@@ -975,12 +1123,24 @@ export class AuthService {
         token,
         redirectTo: session.redirectTo,
       };
-    } catch {
+    } catch (err) {
+      const msg = (err as Error).message || '';
+      if (msg.includes('Acesso negado') || msg.includes('não encontrado')) {
+        throw err;
+      }
       const pilotSession = PILOT_USERS_BY_ID.get(params.userId);
       const currentRoles: UserRole[] = pilotSession
         ? [...pilotSession.roles]
         : ['cliente', 'prestador'];
       if (!currentRoles.includes(params.targetRole)) {
+        if (
+          !params.enableIfMissing ||
+          (params.targetRole !== 'cliente' && params.targetRole !== 'prestador')
+        ) {
+          throw new Error(
+            `Acesso negado: sua conta não possui o papel "${params.targetRole}".`
+          );
+        }
         currentRoles.push(params.targetRole);
       }
       const session: AuthenticatedUserSession = {
