@@ -420,7 +420,7 @@ export const PlanCard: React.FC<{
                 <div className="flex items-center gap-2 text-xs font-mono">
                   <span
                     className={`line-through ${
-                      isProfissional ? 'text-white/60' : 'text-brand-ink/45'
+                      isProfissional ? 'text-white/75' : 'text-brand-ink/70'
                     }`}
                   >
                     {formatCentavosBRL(plan.precoMensalCentavos)}
@@ -778,27 +778,25 @@ export const PlansPricingPage: React.FC<{
   }, [providerContext?.phone, billingPhone]);
 
   const loadSubscriptionAndEligibility = useCallback(async () => {
-    const query = new URLSearchParams({ cycle: 'mensal' });
-    if (providerContext?.providerProfileId) {
-      query.set('providerProfileId', providerContext.providerProfileId);
-    }
-    if (providerContext?.email) {
-      query.set('email', providerContext.email);
-    }
-    if (providerContext?.phone) {
-      query.set('phone', providerContext.phone);
-    }
-
     const headers: Record<string, string> = {};
     if (authToken) headers.Authorization = `Bearer ${authToken}`;
-    if (providerContext?.providerProfileId) {
-      headers['x-provider-id'] = providerContext.providerProfileId;
-    }
 
     const [eligRes, subRes] = await Promise.all([
-      fetch(`/api/promotions/launch-offer/eligibility?${query.toString()}`, {
+      fetch('/api/promotions/launch-offer/eligibility', {
+        method: 'POST',
         credentials: 'include',
-        headers,
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cycle: 'mensal',
+          ...(providerContext?.providerProfileId
+            ? { providerProfileId: providerContext.providerProfileId }
+            : {}),
+          ...(providerContext?.email ? { email: providerContext.email } : {}),
+          ...(providerContext?.phone ? { phone: providerContext.phone } : {}),
+        }),
       })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
@@ -1621,6 +1619,21 @@ export const PlansPricingPage: React.FC<{
                       </div>
                     </>
                   )}
+
+                <div className="p-3.5 rounded-xl bg-brand-background/70 border border-brand-primary/10 text-[11px] text-brand-ink/80 space-y-1">
+                  <p className="font-semibold text-brand-ink">
+                    Transparência Comercial (CDC art. 31 e art. 49)
+                  </p>
+                  <p>
+                    • Valor total informado acima sem taxas ocultas ou comissão sobre serviços (0% de comissão — todo serviço é negociado diretamente fora da plataforma).
+                  </p>
+                  <p>
+                    • Renovação automática recorrente ao final de cada ciclo mensal ou anual até cancelamento direto em 1 clique no painel, sem fidelidade nem multa.
+                  </p>
+                  <p>
+                    • <strong>Direito de arrependimento (7 dias):</strong> ao cancelar nos primeiros 7 dias corridos da contratação inicial, garantimos reembolso integral automático de eventual valor pago.
+                  </p>
+                </div>
 
                 {checkoutError && (
                   <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 flex items-start gap-2">

@@ -62,6 +62,7 @@ export async function testPostgresService() {
   const planRows = await db
     .select()
     .from(plans)
+    .where(eq(plans.ativo, true))
     .orderBy(plans.ordemExibicao);
   const providerRows = await db.select().from(providerProfiles);
   const { rows } = await pool.query<{ db: string; version: string }>(
@@ -69,7 +70,7 @@ export async function testPostgresService() {
   );
 
   return {
-    ok: planRows.length >= 5,
+    ok: planRows.length >= 4,
     database: rows[0]?.db || dbName,
     pgVersion: rows[0]?.version || '18',
     plansCount: planRows.length,

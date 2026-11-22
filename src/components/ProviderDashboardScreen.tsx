@@ -30,6 +30,7 @@ import { INITIAL_PROVIDER_NOTIFICATIONS } from '../data/seedData';
 import {
   calculateCompositeScore,
   createRealtimeNotification,
+  hasSufficientReputationHistory,
 } from '../utils/marketplaceRules';
 import {
   calculateAnnualMonthlyEquivalentCentavos,
@@ -65,9 +66,9 @@ interface ProviderDashboardScreenProps {
   onUpdateOpportunityStatus: (
     oppId: string,
     status: ProviderOpportunity['status']
-  ) => void;
+  ) => Promise<void> | void;
   onChangeProviderPlan: (providerId: string, newPlan: PlanTier) => void;
-  onToggleProviderAvailability: (providerId: string) => void;
+  onToggleProviderAvailability: (providerId: string) => Promise<void> | void;
   onNavigate: (screen: ScreenId, providerId?: string) => void;
 }
 
@@ -114,6 +115,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   } | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [exerciseWithdrawalRight, setExerciseWithdrawalRight] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [copiedQuoteTemplate, setCopiedQuoteTemplate] = useState(false);
   const [realtimeNotifications, setRealtimeNotifications] = useState<
@@ -122,20 +124,12 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   const [sponsoredAd, setSponsoredAd] = useState<any | null>(null);
   const [sessionBannersShown, setSessionBannersShown] = useState(0);
   const [adClickConfirmed, setAdClickConfirmed] = useState(false);
+  const [oppActionError, setOppActionError] = useState<string | null>(null);
 
   const loadSubscriptionData = useCallback(async () => {
-    const headers: Record<string, string> = {
-      'x-provider-id': activeProvider.id,
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-    };
-    const eligQuery = new URLSearchParams({
-      cycle: 'mensal',
-      providerProfileId: activeProvider.id,
-      ...(providerEmail ? { email: providerEmail } : {}),
-      ...(providerPhone || activeProvider.whatsapp
-        ? { phone: providerPhone || activeProvider.whatsapp }
-        : {}),
-    });
+    const headers: Record<string, string> = authToken
+      ? { Authorization: `Bearer ${authToken}` }
+      : {};
 
     const [pRes, sRes, eRes] = await Promise.all([
       fetch('/api/plans')
@@ -150,9 +144,21 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       )
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
-      fetch(`/api/promotions/launch-offer/eligibility?${eligQuery.toString()}`, {
+      fetch('/api/promotions/launch-offer/eligibility', {
+        method: 'POST',
         credentials: 'include',
-        headers,
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cycle: 'mensal',
+          providerProfileId: activeProvider.id,
+          ...(providerEmail ? { email: providerEmail } : {}),
+          ...(providerPhone || activeProvider.whatsapp
+            ? { phone: providerPhone || activeProvider.whatsapp }
+            : {}),
+        }),
       })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
@@ -463,6 +469,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
             reason:
               cancelReason.trim() ||
               'Cancelamento solicitado pelo prestador no painel',
+            exerciseWithdrawalRight,
           }),
         }
       );
@@ -472,11 +479,13 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       }
       setShowCancelModal(false);
       setCancelReason('');
+      setExerciseWithdrawalRight(false);
       await loadSubscriptionData();
       setCheckoutNotice({
         type: 'success',
-        message:
-          'Assinatura cancelada sem multa. Seus benefícios seguem ativos até o fim do período já pago e seu histórico de avaliações permanece intacto.',
+        message: body.withdrawalRefund?.refunded
+          ? 'Cancelamento por arrependimento (CDC art. 49) concluído com reembolso integral e retorno imediato ao plano Gratuito.'
+          : 'Assinatura cancelada sem multa. Seus benefícios seguem ativos até o fim do período já pago e seu histórico de avaliações permanece intacto.',
       });
     } catch (err) {
       setCheckoutNotice({
@@ -493,7 +502,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
 
   const scoreBreakdown = calculateCompositeScore(activeProvider);
   const hasCompositeData =
-    activeProvider.reviewsCount > 0 &&
+    hasSufficientReputationHistory(activeProvider) &&
     activeProvider.ratingAvg > 0 &&
     activeProvider.responseTimeMinutes > 0 &&
     activeProvider.responseRatePercent > 0 &&
@@ -506,21 +515,49 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
     setTimeout(() => setCopiedQuoteTemplate(false), 3000);
   };
 
-  const handleAcceptOpportunityWithNotification = (opp: ProviderOpportunity) => {
-    onUpdateOpportunityStatus(opp.id, 'aceita');
-    const acceptanceNotif = createRealtimeNotification({
-      id: `notif-acc-${Date.now()}`,
-      type: 'aceite_orcamento',
-      title: 'Interesse confirmado e contato liberado para orçamento!',
-      message: `Contato de ${opp.clientNameFull} liberado para "${opp.title}".`,
-      clientName: opp.clientNameFull,
-      neighborhood: `${opp.neighborhood} (${opp.distanceKm} km)`,
-      urgencyOrScope: `Urgência: ${opp.urgency} · ${opp.preferredTime}`,
-      timestamp: 'Agora mesmo',
-      opportunityId: opp.id,
-      clientWhatsapp: opp.clientWhatsapp,
-    });
-    setRealtimeNotifications((prev) => [acceptanceNotif, ...prev]);
+  const handleAcceptOpportunityWithNotification = async (
+    opp: ProviderOpportunity
+  ) => {
+    setOppActionError(null);
+    try {
+      await onUpdateOpportunityStatus(opp.id, 'aceita');
+      const acceptanceNotif = createRealtimeNotification({
+        id: `notif-acc-${Date.now()}`,
+        type: 'aceite_orcamento',
+        title: 'Interesse confirmado e contato liberado para orçamento!',
+        message: `Contato de ${opp.clientNameFull || opp.clientNameMasked} liberado para "${opp.title}".`,
+        clientName: opp.clientNameFull || opp.clientNameMasked,
+        neighborhood: `${opp.neighborhood} (${opp.distanceKm} km)`,
+        urgencyOrScope: `Urgência: ${opp.urgency} · ${opp.preferredTime}`,
+        timestamp: 'Agora mesmo',
+        opportunityId: opp.id,
+        clientWhatsapp: opp.clientWhatsapp,
+      });
+      setRealtimeNotifications((prev) => [acceptanceNotif, ...prev]);
+    } catch (err) {
+      setOppActionError(
+        (err as Error).message ||
+          'Não foi possível aceitar a oportunidade no servidor.'
+      );
+    }
+  };
+
+  const handleDeclineOrSubstituteOpportunity = async (
+    opp: ProviderOpportunity,
+    status: ProviderOpportunity['status']
+  ) => {
+    setOppActionError(null);
+    try {
+      await onUpdateOpportunityStatus(opp.id, status);
+      if (status === 'substituto_indicado') {
+        onNavigate('indicacao-substituto', activeProvider.id);
+      }
+    } catch (err) {
+      setOppActionError(
+        (err as Error).message ||
+          'Não foi possível atualizar o status da oportunidade.'
+      );
+    }
   };
 
   return (
@@ -587,7 +624,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
           <div className="bg-white/10 rounded-2xl p-3.5 sm:p-4 min-w-0">
             <p className="text-xs font-sans text-white/75">Nota Composta</p>
             <p className="text-base sm:text-2xl font-bold text-white mt-1">
-              {hasCompositeData ? `★ ${scoreBreakdown.totalScore.toFixed(2)}` : 'Em formação'}
+              {hasCompositeData ? `★ ${scoreBreakdown.totalScore.toFixed(2)}` : 'Em avaliação inicial'}
             </p>
             <p className="text-[11px] font-sans text-white/70 mt-0.5">
               {activeProvider.reviewsCount > 0
@@ -686,6 +723,19 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       {/* TAB 1: OPORTUNIDADES */}
       {activeTab === 'oportunidades' && (
         <div className="space-y-4">
+          {oppActionError && (
+            <div
+              role="alert"
+              className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium"
+            >
+              {oppActionError}
+            </div>
+          )}
+          {opportunities.length === 0 && (
+            <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 text-xs text-brand-ink/75">
+              Nenhuma oportunidade registrada nesta sessão ainda. Assim que um cliente compatível enviar uma solicitação na sua região, ela aparecerá aqui.
+            </div>
+          )}
           {opportunities.map((opp) => (
             <article
               key={opp.id}
@@ -773,17 +823,21 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            onUpdateOpportunityStatus(opp.id, 'substituto_indicado');
-                            onNavigate('indicacao-substituto', activeProvider.id);
-                          }}
+                          onClick={() =>
+                            handleDeclineOrSubstituteOpportunity(
+                              opp,
+                              'substituto_indicado'
+                            )
+                          }
                           className="min-h-[40px] px-3 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white text-xs font-semibold transition-colors cursor-pointer"
                         >
                           Indicar substituto
                         </button>
                         <button
                           type="button"
-                          onClick={() => onUpdateOpportunityStatus(opp.id, 'recusada')}
+                          onClick={() =>
+                            handleDeclineOrSubstituteOpportunity(opp, 'recusada')
+                          }
                           className="min-h-[40px] px-3 py-2 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink text-xs font-semibold transition-colors cursor-pointer"
                         >
                           Recusar pedido
@@ -1465,9 +1519,21 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
               Confirmar cancelamento da assinatura
             </h3>
             <p className="text-brand-ink/80 leading-relaxed">
-              Não cobramos multa nem fidelidade. Você mantém os benefícios do plano{' '}
+              Não cobramos multa nem fidelidade. No cancelamento padrão você mantém os benefícios do plano{' '}
               <strong>{currentPlanConfig.nome}</strong> até o final do período já pago e depois retorna automaticamente para o plano Gratuito sem perder suas avaliações.
             </p>
+            <label className="flex items-start gap-2.5 p-3 rounded-xl bg-brand-background/70 border border-brand-primary/10 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={exerciseWithdrawalRight}
+                onChange={(e) => setExerciseWithdrawalRight(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-brand-primary"
+              />
+              <span className="leading-relaxed text-brand-ink">
+                <strong>Direito de Arrependimento (CDC art. 49 — até 7 dias corridos):</strong>{' '}
+                Solicitar cancelamento imediato com estorno integral de eventual valor já pago nos últimos 7 dias e retorno imediato ao plano Gratuito.
+              </span>
+            </label>
             <div className="space-y-1">
               <label className="font-semibold text-brand-ink block">
                 Motivo do cancelamento (opcional)

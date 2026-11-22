@@ -63,6 +63,7 @@ test('Paid plans enforce exact limits (15 / 40 / 100) and upgrading immediately 
     planSlug: 'essencial',
     cycle: 'mensal',
     paymentMethod: 'pix',
+    cpfCnpj: '52998224725',
   });
   await lifecycle.activateSubscription(checkout.subscription.id);
 

@@ -18,7 +18,10 @@ import {
   ServiceRequest,
 } from '../types/confiare';
 import { CATEGORIES_LIST } from '../data/seedData';
-import { rankCompatibleProviders } from '../utils/marketplaceRules';
+import {
+  hasSufficientReputationHistory,
+  rankCompatibleProviders,
+} from '../utils/marketplaceRules';
 
 interface CreateServiceRequestScreenProps {
   initialCategory?: CategoryName;
@@ -26,7 +29,7 @@ interface CreateServiceRequestScreenProps {
   initialLocation?: string;
   providers: ProviderProfile[];
   requests: ServiceRequest[];
-  onCreateRequest: (req: ServiceRequest) => void;
+  onCreateRequest: (req: ServiceRequest) => Promise<void> | void;
   onNavigate: (screen: ScreenId, providerId?: string) => void;
 }
 
@@ -54,15 +57,16 @@ export const CreateServiceRequestScreen: React.FC<CreateServiceRequestScreenProp
     'Manhã (08h–12h)' | 'Tarde (13h–18h)' | 'Noite (18h–21h)' | 'Comercial'
   >('Tarde (13h–18h)');
   const [estimatedBudget, setEstimatedBudget] = useState('A combinar direto com o prestador');
-  const [preferredPreviousProviderId, setPreferredPreviousProviderId] = useState<string>('prov-joao');
+  const [preferredPreviousProviderId, setPreferredPreviousProviderId] = useState<string>('');
   const [photosCount, setPhotosCount] = useState(2);
-  const [lgpdContactConsent, setLgpdContactConsent] = useState(true);
+  const [lgpdContactConsent, setLgpdContactConsent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const trustedProviders = providers.filter((p) => p.previouslyHiredByCurrentUser);
   const selectedCategoryInfo = CATEGORIES_LIST.find((c) => c.name === category);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!problemTitle.trim() || !description.trim() || !neighborhood.trim()) {
       setError('Descreva o problema e informe o bairro para encontrarmos profissionais compatíveis.');
@@ -93,7 +97,17 @@ export const CreateServiceRequestScreen: React.FC<CreateServiceRequestScreenProp
       photosCount,
     };
 
-    onCreateRequest(newReq);
+    setSubmitting(true);
+    try {
+      await onCreateRequest(newReq);
+    } catch (err) {
+      setError(
+        (err as Error).message ||
+        'Não foi possível registrar sua solicitação no servidor. Tente novamente.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -144,11 +158,10 @@ export const CreateServiceRequestScreen: React.FC<CreateServiceRequestScreenProp
                   key={cat.name}
                   type="button"
                   onClick={() => setCategory(cat.name)}
-                  className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                    category === cat.name
-                      ? 'bg-brand-primary text-white font-semibold'
-                      : 'bg-brand-background text-brand-ink hover:bg-brand-surface-hover'
-                  }`}
+                  className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${category === cat.name
+                    ? 'bg-brand-primary text-white font-semibold'
+                    : 'bg-brand-background text-brand-ink hover:bg-brand-surface-hover'
+                    }`}
                 >
                   {cat.name}
                 </button>
@@ -192,7 +205,7 @@ export const CreateServiceRequestScreen: React.FC<CreateServiceRequestScreenProp
                 value={problemTitle}
                 onChange={(e) => setProblemTitle(e.target.value)}
                 placeholder="Ex.: Troca de disjuntor DR ou instalação de chuveiro"
-                className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink focus:outline-none focus:border-brand-link"
+                className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 focus:border-brand-link"
               />
             </div>
 
@@ -208,7 +221,7 @@ export const CreateServiceRequestScreen: React.FC<CreateServiceRequestScreenProp
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink focus:outline-none focus:border-brand-link"
+                className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 focus:border-brand-link"
               />
             </div>
           </div>
@@ -229,7 +242,7 @@ export const CreateServiceRequestScreen: React.FC<CreateServiceRequestScreenProp
                   type="text"
                   value={neighborhood}
                   onChange={(e) => setNeighborhood(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink focus:outline-none focus:border-brand-link"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 focus:border-brand-link"
                 />
               </div>
             </div>
@@ -249,7 +262,7 @@ export const CreateServiceRequestScreen: React.FC<CreateServiceRequestScreenProp
                     e.target.value as 'Hoje' | 'Amanhã' | 'Esta semana' | 'Flexível'
                   )
                 }
-                className="w-full px-3.5 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink focus:outline-none focus:border-brand-link"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 focus:border-brand-link"
               >
                 <option value="Hoje">Hoje (Urgente)</option>
                 <option value="Amanhã">Amanhã</option>
@@ -271,13 +284,13 @@ export const CreateServiceRequestScreen: React.FC<CreateServiceRequestScreenProp
                 onChange={(e) =>
                   setPreferredTime(
                     e.target.value as
-                      | 'Manhã (08h–12h)'
-                      | 'Tarde (13h–18h)'
-                      | 'Noite (18h–21h)'
-                      | 'Comercial'
+                    | 'Manhã (08h–12h)'
+                    | 'Tarde (13h–18h)'
+                    | 'Noite (18h–21h)'
+                    | 'Comercial'
                   )
                 }
-                className="w-full px-3.5 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink focus:outline-none focus:border-brand-link"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 focus:border-brand-link"
               >
                 <option value="Manhã (08h–12h)">Manhã (08h–12h)</option>
                 <option value="Tarde (13h–18h)">Tarde (13h–18h)</option>
@@ -351,9 +364,10 @@ export const CreateServiceRequestScreen: React.FC<CreateServiceRequestScreenProp
           <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
             <button
               type="submit"
-              className="min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-sm transition-colors inline-flex items-center gap-2 cursor-pointer"
+              disabled={submitting}
+              className="min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover disabled:opacity-60 text-white font-display font-semibold text-sm transition-colors inline-flex items-center gap-2 cursor-pointer"
             >
-              <span>Encontrar profissionais compatíveis</span>
+              <span>{submitting ? 'Registrando...' : 'Encontrar profissionais compatíveis'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
             <span className="text-xs text-brand-ink/65">
@@ -433,146 +447,153 @@ export const CompatibleProvidersListScreen: React.FC<
   onChangeLocation,
   onSelectProvider,
 }) => {
-  const publishedProviders = providers.filter((provider) => provider.isVerified);
-  const rankedList = rankCompatibleProviders(publishedProviders, {
-    category: activeCategory,
-    searchQuery,
-    locationQuery,
-  });
+    const publishedProviders = providers.filter((provider) => provider.isVerified);
+    const rankedList = rankCompatibleProviders(publishedProviders, {
+      category: activeCategory,
+      searchQuery,
+      locationQuery,
+    });
 
-  const clearFilters = () => {
-    onChangeCategory('Todas');
-    onChangeSearch('');
-    onChangeLocation('');
-  };
+    const clearFilters = () => {
+      onChangeCategory('Todas');
+      onChangeSearch('');
+      onChangeLocation('');
+    };
 
-  return (
-    <div className="space-y-8 pb-12">
-      <div className="border-b border-brand-primary/10 pb-6">
-        <p className="text-xs font-semibold text-brand-link">Busca de perfis públicos</p>
-        <h1 className="font-display font-bold text-2xl sm:text-3xl text-brand-ink mt-1">
-          Profissionais com perfil verificado
-        </h1>
-        <p className="text-sm text-brand-ink/75 mt-1">
-          Use categoria, nome e localidade informada para filtrar os perfis publicados. Localidade não confirma agenda ou cobertura de atendimento.
-        </p>
-      </div>
-
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-brand-primary/10 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-          <div className="sm:col-span-7 relative">
-            <Search className="w-4 h-4 text-brand-link absolute left-3.5 top-3.5" />
-            <input
-              type="text"
-              aria-label="Filtrar por problema ou nome do profissional"
-              value={searchQuery}
-              onChange={(e) => onChangeSearch(e.target.value)}
-              placeholder="Buscar por especialidade ou nome..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
-            />
-          </div>
-          <div className="sm:col-span-5 relative">
-            <MapPin className="w-4 h-4 text-brand-accent-strong absolute left-3.5 top-3.5" />
-            <input
-              type="text"
-              aria-label="Filtrar por localidade informada"
-              value={locationQuery}
-              onChange={(e) => onChangeLocation(e.target.value)}
-              placeholder="Bairro ou cidade informados"
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
-            />
-          </div>
+    return (
+      <div className="space-y-8 pb-12">
+        <div className="border-b border-brand-primary/10 pb-6">
+          <p className="text-xs font-semibold text-brand-link">Busca de perfis públicos</p>
+          <h1 className="font-display font-bold text-2xl sm:text-3xl text-brand-ink mt-1">
+            Profissionais com perfil verificado
+          </h1>
+          <p className="text-sm text-brand-ink/75 mt-1">
+            Use categoria, nome e localidade informada para filtrar os perfis publicados. Localidade não confirma agenda ou cobertura de atendimento.
+          </p>
+          <p className="text-xs text-brand-ink/75 mt-1.5">
+            Transparência algorítmica/IA (LGPD art. 20): ordenação assistida por algoritmo de compatibilidade (sem venda de estrelas ou impulsionamento pago de notas); seus dados não são usados para treino de IA por padrão (<code className="font-mono">/app/privacidade</code>).
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          {(['Todas', ...CATEGORIES_LIST.map((category) => category.name)] as const).map((category) => (
-            <button
-              key={category}
-              type="button"
-              onClick={() => onChangeCategory(category as CategoryName | 'Todas')}
-              className={`min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                activeCategory === category
+        <div className="bg-white rounded-2xl p-4 sm:p-5 border border-brand-primary/10 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+            <div className="sm:col-span-7 relative">
+              <Search className="w-4 h-4 text-brand-link absolute left-3.5 top-3.5" />
+              <input
+                type="text"
+                aria-label="Filtrar por problema ou nome do profissional"
+                value={searchQuery}
+                onChange={(e) => onChangeSearch(e.target.value)}
+                placeholder="Buscar por especialidade ou nome..."
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
+              />
+            </div>
+            <div className="sm:col-span-5 relative">
+              <MapPin className="w-4 h-4 text-brand-accent-strong absolute left-3.5 top-3.5" />
+              <input
+                type="text"
+                aria-label="Filtrar por localidade informada"
+                value={locationQuery}
+                onChange={(e) => onChangeLocation(e.target.value)}
+                placeholder="Bairro ou cidade informados"
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {(['Todas', ...CATEGORIES_LIST.map((category) => category.name)] as const).map((category) => (
+              <button
+                key={category}
+                type="button"
+                onClick={() => onChangeCategory(category as CategoryName | 'Todas')}
+                className={`min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${activeCategory === category
                   ? 'bg-brand-primary text-white font-semibold'
                   : 'bg-brand-background/80 text-brand-ink/80 hover:text-brand-ink'
-              }`}
-            >
-              {category}
-            </button>
-          ))}
+                  }`}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      {rankedList.length === 0 ? (
-        <div className="bg-white rounded-3xl p-10 text-center space-y-4 border border-brand-primary/10">
-          <p className="font-display font-bold text-lg text-brand-ink">
-            {publishedProviders.length === 0
-              ? 'Nenhum perfil verificado está publicado no momento.'
-              : 'Nenhum perfil verificado corresponde a estes filtros.'}
-          </p>
-          <p className="text-xs text-brand-ink/70 max-w-md mx-auto">
-            {publishedProviders.length === 0
-              ? 'A lista de interesse ainda não está disponível. Esta tela não coleta seus dados quando não encontra perfis.'
-              : 'Ajuste categoria, nome ou localidade informada, ou limpe os filtros para consultar os perfis publicados.'}
-          </p>
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-primary text-white text-xs font-semibold cursor-pointer"
-          >
-            Limpar filtros
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {rankedList.map(({ provider }) => (
-            <article
-              key={provider.id}
-              className="bg-white rounded-3xl p-6 border border-brand-primary/10 hover:border-brand-link transition-all"
+        {rankedList.length === 0 ? (
+          <div className="bg-white rounded-3xl p-10 text-center space-y-4 border border-brand-primary/10">
+            <p className="font-display font-bold text-lg text-brand-ink">
+              {publishedProviders.length === 0
+                ? 'Nenhum perfil verificado está publicado no momento.'
+                : 'Nenhum perfil verificado corresponde a estes filtros.'}
+            </p>
+            <p className="text-xs text-brand-ink/70 max-w-md mx-auto">
+              {publishedProviders.length === 0
+                ? 'Ainda não há perfis verificados publicados para esta busca; você pode deixar seu interesse na página inicial.'
+                : 'Ajuste categoria, nome ou localidade informada, ou limpe os filtros para consultar os perfis publicados.'}
+            </p>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-primary text-white text-xs font-semibold cursor-pointer"
             >
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                <div className="lg:col-span-8 space-y-3">
-                  <div className="flex flex-wrap items-center gap-3.5">
-                    <div className="w-14 h-14 rounded-2xl bg-brand-primary text-white font-display font-bold text-lg flex items-center justify-center shrink-0">
-                      {provider.initials}
+              Limpar filtros
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {rankedList.map(({ provider }) => (
+              <article
+                key={provider.id}
+                className="bg-white rounded-3xl p-6 border border-brand-primary/10 hover:border-brand-link transition-all"
+              >
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                  <div className="lg:col-span-8 space-y-3">
+                    <div className="flex flex-wrap items-center gap-3.5">
+                      <div className="w-14 h-14 rounded-2xl bg-brand-primary text-white font-display font-bold text-lg flex items-center justify-center shrink-0">
+                        {provider.initials}
+                      </div>
+                      <div>
+                        <h2 className="font-display font-bold text-lg text-brand-ink">{provider.name}</h2>
+                        <p className="text-xs text-brand-link font-semibold">{provider.category}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h2 className="font-display font-bold text-lg text-brand-ink">{provider.name}</h2>
-                      <p className="text-xs text-brand-link font-semibold">{provider.category}</p>
-                    </div>
+
+                    <p className="text-xs font-semibold text-brand-link">
+                      ✓ Perfil verificado e aprovado ·{' '}
+                      {hasSufficientReputationHistory(provider)
+                        ? `Nota ★ ${provider.ratingAvg.toFixed(2)} (${provider.reviewsCount} avaliações · ${provider.completedJobs} atendimentos)`
+                        : 'Em avaliação inicial (histórico mínimo em formação)'}
+                    </p>
+                    {(provider.city || provider.neighborhoods.length > 0) && (
+                      <p className="text-xs text-brand-ink/70">
+                        Localidade informada: {[provider.city, ...provider.neighborhoods].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
+                    {provider.specialties.length > 0 && (
+                      <p className="text-xs text-brand-ink/65">
+                        Especialidades informadas: {provider.specialties.join(' / ')}
+                      </p>
+                    )}
+                    {provider.bio.trim() && (
+                      <p className="text-xs sm:text-sm text-brand-ink/80 leading-relaxed">
+                        Descrição informada: {provider.bio}
+                      </p>
+                    )}
                   </div>
 
-                  <p className="text-xs font-semibold text-brand-ink/70">Status de verificação ativo</p>
-                  {(provider.city || provider.neighborhoods.length > 0) && (
-                    <p className="text-xs text-brand-ink/70">
-                      Localidade informada: {[provider.city, ...provider.neighborhoods].filter(Boolean).join(' · ')}
-                    </p>
-                  )}
-                  {provider.specialties.length > 0 && (
-                    <p className="text-xs text-brand-ink/65">
-                      Especialidades informadas: {provider.specialties.join(' / ')}
-                    </p>
-                  )}
-                  {provider.bio.trim() && (
-                    <p className="text-xs sm:text-sm text-brand-ink/80 leading-relaxed">
-                      Descrição informada: {provider.bio}
-                    </p>
-                  )}
+                  <div className="lg:col-span-4 lg:border-l lg:border-brand-primary/10 lg:pl-6">
+                    <button
+                      type="button"
+                      onClick={() => onSelectProvider(provider.id)}
+                      className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-display font-semibold text-xs transition-colors cursor-pointer"
+                    >
+                      Ver informações do perfil
+                    </button>
+                  </div>
                 </div>
-
-                <div className="lg:col-span-4 lg:border-l lg:border-brand-primary/10 lg:pl-6">
-                  <button
-                    type="button"
-                    onClick={() => onSelectProvider(provider.id)}
-                    className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-display font-semibold text-xs transition-colors cursor-pointer"
-                  >
-                    Ver informações do perfil
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };

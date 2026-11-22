@@ -1,5 +1,55 @@
+import crypto from 'node:crypto';
 import { pool } from '../db/index';
-import { isDemoModeEnabled } from '../config/environment';
+import {
+  getNodeEnvironment,
+  isDemoModeEnabled,
+} from '../config/environment';
+import { getAppBaseUrl, getSessionSecretBytes } from '../config/runtimeSecrets';
+
+export function generateEmailUnsubscribeToken(email: string): string {
+  const secret = getSessionSecretBytes();
+  return crypto
+    .createHmac('sha256', secret)
+    .update(`unsubscribe:${email.trim().toLowerCase()}`)
+    .digest('hex');
+}
+
+export function verifyEmailUnsubscribeToken(
+  email: string,
+  signature: string
+): boolean {
+  if (!email || !signature) return false;
+  const expected = generateEmailUnsubscribeToken(email);
+  const sigBuf = Buffer.from(signature.trim());
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length) return false;
+  return crypto.timingSafeEqual(sigBuf, expBuf);
+}
+
+export interface CapturedEmailDelivery {
+  to: string;
+  subject: string;
+  template: string;
+  variables: Record<string, string>;
+  provider: string;
+  messageId: string;
+  headers?: Record<string, string>;
+  bodyText?: string;
+}
+
+let emailDeliveryObserverForTests:
+  | ((delivery: CapturedEmailDelivery) => void)
+  | null = null;
+
+export function setEmailDeliveryObserverForTests(
+  observer: ((delivery: CapturedEmailDelivery) => void) | null
+): void {
+  if (process.env.NODE_ENV !== 'test') {
+    emailDeliveryObserverForTests = null;
+    return;
+  }
+  emailDeliveryObserverForTests = observer;
+}
 
 export interface GeoCoordinates {
   latitude: number;
@@ -144,16 +194,59 @@ export class GeolocationRadiusService {
 /**
  * Integração de E-mail Transacional para confirmação de cadastro, recuperação de senha e avisos.
  */
+export type TransactionalEmailTemplate =
+  | 'confirmacao_email'
+  | 'verificacao_email'
+  | 'recuperacao_senha'
+  | 'aviso_oportunidade'
+  | 'aviso_recontratacao'
+  | 'aviso_aprovacao_cadastro'
+  | 'aviso_termino_promocao'
+  | 'marketing';
+
+function formatEmailBodyText(
+  template: TransactionalEmailTemplate,
+  variables: Record<string, string>
+): string {
+  if (template === 'verificacao_email' || template === 'confirmacao_email') {
+    const link = variables.verificationUrl || '';
+    const token = variables.verificationToken || variables.codigo || '';
+    return [
+      `Olá ${variables.fullName || ''},`,
+      '',
+      'Confirme seu e-mail para ativar sua conta no Recontrate:',
+      link ? `Link de confirmação: ${link}` : '',
+      token ? `Código/Token de confirmação: ${token}` : '',
+      '',
+      'Este código expira em 24 horas e possui uso único.',
+    ]
+      .filter((line) => line !== undefined)
+      .join('\n');
+  }
+  if (template === 'recuperacao_senha') {
+    const link = variables.resetUrl || '';
+    const token = variables.resetToken || '';
+    return [
+      'Você solicitou a recuperação de senha no Recontrate.',
+      '',
+      link ? `Link de redefinição: ${link}` : '',
+      token ? `Token de uso único (expira em 30 minutos): ${token}` : '',
+      '',
+      'Se você não solicitou esta alteração, ignore este e-mail.',
+    ]
+      .filter((line) => line !== undefined)
+      .join('\n');
+  }
+  return Object.entries(variables)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n');
+}
+
 export class TransactionalEmailService {
   async sendEmail(input: {
     to: string;
     subject: string;
-    template:
-      | 'confirmacao_email'
-      | 'recuperacao_senha'
-      | 'aviso_oportunidade'
-      | 'aviso_recontratacao'
-      | 'aviso_aprovacao_cadastro';
+    template: TransactionalEmailTemplate;
     variables: Record<string, string>;
     userId?: string;
   }): Promise<{ delivered: boolean; provider: string; messageId: string }> {
@@ -170,32 +263,96 @@ export class TransactionalEmailService {
     }
 
     const resendApiKey = process.env.RESEND_API_KEY;
+    const nodeEnv = getNodeEnvironment();
+    const isSharedRuntime =
+      nodeEnv === 'production' ||
+      nodeEnv === 'staging' ||
+      process.env.VERCEL_ENV === 'production' ||
+      process.env.VERCEL_ENV === 'preview';
+    const isCriticalAuthEmail =
+      input.template === 'verificacao_email' ||
+      input.template === 'confirmacao_email' ||
+      input.template === 'recuperacao_senha';
+
+    if (!isCriticalAuthEmail) {
+      const { rows: unsubRows } = await pool
+        .query(
+          `SELECT 1 FROM email_unsubscribes WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+          [input.to]
+        )
+        .catch(() => ({ rows: [] as any[] }));
+      if (unsubRows.length > 0) {
+        return {
+          delivered: false,
+          provider: 'unsubscribed-suppressed',
+          messageId,
+        };
+      }
+    }
+
+    const unsubSig = generateEmailUnsubscribeToken(input.to);
+    const appBaseUrl = getAppBaseUrl().replace(/\/$/, '');
+    const apiUnsubUrl = `${appBaseUrl}/api/public/email/unsubscribe?email=${encodeURIComponent(
+      input.to
+    )}&sig=${encodeURIComponent(unsubSig)}`;
+    const uiUnsubUrl = `${appBaseUrl}/descadastrar-email?email=${encodeURIComponent(
+      input.to
+    )}&sig=${encodeURIComponent(unsubSig)}`;
+
+    const emailHeaders: Record<string, string> = {
+      'List-Unsubscribe': `<${apiUnsubUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    };
+
     let provider = 'confiare-transactional-outbox';
+    const rawBodyText = formatEmailBodyText(input.template, input.variables);
+    const bodyText = isCriticalAuthEmail
+      ? rawBodyText
+      : `${rawBodyText}\n\n---\nNão deseja mais receber comunicados ou avisos promocionais do Recontrate? Descadastre-se em 1 clique: ${uiUnsubUrl}`;
 
     if (resendApiKey && !resendApiKey.startsWith('YOUR_')) {
-      try {
-        const res = await fetch('https://api.resend.com/emails', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${resendApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            from:
-              process.env.EMAIL_FROM || 'Recontrate <nao-responda@confiare.com.br>',
-            to: [input.to],
-            subject: input.subject,
-            text: Object.entries(input.variables)
-              .map(([k, v]) => `${k}: ${v}`)
-              .join('\n'),
-          }),
-        });
-        if (res.ok) {
-          provider = 'resend-api';
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from:
+            process.env.EMAIL_FROM || 'Recontrate <nao-responda@recontrate.com.br>',
+          to: [input.to],
+          subject: input.subject,
+          text: bodyText,
+          headers: emailHeaders,
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        if (isSharedRuntime && isCriticalAuthEmail) {
+          throw new Error(
+            `Falha ao enviar e-mail transacional via Resend (${res.status}): ${errText}`
+          );
         }
-      } catch {
-        // Fallback to outbox audit log
+      } else {
+        provider = 'resend-api';
       }
+    } else if (isSharedRuntime && isCriticalAuthEmail) {
+      throw new Error(
+        'RESEND_API_KEY não configurada para envio de e-mail de confirmação/recuperação em produção/staging.'
+      );
+    }
+
+    if (process.env.NODE_ENV === 'test' && emailDeliveryObserverForTests) {
+      emailDeliveryObserverForTests({
+        to: input.to,
+        subject: input.subject,
+        template: input.template,
+        variables: input.variables,
+        provider,
+        messageId,
+        headers: emailHeaders,
+        bodyText,
+      });
     }
 
     await pool.query(

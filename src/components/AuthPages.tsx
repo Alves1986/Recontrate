@@ -15,6 +15,10 @@ import type { AuthenticatedUserSession } from '../services/authService';
 import { INITIAL_TAXONOMY_CATEGORIES } from '../data/taxonomySeed';
 import { ProviderSpecialtiesManager } from './ProviderSpecialtiesManager';
 import { BrandLogo } from './BrandLogo';
+import {
+  CURRENT_PRIVACY_VERSION,
+  CURRENT_TERMS_VERSION,
+} from '../config/legalIdentity';
 
 async function safeParseJson<T = any>(res: Response): Promise<T | null> {
   try {
@@ -25,8 +29,6 @@ async function safeParseJson<T = any>(res: Response): Promise<T | null> {
     return null;
   }
 }
-
-const PILOT_STORAGE_KEY = 'recontrate_pilot_users_v1';
 
 function isValidJwtToken(token?: string | null): boolean {
   return Boolean(token && token.split('.').length === 3);
@@ -46,37 +48,6 @@ interface SignupOfficialCategory {
   }>;
 }
 
-interface StoredPilotAccount {
-  user: AuthenticatedUserSession;
-  password: string;
-  token: string;
-}
-
-function readStoredPilotAccounts(): Record<string, StoredPilotAccount> {
-  if (typeof window === 'undefined') return {};
-  try {
-    const raw = window.localStorage.getItem(PILOT_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeStoredPilotAccount(email: string, account: StoredPilotAccount) {
-  if (typeof window === 'undefined' || !isValidJwtToken(account.token)) return;
-  try {
-    const current = readStoredPilotAccounts();
-    current[email.trim().toLowerCase()] = account;
-    window.localStorage.setItem(PILOT_STORAGE_KEY, JSON.stringify(current));
-    window.localStorage.setItem(
-      'recontrate_pilot_session',
-      JSON.stringify({ user: account.user, token: account.token })
-    );
-  } catch {
-    // ignore storage quota errors
-  }
-}
-
 export const LoginPage: React.FC<{
   onAuthenticated: (
     user: AuthenticatedUserSession,
@@ -89,10 +60,14 @@ export const LoginPage: React.FC<{
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [needsEmailVerification, setNeedsEmailVerification] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setResendMessage('');
+    setNeedsEmailVerification(false);
     setLoading(true);
     try {
       const res = await fetch('/api/auth/login', {
@@ -103,12 +78,15 @@ export const LoginPage: React.FC<{
       }).catch(() => null);
       const body = res ? await safeParseJson(res) : null;
       if (res && res.ok && body?.ok && isValidJwtToken(body.token)) {
-        writeStoredPilotAccount(email, {
-          user: body.user,
-          password,
-          token: body.token,
-        });
         onAuthenticated(body.user, body.token, body.redirectTo);
+        return;
+      }
+      if (res && res.status === 403 && body?.code === 'EMAIL_NOT_VERIFIED') {
+        setNeedsEmailVerification(true);
+        setError(
+          body.error ||
+            'Confirme seu e-mail pelo link enviado antes de entrar no Recontrate.'
+        );
         return;
       }
       if (!res || res.status >= 500) {
@@ -123,6 +101,27 @@ export const LoginPage: React.FC<{
       setError((err as Error).message || 'Não foi possível autenticar no momento.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!email.trim()) return;
+    setResendMessage('');
+    const res = await fetch('/api/auth/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim() }),
+    }).catch(() => null);
+    const body = res ? await safeParseJson(res) : null;
+    if (res && res.ok) {
+      setResendMessage(
+        body?.message ||
+          'Se o e-mail estiver aguardando confirmação, enviamos um novo link.'
+      );
+    } else {
+      setResendMessage(
+        body?.error || 'Não foi possível reenviar o e-mail agora.'
+      );
     }
   };
 
@@ -159,9 +158,38 @@ export const LoginPage: React.FC<{
       {error && (
         <div
           role="alert"
-          className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium"
+          className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium space-y-2"
         >
-          {error}
+          <p>{error}</p>
+          {needsEmailVerification && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                className="px-3 py-1.5 rounded-lg bg-brand-primary text-white text-[11px] font-semibold cursor-pointer"
+              >
+                Reenviar e-mail de confirmação
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onNavigateUrl(
+                    `/verificar-email${
+                      email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''
+                    }`
+                  )
+                }
+                className="px-3 py-1.5 rounded-lg bg-white border border-red-300 text-red-900 text-[11px] font-semibold cursor-pointer"
+              >
+                Inserir código de verificação
+              </button>
+            </div>
+          )}
+          {resendMessage && (
+            <p className="text-[11px] text-emerald-800 font-semibold">
+              {resendMessage}
+            </p>
+          )}
         </div>
       )}
 
@@ -174,7 +202,7 @@ export const LoginPage: React.FC<{
             E-mail
           </label>
           <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-brand-primary/15">
-            <Mail className="w-4 h-4 text-brand-ink/50" />
+            <Mail className="w-4 h-4 text-brand-ink/70" aria-hidden="true" />
             <input
               id="login-email"
               type="email"
@@ -182,7 +210,7 @@ export const LoginPage: React.FC<{
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="seu@email.com.br"
-              className="w-full focus:outline-none text-sm"
+              className="w-full focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-md text-sm"
             />
           </div>
         </div>
@@ -204,7 +232,7 @@ export const LoginPage: React.FC<{
             </button>
           </div>
           <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-brand-primary/15">
-            <Lock className="w-4 h-4 text-brand-ink/50" />
+            <Lock className="w-4 h-4 text-brand-ink/70" aria-hidden="true" />
             <input
               id="login-password"
               type="password"
@@ -212,7 +240,7 @@ export const LoginPage: React.FC<{
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full focus:outline-none text-sm"
+              className="w-full focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-md text-sm"
             />
           </div>
         </div>
@@ -322,6 +350,7 @@ export const SignupPage: React.FC<{
   }, [referralCode]);
   const [alsoEnableSecondRole, setAlsoEnableSecondRole] = useState(false);
   const [fullName, setFullName] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
@@ -338,6 +367,8 @@ export const SignupPage: React.FC<{
   const [specialtySearch, setSpecialtySearch] = useState('');
   const [loadingTaxonomy, setLoadingTaxonomy] = useState(false);
   const [lgpdConsent, setLgpdConsent] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
+  const [aiTrainingOptOut, setAiTrainingOptOut] = useState(true);
   const [websiteHoneypot, setWebsiteHoneypot] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -428,10 +459,39 @@ export const SignupPage: React.FC<{
     }
   };
 
+  const computeAgeYears = (isoDate: string): number | null => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+    const [y, m, d] = isoDate.split('-').map(Number);
+    const now = new Date();
+    let age = now.getUTCFullYear() - y;
+    const diffMonth = now.getUTCMonth() + 1 - m;
+    if (diffMonth < 0 || (diffMonth === 0 && now.getUTCDate() < d)) {
+      age -= 1;
+    }
+    return age;
+  };
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (websiteHoneypot.trim() !== '') {
+      return;
+    }
+    const age = computeAgeYears(birthDate);
+    if (age === null) {
+      setError('Informe sua data de nascimento completa para continuar.');
+      return;
+    }
+    if (age < 12) {
+      setError(
+        'Cadastro bloqueado para menores de 12 anos (LGPD art. 14 §1º): o tratamento de dados pessoais de crianças exige consentimento específico e em destaque de ao menos um dos pais ou responsável legal e não permite abertura de conta autônoma.'
+      );
+      return;
+    }
+    if (age < 18) {
+      setError(
+        'Cadastro permitido apenas para maiores de 18 anos completos (LGPD art. 14 / Código Civil).'
+      );
       return;
     }
     if (!lgpdConsent) {
@@ -473,6 +533,7 @@ export const SignupPage: React.FC<{
           role,
           alsoEnableSecondRole,
           fullName,
+          birthDate,
           email,
           password,
           phone,
@@ -492,20 +553,24 @@ export const SignupPage: React.FC<{
             ? referralCode.trim().toUpperCase()
             : undefined,
           lgpdConsent,
+          termsVersion: CURRENT_TERMS_VERSION,
+          privacyVersion: CURRENT_PRIVACY_VERSION,
+          marketingOptIn,
+          aiTrainingOptOut,
         }),
       }).catch(() => null);
       const body = res ? await safeParseJson(res) : null;
-      if (res && res.ok && body?.ok && isValidJwtToken(body.token)) {
-        const activeUser: AuthenticatedUserSession = {
-          ...body.user,
-          status: 'ativo',
-          emailVerified: true,
-        };
-        writeStoredPilotAccount(email, {
-          user: activeUser,
-          password,
-          token: body.token,
-        });
+      if (res && res.ok && body?.ok) {
+        if (body.requiresEmailVerification || !isValidJwtToken(body.token)) {
+          persistPendingPlanSelection();
+          onNavigateUrl(
+            `/verificar-email?email=${encodeURIComponent(
+              email.trim().toLowerCase()
+            )}`
+          );
+          return;
+        }
+        const activeUser: AuthenticatedUserSession = body.user;
         let nextTarget =
           activeUser.redirectTo ||
           (activeUser.activeRole === 'prestador' ? '/app/prestador' : '/app');
@@ -629,12 +694,16 @@ export const SignupPage: React.FC<{
       )}
 
       <form onSubmit={handleSignup} className="space-y-4 text-xs">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="font-semibold text-brand-ink">
-              Nome completo
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="space-y-1 sm:col-span-1">
+            <label
+              htmlFor="signup-fullname"
+              className="font-semibold text-brand-ink"
+            >
+              Nome completo *
             </label>
             <input
+              id="signup-fullname"
               type="text"
               required
               value={fullName}
@@ -644,11 +713,32 @@ export const SignupPage: React.FC<{
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="font-semibold text-brand-ink">
-              WhatsApp / Telefone
+          <div className="space-y-1 sm:col-span-1">
+            <label
+              htmlFor="signup-birthdate"
+              className="font-semibold text-brand-ink"
+            >
+              Data de nascimento (+18) *
             </label>
             <input
+              id="signup-birthdate"
+              type="date"
+              required
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 text-sm"
+            />
+          </div>
+
+          <div className="space-y-1 sm:col-span-1">
+            <label
+              htmlFor="signup-phone"
+              className="font-semibold text-brand-ink"
+            >
+              WhatsApp / Telefone *
+            </label>
+            <input
+              id="signup-phone"
               type="text"
               required
               value={phone}
@@ -785,7 +875,8 @@ export const SignupPage: React.FC<{
                     value={specialtySearch}
                     onChange={(e) => setSpecialtySearch(e.target.value)}
                     placeholder="Ex.: chuveiro, porcelanato, split..."
-                    className="w-full focus:outline-none text-xs"
+                    aria-label="Filtrar especialidade oficial"
+                    className="w-full focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-md text-xs"
                   />
                 </div>
               </div>
@@ -894,33 +985,59 @@ export const SignupPage: React.FC<{
           />
         </div>
 
-        <label className="flex items-start gap-2.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={lgpdConsent}
-            onChange={(e) => setLgpdConsent(e.target.checked)}
-            className="mt-0.5"
-          />
-          <span className="text-brand-ink/80 leading-relaxed">
-            Autorizo o uso dos dados informados acima para operação da minha conta no Recontrate, ciente dos{' '}
-            <button
-              type="button"
-              onClick={() => onNavigateUrl('/termos')}
-              className="underline font-semibold text-brand-link cursor-pointer"
-            >
-              Termos de Uso
-            </button>{' '}
-            e da{' '}
-            <button
-              type="button"
-              onClick={() => onNavigateUrl('/privacidade')}
-              className="underline font-semibold text-brand-link cursor-pointer"
-            >
-              Política de Privacidade e LGPD
-            </button>
-            .
-          </span>
-        </label>
+        <div className="space-y-3 pt-1">
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={lgpdConsent}
+              onChange={(e) => setLgpdConsent(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-brand-ink/80 leading-relaxed">
+              Declaro ter <strong>18 anos ou mais</strong> (cadastro bloqueado para menores de 12 anos — LGPD art. 14 §1º) e aceito os{' '}
+              <button
+                type="button"
+                onClick={() => onNavigateUrl('/termos')}
+                className="underline font-semibold text-brand-link cursor-pointer"
+              >
+                Termos de Uso ({CURRENT_TERMS_VERSION})
+              </button>{' '}
+              e a{' '}
+              <button
+                type="button"
+                onClick={() => onNavigateUrl('/privacidade')}
+                className="underline font-semibold text-brand-link cursor-pointer"
+              >
+                Política de Privacidade e LGPD ({CURRENT_PRIVACY_VERSION})
+              </button>
+              . *
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={marketingOptIn}
+              onChange={(e) => setMarketingOptIn(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-brand-ink/75 leading-relaxed">
+              (Opcional — LGPD art. 8º §4º) Autorizo receber novidades comerciais, campanhas e avisos promocionais do Recontrate por e-mail.
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={aiTrainingOptOut}
+              onChange={(e) => setAiTrainingOptOut(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-brand-ink/75 leading-relaxed">
+              Não utilizar meus dados de perfil ou descrições para treinamento de modelos externos de Inteligência Artificial (opt-out padrão LGPD/IA).
+            </span>
+          </label>
+        </div>
 
         <button
           type="submit"
@@ -949,10 +1066,16 @@ export const SignupPage: React.FC<{
 export const ForgotAndResetPasswordPage: React.FC<{
   onNavigateUrl: (path: string) => void;
 }> = ({ onNavigateUrl }) => {
+  const initialToken =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('resetToken') || ''
+      : '';
   const [email, setEmail] = useState('');
-  const [resetToken, setResetToken] = useState('');
+  const [resetToken, setResetToken] = useState(initialToken);
   const [newPassword, setNewPassword] = useState('');
-  const [step, setStep] = useState<'request' | 'reset' | 'done'>('request');
+  const [step, setStep] = useState<'request' | 'reset' | 'done'>(
+    initialToken ? 'reset' : 'request'
+  );
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
@@ -965,17 +1088,16 @@ export const ForgotAndResetPasswordPage: React.FC<{
       body: JSON.stringify({ email }),
     }).catch(() => null);
     const body = res ? await safeParseJson(res) : null;
-    if (res && !res.ok && body?.error) {
-      setError(body.error);
+    if (!res || !res.ok || !body?.ok) {
+      setError(
+        body?.error ||
+          'Não foi possível solicitar a recuperação de senha agora. Tente novamente em instantes.'
+      );
       return;
     }
-    if (body?.resetToken) {
-      setResetToken(body.resetToken);
-    } else {
-      setResetToken('PILOT-RESET-2026');
-    }
     setMessage(
-      'Instruções de recuperação geradas. Informe o código/token e defina sua nova senha.'
+      body?.message ||
+        'Se o e-mail estiver cadastrado, enviamos as instruções com o token de uso único para a sua caixa de entrada.'
     );
     setStep('reset');
   };
@@ -989,8 +1111,11 @@ export const ForgotAndResetPasswordPage: React.FC<{
       body: JSON.stringify({ resetToken, newPassword }),
     }).catch(() => null);
     const body = res ? await safeParseJson(res) : null;
-    if (res && !res.ok && body?.error) {
-      setError(body.error);
+    if (!res || !res.ok || !body?.ok) {
+      setError(
+        body?.error ||
+          'Token inválido/expirado ou falha ao conectar com o servidor.'
+      );
       return;
     }
     setStep('done');
@@ -1444,6 +1569,222 @@ export const PadrinhoDashboardPage: React.FC<{
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+};
+
+export const VerifyEmailPage: React.FC<{
+  onAuthenticated: (
+    user: AuthenticatedUserSession,
+    token: string,
+    redirectTo: string
+  ) => void;
+  onNavigateUrl: (path: string) => void;
+}> = ({ onAuthenticated, onNavigateUrl }) => {
+  const params =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search)
+      : null;
+  const initialToken = params?.get('token') || '';
+  const initialEmail = params?.get('email') || '';
+
+  const [token, setToken] = useState(initialToken);
+  const [email, setEmail] = useState(initialEmail);
+  const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
+
+  const submitVerification = async (verificationToken: string) => {
+    setError('');
+    setMessage('');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verificationToken: verificationToken.trim() }),
+      }).catch(() => null);
+      const body = res ? await safeParseJson(res) : null;
+      if (res && res.ok && body?.ok && isValidJwtToken(body.token)) {
+        let nextTarget =
+          body.redirectTo || body.user?.redirectTo || '/app';
+        try {
+          const pendingPlanRaw =
+            typeof window !== 'undefined'
+              ? window.sessionStorage.getItem('recontrate_pending_plan')
+              : null;
+          if (pendingPlanRaw && body.user?.onboardingCompleted) {
+            const parsed = JSON.parse(pendingPlanRaw);
+            window.sessionStorage.removeItem('recontrate_pending_plan');
+            if (parsed?.plan && parsed.plan !== 'gratuito') {
+              nextTarget = `/planos?checkout=${encodeURIComponent(
+                parsed.plan
+              )}&cycle=${encodeURIComponent(parsed.cycle || 'mensal')}`;
+            }
+          }
+        } catch {
+          // ignore sessionStorage errors
+        }
+        onAuthenticated(body.user, body.token, nextTarget);
+        return;
+      }
+      setError(
+        body?.error ||
+          'Token de verificação inválido, expirado ou servidor indisponível.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (initialToken && initialToken.length >= 6) {
+      submitVerification(initialToken);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleResend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setMessage('');
+    if (!email.trim()) {
+      setError('Informe seu e-mail para reenviar o link de confirmação.');
+      return;
+    }
+    setResending(true);
+    try {
+      const res = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      }).catch(() => null);
+      const body = res ? await safeParseJson(res) : null;
+      if (res && res.ok && body?.ok) {
+        setMessage(
+          body.message ||
+            'Se o e-mail estiver pendente de confirmação, enviamos um novo link.'
+        );
+      } else {
+        setError(body?.error || 'Não foi possível reenviar o e-mail agora.');
+      }
+    } finally {
+      setResending(false);
+    }
+  };
+
+  return (
+    <div className="max-w-md mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-5 my-6 text-xs">
+      <div className="space-y-3">
+        <BrandLogo variant="dark" size="sm" />
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-brand-link">
+            Verificação Obrigatória de E-mail
+          </p>
+          <h1 className="font-display font-bold text-2xl text-brand-ink">
+            Confirme seu endereço de e-mail
+          </h1>
+          <p className="text-brand-ink/75 leading-relaxed">
+            Enviamos um link de confirmação de uso único para{' '}
+            <strong>{email || 'seu e-mail cadastrado'}</strong>. Clique no link
+            do e-mail ou cole o código recebido abaixo.
+          </p>
+        </div>
+      </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 font-medium"
+        >
+          {error}
+        </div>
+      )}
+
+      {message && (
+        <div
+          role="status"
+          className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 font-medium"
+        >
+          {message}
+        </div>
+      )}
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (token.trim()) {
+            submitVerification(token.trim());
+          }
+        }}
+        className="space-y-3"
+      >
+        <div className="space-y-1">
+          <label
+            htmlFor="verify-token"
+            className="font-semibold text-brand-ink"
+          >
+            Código / Token de confirmação
+          </label>
+          <input
+            id="verify-token"
+            type="text"
+            required
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="vfy_..."
+            className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 font-mono text-sm"
+          />
+        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full min-h-[42px] px-4 py-2 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-semibold cursor-pointer disabled:opacity-60"
+        >
+          {loading ? 'Verificando...' : 'Confirmar e ativar minha conta'}
+        </button>
+      </form>
+
+      <form
+        onSubmit={handleResend}
+        className="pt-4 border-t border-brand-primary/10 space-y-2.5"
+      >
+        <label
+          htmlFor="resend-email"
+          className="block font-semibold text-brand-ink"
+        >
+          Não recebeu o e-mail? Reenviar link
+        </label>
+        <div className="flex gap-2">
+          <input
+            id="resend-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="seu@email.com.br"
+            className="flex-1 px-3 py-2 rounded-xl border border-brand-primary/15 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={resending}
+            className="px-3.5 py-2 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink font-semibold cursor-pointer disabled:opacity-60"
+          >
+            {resending ? 'Enviando...' : 'Reenviar'}
+          </button>
+        </div>
+      </form>
+
+      <div className="text-center pt-1">
+        <button
+          type="button"
+          onClick={() => onNavigateUrl('/entrar')}
+          className="text-brand-link font-semibold hover:underline cursor-pointer"
+        >
+          Voltar para entrar
+        </button>
       </div>
     </div>
   );

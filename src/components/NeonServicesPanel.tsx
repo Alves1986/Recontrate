@@ -193,6 +193,9 @@ export const NeonServicesPanel: React.FC<{ providerId?: string }> = ({
                 ? `${services.aiGateway.catalogModelsCount} modelos no catálogo (/v1/models)`
                 : 'Consultando /v1/models...'}
             </p>
+            <p className="text-[11px] text-brand-ink/70">
+              Transparência LGPD/IA: respostas automatizadas são rotuladas ao usuário e o uso de dados para treino permanece recusado (opt-out) por padrão em /app/privacidade.
+            </p>
           </div>
 
           {/* 5. Neon Functions */}

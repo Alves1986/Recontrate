@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import { createApp } from '../server/index';
 import { ensureSchemaAndSeed, pool } from '../db/index';
-import { calculateHaversineDistanceKm } from './essentialIntegrations';
+import {
+  calculateHaversineDistanceKm,
+  setEmailDeliveryObserverForTests,
+} from './essentialIntegrations';
 
 let server: Server;
 let baseUrl: string;
@@ -23,6 +26,7 @@ test.before(async () => {
 });
 
 test.after(async () => {
+  setEmailDeliveryObserverForTests(null);
   if (server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
@@ -37,34 +41,50 @@ async function registerAndOnboardUser(input: {
   neighborhood?: string;
   phone?: string;
 }) {
-  const regRes = await fetch(`${baseUrl}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: input.email,
-      password: 'Confiare#2026!Password',
-      fullName: input.fullName,
-      phone: input.phone || '(11) 99111-2233',
-      neighborhood: input.neighborhood || 'Pinheiros',
-      role: input.role,
-      category: input.category || 'Eletricista',
-      lgpdConsent: true,
-    }),
+  let capturedVfyToken = '';
+  setEmailDeliveryObserverForTests((d) => {
+    if (d.to === input.email && d.variables.verificationToken) {
+      capturedVfyToken = d.variables.verificationToken;
+    }
   });
-  assert.equal(regRes.status, 201);
-  const regBody = (await regRes.json()) as any;
+  let regBody: any;
+  try {
+    const regRes = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: input.email,
+        password: 'Confiare#2026!Password',
+        fullName: input.fullName,
+        phone: input.phone || '(11) 99111-2233',
+        neighborhood: input.neighborhood || 'Pinheiros',
+        role: input.role,
+        category: input.category || 'Eletricista',
+        birthDate: '1990-05-15',
+        lgpdConsent: true,
+      }),
+    });
+    assert.equal(regRes.status, 201);
+    regBody = (await regRes.json()) as any;
+    assert.equal(regBody.verificationToken, undefined);
+  } finally {
+    setEmailDeliveryObserverForTests(null);
+  }
 
-  await fetch(`${baseUrl}/api/auth/verify-email`, {
+  const vfyRes = await fetch(`${baseUrl}/api/auth/verify-email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ verificationToken: regBody.verificationToken }),
+    body: JSON.stringify({ verificationToken: capturedVfyToken }),
   });
+  assert.equal(vfyRes.status, 200);
+  const vfyBody = (await vfyRes.json()) as any;
+  const authToken = vfyBody.token as string;
 
   await fetch(`${baseUrl}/api/auth/onboarding`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${regBody.token}`,
+      Authorization: `Bearer ${authToken}`,
     },
     body: JSON.stringify({
       city: 'São Paulo, SP',
@@ -74,11 +94,11 @@ async function registerAndOnboardUser(input: {
   });
 
   const meRes = await fetch(`${baseUrl}/api/auth/me`, {
-    headers: { Authorization: `Bearer ${regBody.token}` },
+    headers: { Authorization: `Bearer ${authToken}` },
   });
   const meBody = (await meRes.json()) as any;
   return {
-    token: regBody.token as string,
+    token: authToken,
     user: meBody.user,
   };
 }
@@ -134,22 +154,131 @@ test('1. Solicitação Real, Geocodificação/Raio, Matching Justo Automático e
   assert.equal(firstOpp.client_name_masked, 'Beatriz (Cliente Verificado)');
 });
 
-test('2. Avaliação Pós-Atendimento Real: persiste review, recalcula reputação no PostgreSQL e atualiza Lista de Confiança', async () => {
+test('2. Avaliação Pós-Atendimento Real: exige solicitação concluída, anonimiza nome por padrão, recalcula reputação e bloqueia duplicidade', async () => {
   const ts = Date.now();
-  const cliente = await registerAndOnboardUser({
-    email: `cliente.f2.review.${ts}@example.com`,
-    fullName: 'Gustavo Avaliador',
-    role: 'cliente',
-  });
-
   const prestador = await registerAndOnboardUser({
     email: `prestador.f2.review.${ts}@example.com`,
     fullName: 'Mestre Eletricista Avaliado',
     role: 'prestador',
     category: 'Eletricista',
+    neighborhood: 'Pinheiros',
   });
   const providerProfileId = prestador.user.providerProfileId;
   assert.ok(providerProfileId);
+
+  // Aprova o prestador para participar do matching real
+  await pool.query(
+    `UPDATE provider_profiles
+     SET verification_status = 'aprovado', is_verified = true
+     WHERE id = $1`,
+    [providerProfileId]
+  );
+
+  const cliente = await registerAndOnboardUser({
+    email: `cliente.f2.review.${ts}@example.com`,
+    fullName: 'Gustavo Avaliador',
+    role: 'cliente',
+    neighborhood: 'Pinheiros',
+  });
+
+  // Cria solicitação real que despacha oportunidade para o prestador aprovado
+  const reqRes = await fetch(`${baseUrl}/api/app/cliente/requests`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${cliente.token}`,
+    },
+    body: JSON.stringify({
+      categoryName: 'Eletricista',
+      problemTitle: 'Substituição de Disjuntor Geral e DR',
+      description: 'Atendimento em quadro residencial de Pinheiros.',
+      neighborhood: 'Pinheiros',
+      urgency: 'Hoje',
+      preferredTime: 'Comercial',
+      lgpdContactConsent: true,
+    }),
+  });
+  assert.equal(reqRes.status, 201);
+  const reqBody = (await reqRes.json()) as any;
+  const serviceRequestId = reqBody.request.id as string;
+
+  // Garante vínculo direto da oportunidade para o prestador testado (caso limite top-3 seja preenchido por outros)
+  await pool.query(
+    `INSERT INTO opportunities (
+      service_request_id, provider_profile_id, category_name, title, description,
+      neighborhood, distance_km, urgency, preferred_time,
+      client_name_masked, client_name_full, client_whatsapp,
+      lgpd_contact_consent, contact_released, origin, status
+    ) VALUES ($1::uuid, $2, 'Eletricista', 'Atendimento DR', 'Vínculo direto', 'Pinheiros', 1.0, 'Hoje', 'Comercial', 'Gustavo', 'Gustavo Avaliador', '(11) 99111-2233', true, false, 'Matching Local', 'pendente')`,
+    [serviceRequestId, providerProfileId]
+  );
+
+  // Tentativa de avaliar antes de concluir o atendimento deve ser bloqueada (400)
+  const beforeCompleteRes = await fetch(`${baseUrl}/api/app/cliente/reviews`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${cliente.token}`,
+    },
+    body: JSON.stringify({
+      providerProfileId,
+      serviceRequestId,
+      neighborhood: 'Pinheiros',
+      serviceTitle: 'Substituição de Disjuntor Geral e DR',
+      qualidade: 5,
+      pontualidade: 5,
+      comunicacao: 5,
+      organizacao: 5,
+      wouldRecommend: true,
+      comment: 'Tentativa antes da conclusão.',
+    }),
+  });
+  assert.equal(beforeCompleteRes.status, 400);
+
+  // Cliente conclui a solicitação
+  const completeRes = await fetch(
+    `${baseUrl}/api/app/cliente/requests/${serviceRequestId}/complete`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${cliente.token}` },
+    }
+  );
+  assert.equal(completeRes.status, 200);
+  const completeBody = (await completeRes.json()) as any;
+  assert.equal(completeBody.request.status, 'concluido');
+
+  // Mesmo com solicitação concluída, avaliação de profissional com oportunidade ainda 'pendente' deve ser bloqueada (400)
+  const pendingOppReviewRes = await fetch(
+    `${baseUrl}/api/app/cliente/reviews`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cliente.token}`,
+      },
+      body: JSON.stringify({
+        providerProfileId,
+        serviceRequestId,
+        neighborhood: 'Pinheiros',
+        serviceTitle: 'Substituição de Disjuntor Geral e DR',
+        qualidade: 5,
+        pontualidade: 5,
+        comunicacao: 5,
+        organizacao: 5,
+        wouldRecommend: true,
+        comment: 'Tentativa para oportunidade nunca aceita.',
+      }),
+    }
+  );
+  assert.equal(pendingOppReviewRes.status, 400);
+
+  // Marca oportunidade como aceita com contato liberado
+  await pool.query(
+    `UPDATE opportunities
+     SET status = 'aceita', contact_released = true, contact_released_at = NOW()
+     WHERE service_request_id = $1::uuid AND provider_profile_id = $2`,
+    [serviceRequestId, providerProfileId]
+  );
 
   const revRes = await fetch(`${baseUrl}/api/app/cliente/reviews`, {
     method: 'POST',
@@ -159,6 +288,7 @@ test('2. Avaliação Pós-Atendimento Real: persiste review, recalcula reputaç�
     },
     body: JSON.stringify({
       providerProfileId,
+      serviceRequestId,
       neighborhood: 'Pinheiros',
       serviceTitle: 'Substituição de Disjuntor Geral e DR',
       qualidade: 5,
@@ -173,10 +303,33 @@ test('2. Avaliação Pós-Atendimento Real: persiste review, recalcula reputaç�
   assert.equal(revRes.status, 201);
   const revBody = (await revRes.json()) as any;
   assert.equal(revBody.ok, true);
+  assert.equal(revBody.review.client_name_display, 'Gustavo A.');
   assert.equal(Number(revBody.review.rating), 5);
   assert.equal(Number(revBody.updatedProvider.reviews_count), 1);
   assert.equal(Number(revBody.updatedProvider.completed_jobs), 1);
   assert.equal(revBody.updatedProvider.rating_avg, '5.00');
+
+  // Segunda avaliação para a mesma solicitação deve retornar 409 (unicidade garantida)
+  const dupRes = await fetch(`${baseUrl}/api/app/cliente/reviews`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${cliente.token}`,
+    },
+    body: JSON.stringify({
+      providerProfileId,
+      serviceRequestId,
+      neighborhood: 'Pinheiros',
+      serviceTitle: 'Duplicidade',
+      qualidade: 5,
+      pontualidade: 5,
+      comunicacao: 5,
+      organizacao: 5,
+      wouldRecommend: true,
+      comment: 'Avaliação duplicada não permitida.',
+    }),
+  });
+  assert.equal(dupRes.status, 409);
 
   // Verifica se entrou na Lista de Confiança (professional_trust_list) do cliente sob RLS
   const trustRes = await fetch(`${baseUrl}/api/app/cliente/trust-list`, {
@@ -407,4 +560,72 @@ test('4. Documentos de Verificação Privados (Neon Object Storage + RLS) e Apro
   const verifyBody = (await verifyRes.json()) as any;
   assert.equal(verifyBody.provider.verification_status, 'aprovado');
   assert.equal(verifyBody.provider.is_verified, true);
+});
+
+test('5. Vitrine pública filtra apenas aprovados, oculta nota sem histórico mínimo (<3) e persiste lista de interesse real', async () => {
+  const ts = Date.now();
+  const pendingProv = await registerAndOnboardUser({
+    email: `prest.pend.${ts}@example.com`,
+    fullName: 'Prestador Pendente Público',
+    role: 'prestador',
+    category: 'Eletricista',
+  });
+  const approvedProv = await registerAndOnboardUser({
+    email: `prest.aprov.gate.${ts}@example.com`,
+    fullName: 'Prestador Aprovado Sem Histórico',
+    role: 'prestador',
+    category: 'Eletricista',
+  });
+
+  // Aprova explicitamente apenas um perfil, ainda com reviews_count = 0 e completed_jobs = 0
+  await pool.query(
+    `UPDATE provider_profiles
+     SET verification_status = 'aprovado', is_verified = true
+     WHERE id = $1`,
+    [approvedProv.user.providerProfileId]
+  );
+
+  // Perfil pendente deve retornar 404 na consulta pública individual
+  const pendingDetailRes = await fetch(
+    `${baseUrl}/api/public/providers/${pendingProv.user.providerProfileId}`
+  );
+  assert.equal(pendingDetailRes.status, 404);
+
+  // Perfil aprovado sem 3 avaliações/atendimentos tem nota ocultada ("Em avaliação inicial")
+  const approvedDetailRes = await fetch(
+    `${baseUrl}/api/public/providers/${approvedProv.user.providerProfileId}`
+  );
+  assert.equal(approvedDetailRes.status, 200);
+  const approvedDetail = (await approvedDetailRes.json()) as any;
+  assert.equal(approvedDetail.provider.has_sufficient_reputation, false);
+  assert.equal(approvedDetail.provider.rating_avg, null);
+  assert.equal(approvedDetail.provider.public_score, null);
+  assert.equal(approvedDetail.provider.reputation_label, 'Em avaliação inicial');
+
+  // Lista de interesse exige consentimento explícito e persiste no banco
+  const rejectedWaitlist = await fetch(`${baseUrl}/api/public/waitlist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: `lead.${ts}@example.com`,
+      location: 'Pinheiros, São Paulo',
+      category: 'Eletricista',
+      lgpdConsent: false,
+    }),
+  });
+  assert.equal(rejectedWaitlist.status, 400);
+
+  const okWaitlist = await fetch(`${baseUrl}/api/public/waitlist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: `lead.${ts}@example.com`,
+      location: 'Pinheiros, São Paulo',
+      category: 'Eletricista',
+      lgpdConsent: true,
+    }),
+  });
+  assert.equal(okWaitlist.status, 201);
+  const waitlistBody = (await okWaitlist.json()) as any;
+  assert.ok(waitlistBody.leadId);
 });

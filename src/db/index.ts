@@ -12,38 +12,56 @@ import {
   slugifyTaxonomyTerm,
 } from '../data/taxonomySeed';
 import {
+  getNodeEnvironment,
   isDemoModeEnabled,
   isProductionEnvironment,
 } from '../config/environment';
 
 if (existsSync('.env.local')) {
-  dotenv.config({ path: '.env.local' });
+  dotenv.config({ path: '.env.local', override: false });
 }
 if (existsSync('.env')) {
-  dotenv.config({ path: '.env' });
+  dotenv.config({ path: '.env', override: false });
 }
 
-const FALLBACK_NEON_ENV: Record<string, string> = {
-  DATABASE_URL: 'postgresql://neondb_owner:npg@localhost:5432/neondb',
-  DATABASE_URL_UNPOOLED: 'postgresql://neondb_owner:npg@localhost:5432/neondb',
-  NEON_AUTH_BASE_URL:
-    'https://ep-small-bread-bdnj9nge.neonauth.c-8.us-east-2.aws.neon.tech/neondb/auth',
-  NEON_AUTH_JWKS_URL:
-    'https://ep-small-bread-bdnj9nge.neonauth.c-8.us-east-2.aws.neon.tech/neondb/auth/.well-known/jwks.json',
-  NEON_REALTIME_URL: 'https://ep-small-bread-bdnj9nge.rt.c-8.us-east-2.aws.neon.tech',
-  NEON_REALTIME_SECRET: 'nrt_live_1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
-  AWS_ACCESS_KEY_ID: 'fallback-access-key-id',
-  AWS_SECRET_ACCESS_KEY: 'fallback-secret-access-key',
-  AWS_ENDPOINT_URL_S3: 'https://s3.us-east-2.amazonaws.com',
-  AWS_REGION: 'us-east-2',
-  NEON_AI_GATEWAY_TOKEN: 'fallback-neon-ai-gateway-token',
-  NEON_AI_GATEWAY_BASE_URL: 'https://ai.neon.tech',
-};
+const isExplicitOfflineUnitTest =
+  process.env.NODE_ENV === 'test' &&
+  process.env.RECONTRATE_UNIT_TEST_NO_DB === 'true';
 
-for (const [key, fallbackValue] of Object.entries(FALLBACK_NEON_ENV)) {
-  if (!process.env[key] || process.env[key]?.trim() === '') {
-    process.env[key] = fallbackValue;
+if (isExplicitOfflineUnitTest) {
+  const UNIT_TEST_NO_DB_ENV: Record<string, string> = {
+    DATABASE_URL: 'postgresql://test:test@localhost:5432/recontrate_unit_test',
+    DATABASE_URL_UNPOOLED:
+      'postgresql://test:test@localhost:5432/recontrate_unit_test',
+    NEON_AUTH_BASE_URL: 'https://unit-test.invalid/neondb/auth',
+    NEON_AUTH_JWKS_URL:
+      'https://unit-test.invalid/neondb/auth/.well-known/jwks.json',
+    NEON_REALTIME_URL: 'wss://unit-test.invalid',
+    NEON_REALTIME_SECRET: 'unit_test_realtime_secret_placeholder_32_chars',
+    AWS_ACCESS_KEY_ID: 'unit-test-access-key',
+    AWS_SECRET_ACCESS_KEY: 'unit-test-secret-key',
+    AWS_ENDPOINT_URL_S3: 'https://unit-test-s3.invalid',
+    AWS_REGION: 'us-east-2',
+    NEON_AI_GATEWAY_TOKEN: 'unit-test-ai-gateway-token',
+    NEON_AI_GATEWAY_BASE_URL: 'https://unit-test-ai.invalid',
+  };
+  for (const [key, fallbackValue] of Object.entries(UNIT_TEST_NO_DB_ENV)) {
+    if (!process.env[key] || process.env[key]?.trim() === '') {
+      process.env[key] = fallbackValue;
+    }
   }
+}
+
+if (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === '') {
+  throw new Error(
+    `[Config] DATABASE_URL obrigatória ausente no ambiente "${getNodeEnvironment()}". Configure a string de conexão PostgreSQL/Neon nas variáveis de ambiente.`
+  );
+}
+if (
+  !process.env.DATABASE_URL_UNPOOLED ||
+  process.env.DATABASE_URL_UNPOOLED.trim() === ''
+) {
+  process.env.DATABASE_URL_UNPOOLED = process.env.DATABASE_URL;
 }
 
 export const neonEnv = parseEnv(config);
@@ -583,6 +601,29 @@ async function runEnsureSchemaAndSeed(): Promise<void> {
       }
     }
 
+    const [{ rows: mig9ColCheck }, { rows: mig9TableCheck }] = await Promise.all([
+      client.query(
+        `SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'users'
+           AND column_name = 'verification_token_hash'`
+      ),
+      client.query(
+        `SELECT 1 FROM information_schema.tables
+         WHERE table_schema = 'public'
+           AND table_name = 'waitlist_leads'`
+      ),
+    ]);
+    if (mig9ColCheck.length === 0 || mig9TableCheck.length === 0) {
+      const migration9Path = path.resolve(
+        process.cwd(),
+        'migrations/009_security_and_compliance.sql'
+      );
+      if (existsSync(migration9Path)) {
+        await client.query(readFileSync(migration9Path, 'utf-8'));
+      }
+    }
+
     const expectedCategorySlugs = INITIAL_TAXONOMY_CATEGORIES.map((c) => c.slug);
     const expectedSpecialtySlugs = INITIAL_TAXONOMY_CATEGORIES.flatMap((c) =>
       c.specialties.map((s) => slugifyTaxonomyTerm(s.nome))
@@ -612,23 +653,7 @@ async function runEnsureSchemaAndSeed(): Promise<void> {
           permite_relatorios_avancados, permite_portfolio_ilimitado, limite_fotos_portfolio,
           suporte_prioritario, selo, exibe_anuncios, ativo, ordem_exibicao
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-        ON CONFLICT (slug) DO UPDATE SET
-          nome = EXCLUDED.nome,
-          descricao = EXCLUDED.descricao,
-          preco_mensal_centavos = EXCLUDED.preco_mensal_centavos,
-          preco_anual_centavos = EXCLUDED.preco_anual_centavos,
-          limite_oportunidades_mensal = EXCLUDED.limite_oportunidades_mensal,
-          prioridade_matching = EXCLUDED.prioridade_matching,
-          prioridade_label = EXCLUDED.prioridade_label,
-          permite_destaque = EXCLUDED.permite_destaque,
-          permite_relatorios_avancados = EXCLUDED.permite_relatorios_avancados,
-          permite_portfolio_ilimitado = EXCLUDED.permite_portfolio_ilimitado,
-          limite_fotos_portfolio = EXCLUDED.limite_fotos_portfolio,
-          suporte_prioritario = EXCLUDED.suporte_prioritario,
-          selo = EXCLUDED.selo,
-          exibe_anuncios = EXCLUDED.exibe_anuncios,
-          ordem_exibicao = EXCLUDED.ordem_exibicao,
-          atualizado_em = NOW()`,
+        ON CONFLICT (slug) DO NOTHING`,
         [
           p.id,
           p.slug,
@@ -662,6 +687,12 @@ async function runEnsureSchemaAndSeed(): Promise<void> {
            WHERE p.slug = 'padrinho'
          )`
     );
+    await client.query(
+      `UPDATE plans
+       SET ativo = false,
+           atualizado_em = NOW()
+       WHERE slug = 'padrinho' AND ativo = true`
+    );
 
     // Seed da Campanha de Lançamento (90 dias grátis nos 3 primeiros meses para novos prestadores)
     await client.query(
@@ -686,15 +717,7 @@ async function runEnsureSchemaAndSeed(): Promise<void> {
         1,
         'ativo'
       )
-      ON CONFLICT (slug) DO UPDATE SET
-        nome = EXCLUDED.nome,
-        descricao = EXCLUDED.descricao,
-        desconto_percentual = EXCLUDED.desconto_percentual,
-        duracao_ciclos = EXCLUDED.duracao_ciclos,
-        planos_elegiveis_json = EXCLUDED.planos_elegiveis_json,
-        preco_cheio_json = EXCLUDED.preco_cheio_json,
-        preco_promocional_json = EXCLUDED.preco_promocional_json,
-        atualizado_em = NOW()`
+      ON CONFLICT (slug) DO NOTHING`
     );
 
     if (!isProductionEnvironment() && isDemoModeEnabled()) {

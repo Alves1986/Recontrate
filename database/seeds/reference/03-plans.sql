@@ -87,24 +87,7 @@ INSERT INTO plans (
     true,
     4
   )
-ON CONFLICT (slug) DO UPDATE SET
-  nome = EXCLUDED.nome,
-  descricao = EXCLUDED.descricao,
-  preco_mensal_centavos = EXCLUDED.preco_mensal_centavos,
-  preco_anual_centavos = EXCLUDED.preco_anual_centavos,
-  limite_oportunidades_mensal = EXCLUDED.limite_oportunidades_mensal,
-  prioridade_matching = EXCLUDED.prioridade_matching,
-  prioridade_label = EXCLUDED.prioridade_label,
-  permite_destaque = EXCLUDED.permite_destaque,
-  permite_relatorios_avancados = EXCLUDED.permite_relatorios_avancados,
-  permite_portfolio_ilimitado = EXCLUDED.permite_portfolio_ilimitado,
-  limite_fotos_portfolio = EXCLUDED.limite_fotos_portfolio,
-  suporte_prioritario = EXCLUDED.suporte_prioritario,
-  selo = EXCLUDED.selo,
-  exibe_anuncios = EXCLUDED.exibe_anuncios,
-  ativo = EXCLUDED.ativo,
-  ordem_exibicao = EXCLUDED.ordem_exibicao,
-  atualizado_em = NOW();
+ON CONFLICT (slug) DO NOTHING;
 
 DELETE FROM plans
 WHERE slug = 'padrinho'
@@ -114,3 +97,8 @@ WHERE slug = 'padrinho'
     JOIN plans p ON p.id = s.plan_id
     WHERE p.slug = 'padrinho'
   );
+
+UPDATE plans
+SET ativo = false,
+    atualizado_em = NOW()
+WHERE slug = 'padrinho' AND ativo = true;

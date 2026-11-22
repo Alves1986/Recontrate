@@ -3,11 +3,14 @@ import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import { createApp } from '../server/index';
 import { ensureSchemaAndSeed, pool } from '../db/index';
+import { setEmailDeliveryObserverForTests } from './essentialIntegrations';
 
 let server: Server;
 let baseUrl: string;
+let adminToken = '';
 const TEST_ASAAS_WEBHOOK_TOKEN =
   process.env.ASAAS_WEBHOOK_TOKEN || 'test_wh_secret_confiare_2026';
+const VALID_TEST_CPF = '52998224725';
 
 test.before(async () => {
   process.env.ASAAS_WEBHOOK_TOKEN = TEST_ASAAS_WEBHOOK_TOKEN;
@@ -22,9 +25,52 @@ test.before(async () => {
       resolve();
     });
   });
+
+  const email = `admin.checkout.e2e.${Date.now()}@example.com`;
+  const password = 'Confiare#2026!Password';
+  let capturedVfy = '';
+  setEmailDeliveryObserverForTests((d) => {
+    if (d.to === email && d.variables.verificationToken) {
+      capturedVfy = d.variables.verificationToken;
+    }
+  });
+  let regBody: any;
+  try {
+    const regRes = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password,
+        fullName: 'Admin Checkout E2E',
+        role: 'cliente',
+        birthDate: '1990-05-15',
+        lgpdConsent: true,
+      }),
+    });
+    regBody = (await regRes.json()) as any;
+    await fetch(`${baseUrl}/api/auth/verify-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verificationToken: capturedVfy }),
+    });
+  } finally {
+    setEmailDeliveryObserverForTests(null);
+  }
+  await pool.query(
+    `UPDATE users SET roles = ARRAY['admin']::TEXT[], active_role = 'admin', onboarding_completed = true WHERE id = $1::uuid`,
+    [regBody.user.userId]
+  );
+  const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  adminToken = ((await loginRes.json()) as any).token;
 });
 
 test.after(async () => {
+  setEmailDeliveryObserverForTests(null);
   if (server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
@@ -32,12 +78,23 @@ test.after(async () => {
 });
 
 test('1. Checkout (Mensal & Anual), Validação de Assinatura do Webhook e Idempotência em Eventos Duplicados', async () => {
+  // Anonymous checkout must be rejected (401)
+  const unauthCheckout = await fetch(`${baseUrl}/api/subscriptions/checkout`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  assert.equal(unauthCheckout.status, 401);
+
   // 1.1 Checkout anual do plano Profissional (R$ 599,00 = 59900 centavos)
   const annualCheckoutRes = await fetch(
     `${baseUrl}/api/subscriptions/checkout`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
       body: JSON.stringify({
         providerProfileId: 'prov-carlos',
         providerName: 'Carlos Eduardo Mendes',
@@ -46,6 +103,7 @@ test('1. Checkout (Mensal & Anual), Validação de Assinatura do Webhook e Idemp
         planSlug: 'profissional',
         cycle: 'anual',
         paymentMethod: 'pix',
+        cpfCnpj: VALID_TEST_CPF,
       }),
     }
   );
@@ -95,7 +153,8 @@ test('1. Checkout (Mensal & Anual), Validação de Assinatura do Webhook e Idemp
   assert.equal(validSigBody.duplicate, false);
 
   const subRes = await fetch(
-    `${baseUrl}/api/providers/prov-carlos/subscription`
+    `${baseUrl}/api/providers/prov-carlos/subscription`,
+    { headers: { Authorization: `Bearer ${adminToken}` } }
   );
   const subBody = (await subRes.json()) as any;
   assert.equal(subBody.subscription.status, 'ativa');
@@ -127,7 +186,10 @@ test('2. Upgrade Imediato, Downgrade Agendado, Falha de Pagamento (7 dias) e Can
   // 2.1 Checkout Mensal Essencial (2990 centavos) + ativação via webhook
   const checkoutRes = await fetch(`${baseUrl}/api/subscriptions/checkout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
     body: JSON.stringify({
       providerProfileId: 'prov-ana',
       providerName: 'Ana Paula Ribeiro',
@@ -136,6 +198,7 @@ test('2. Upgrade Imediato, Downgrade Agendado, Falha de Pagamento (7 dias) e Can
       planSlug: 'essencial',
       cycle: 'mensal',
       paymentMethod: 'cartao',
+      cpfCnpj: VALID_TEST_CPF,
     }),
   });
   assert.equal(checkoutRes.status, 201);
@@ -164,7 +227,10 @@ test('2. Upgrade Imediato, Downgrade Agendado, Falha de Pagamento (7 dias) e Can
   // 2.2 Upgrade imediato para Premium (9990 centavos)
   const upRes = await fetch(`${baseUrl}/api/subscriptions/${subId}/upgrade`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
     body: JSON.stringify({
       targetPlanSlug: 'premium',
       targetCycle: 'mensal',
@@ -182,7 +248,10 @@ test('2. Upgrade Imediato, Downgrade Agendado, Falha de Pagamento (7 dias) e Can
     `${baseUrl}/api/subscriptions/${subId}/downgrade`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
       body: JSON.stringify({ targetPlanSlug: 'essencial' }),
     }
   );
@@ -214,7 +283,8 @@ test('2. Upgrade Imediato, Downgrade Agendado, Falha de Pagamento (7 dias) e Can
   assert.equal(overdueRes.status, 202);
 
   const afterOverdueRes = await fetch(
-    `${baseUrl}/api/providers/prov-ana/subscription`
+    `${baseUrl}/api/providers/prov-ana/subscription`,
+    { headers: { Authorization: `Bearer ${adminToken}` } }
   );
   const afterOverdueBody = (await afterOverdueRes.json()) as any;
   assert.equal(afterOverdueBody.subscription.status, 'inadimplente');
@@ -223,7 +293,10 @@ test('2. Upgrade Imediato, Downgrade Agendado, Falha de Pagamento (7 dias) e Can
   // 2.5 Cancelamento mantendo acesso até o fim do período pago ('fim')
   const cancelRes = await fetch(`${baseUrl}/api/subscriptions/${subId}/cancel`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
     body: JSON.stringify({ reason: 'Teste E2E cancelamento' }),
   });
   assert.equal(cancelRes.status, 200);

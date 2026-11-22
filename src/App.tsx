@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import {
   CategoryName,
   ClientRegistration,
+  PlanSlug,
   PlanTier,
   ProviderOpportunity,
   ProviderProfile,
@@ -23,38 +24,9 @@ import {
 } from './data/seedData';
 import { applyNewReviewToProvider } from './utils/marketplaceRules';
 import { BrandLogo } from './components/BrandLogo';
-import {
-  CompatibleProvidersListScreen,
-  CreateServiceRequestScreen,
-} from './components/ServiceRequestAndListScreens';
-import {
-  ProviderProfileScreen,
-  RepeatRequestScreen,
-} from './components/ProviderProfileAndRepeatScreens';
-import {
-  PostServiceReviewScreen,
-  SubstituteReferralScreen,
-} from './components/SubstituteAndReviewScreens';
-import { ProviderDashboardScreen } from './components/ProviderDashboardScreen';
-import { AdminMonetizationScreen } from './components/AdminMonetizationScreen';
-import {
-  ForProvidersPage,
-  PublicLandingPage,
-  TermsAndPrivacyPage,
-} from './components/PublicPages';
-import {
-  PlansPricingPage,
-  planTierToSlug,
-} from './components/PlansPricingPage';
-import { ReferralDashboardPanel } from './components/ReferralDashboardPanel';
-import { DemoShowcasePage } from './components/DemoShowcasePage';
-import {
-  ForgotAndResetPasswordPage,
-  LoginPage,
-  OnboardingPage,
-  PadrinhoDashboardPage,
-  SignupPage,
-} from './components/AuthPages';
+import { CookieConsentBanner } from './components/CookieConsentBanner';
+import { ReportContentModal } from './components/ReportContentModal';
+import { getLegalIdentity } from './config/legalIdentity';
 import type {
   AuthenticatedUserSession,
   UserRole,
@@ -64,6 +36,192 @@ import {
   detectStandaloneDisplayMode,
   shouldRenderMobileLoginOnly,
 } from './utils/pwaMobileMode';
+
+const CompatibleProvidersListScreen = lazy(() =>
+  import('./components/ServiceRequestAndListScreens').then((m) => ({
+    default: m.CompatibleProvidersListScreen,
+  }))
+);
+const CreateServiceRequestScreen = lazy(() =>
+  import('./components/ServiceRequestAndListScreens').then((m) => ({
+    default: m.CreateServiceRequestScreen,
+  }))
+);
+const ProviderProfileScreen = lazy(() =>
+  import('./components/ProviderProfileAndRepeatScreens').then((m) => ({
+    default: m.ProviderProfileScreen,
+  }))
+);
+const RepeatRequestScreen = lazy(() =>
+  import('./components/ProviderProfileAndRepeatScreens').then((m) => ({
+    default: m.RepeatRequestScreen,
+  }))
+);
+const PostServiceReviewScreen = lazy(() =>
+  import('./components/SubstituteAndReviewScreens').then((m) => ({
+    default: m.PostServiceReviewScreen,
+  }))
+);
+const SubstituteReferralScreen = lazy(() =>
+  import('./components/SubstituteAndReviewScreens').then((m) => ({
+    default: m.SubstituteReferralScreen,
+  }))
+);
+const ProviderDashboardScreen = lazy(() =>
+  import('./components/ProviderDashboardScreen').then((m) => ({
+    default: m.ProviderDashboardScreen,
+  }))
+);
+const AdminMonetizationScreen = lazy(() =>
+  import('./components/AdminMonetizationScreen').then((m) => ({
+    default: m.AdminMonetizationScreen,
+  }))
+);
+const ForProvidersPage = lazy(() =>
+  import('./components/PublicPages').then((m) => ({
+    default: m.ForProvidersPage,
+  }))
+);
+const PublicLandingPage = lazy(() =>
+  import('./components/PublicPages').then((m) => ({
+    default: m.PublicLandingPage,
+  }))
+);
+const TermsAndPrivacyPage = lazy(() =>
+  import('./components/PublicPages').then((m) => ({
+    default: m.TermsAndPrivacyPage,
+  }))
+);
+const PlansPricingPage = lazy(() =>
+  import('./components/PlansPricingPage').then((m) => ({
+    default: m.PlansPricingPage,
+  }))
+);
+const ReferralDashboardPanel = lazy(() =>
+  import('./components/ReferralDashboardPanel').then((m) => ({
+    default: m.ReferralDashboardPanel,
+  }))
+);
+const DemoShowcasePage = lazy(() =>
+  import('./components/DemoShowcasePage').then((m) => ({
+    default: m.DemoShowcasePage,
+  }))
+);
+const ForgotAndResetPasswordPage = lazy(() =>
+  import('./components/AuthPages').then((m) => ({
+    default: m.ForgotAndResetPasswordPage,
+  }))
+);
+const LoginPage = lazy(() =>
+  import('./components/AuthPages').then((m) => ({ default: m.LoginPage }))
+);
+const OnboardingPage = lazy(() =>
+  import('./components/AuthPages').then((m) => ({
+    default: m.OnboardingPage,
+  }))
+);
+const PadrinhoDashboardPage = lazy(() =>
+  import('./components/AuthPages').then((m) => ({
+    default: m.PadrinhoDashboardPage,
+  }))
+);
+const SignupPage = lazy(() =>
+  import('./components/AuthPages').then((m) => ({ default: m.SignupPage }))
+);
+const VerifyEmailPage = lazy(() =>
+  import('./components/AuthPages').then((m) => ({
+    default: m.VerifyEmailPage,
+  }))
+);
+const PrivacyCenterPage = lazy(() =>
+  import('./components/PrivacyCenterPage').then((m) => ({
+    default: m.PrivacyCenterPage,
+  }))
+);
+
+function planTierToSlug(tier?: PlanTier): PlanSlug {
+  switch (tier) {
+    case 'Essencial':
+      return 'essencial';
+    case 'Profissional':
+      return 'profissional';
+    case 'Premium':
+      return 'premium';
+    default:
+      return 'gratuito';
+  }
+}
+
+const EmailUnsubscribeConfirmView: React.FC<{
+  onNavigateUrl: (path: string) => void;
+}> = ({ onNavigateUrl }) => {
+  const [status, setStatus] = useState<'loading' | 'success' | 'error'>(
+    'loading'
+  );
+  const [message, setMessage] = useState(
+    'Processando seu pedido de descadastro...'
+  );
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get('email') || '';
+    const sig = params.get('sig') || '';
+    if (!email || !sig) {
+      setStatus('error');
+      setMessage('Link de descadastro incompleto ou inválido.');
+      return;
+    }
+    fetch('/api/public/email/unsubscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, sig }),
+    })
+      .then((r) => r.json().catch(() => null))
+      .then((body) => {
+        if (body?.ok) {
+          setStatus('success');
+          setMessage(
+            body.message ||
+              `O e-mail ${email} foi removido das comunicações promocionais.`
+          );
+        } else {
+          setStatus('error');
+          setMessage(body?.error || 'Não foi possível validar o link.');
+        }
+      })
+      .catch(() => {
+        setStatus('error');
+        setMessage('Erro de conexão ao processar o descadastro.');
+      });
+  }, []);
+
+  return (
+    <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 text-center space-y-4 my-10 text-xs">
+      <h1 className="font-display font-bold text-xl text-brand-ink">
+        Descadastro de Comunicações por E-mail
+      </h1>
+      <p
+        role="status"
+        className={`p-4 rounded-xl font-medium ${
+          status === 'error'
+            ? 'bg-red-50 text-red-800 border border-red-200'
+            : status === 'success'
+              ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+              : 'bg-brand-background text-brand-ink'
+        }`}
+      >
+        {message}
+      </p>
+      <button
+        type="button"
+        onClick={() => onNavigateUrl('/')}
+        className="min-h-[42px] px-5 py-2.5 rounded-xl bg-brand-primary text-white font-display font-semibold cursor-pointer"
+      >
+        Voltar ao início
+      </button>
+    </div>
+  );
+};
 
 export function isProtectedRoutePath(pathname: string): boolean {
   return (
@@ -83,6 +241,9 @@ export function canUserAccessRoute(
   }
   if (!user) {
     return { allowed: false, redirectTo: '/entrar' };
+  }
+  if (pathname === '/app/privacidade') {
+    return { allowed: true };
   }
   if (!user.onboardingCompleted && pathname !== '/app/onboarding') {
     return { allowed: false, redirectTo: '/app/onboarding' };
@@ -124,6 +285,14 @@ export default function App() {
   const [authToken, setAuthToken] = useState<string>('');
   const [authChecked, setAuthChecked] = useState<boolean>(false);
   const [demoMode, setDemoMode] = useState<boolean>(false);
+  const [cookieBannerSignal, setCookieBannerSignal] = useState<number>(0);
+  const [reportModalTarget, setReportModalTarget] = useState<{
+    open: boolean;
+    targetType: 'provider_profile' | 'review' | 'other';
+    targetId: string;
+    label?: string;
+  }>({ open: false, targetType: 'other', targetId: 'geral' });
+  const legalIdentity = getLegalIdentity();
   const [viewportWidth, setViewportWidth] = useState<number>(() =>
     typeof window !== 'undefined' ? window.innerWidth : 1024
   );
@@ -135,6 +304,8 @@ export default function App() {
   >(null);
 
   const [providers, setProviders] = useState<ProviderProfile[]>([]);
+  const [ownProviderProfile, setOwnProviderProfile] =
+    useState<ProviderProfile | null>(null);
   const [selectedProviderId, setSelectedProviderId] = useState<string>('');
   const [authProviderPlanOverride, setAuthProviderPlanOverride] =
     useState<PlanTier | null>(null);
@@ -156,15 +327,25 @@ export default function App() {
   const [opportunities, setOpportunities] = useState<ProviderOpportunity[]>([]);
 
   const [clientProfile] = useState<ClientRegistration>({
-    name: 'Mariana Souza',
-    phone: '(11) 99204-6612',
-    email: 'mariana.souza@email.com.br',
-    neighborhood: 'Pinheiros',
-    city: 'São Paulo, SP',
+    name: authUser?.fullName || 'Cliente Recontrate',
+    phone: authUser?.phone || '',
+    email: authUser?.email || '',
+    neighborhood: authUser?.neighborhood || 'Pinheiros',
+    city: authUser?.city || 'São Paulo, SP',
     favoriteCategories: ['Eletricista', 'Encanador', 'Diarista'],
     preferredContact: 'WhatsApp',
-    lgpdConsent: true,
+    lgpdConsent: false,
   });
+
+  const buildAuthHeaders = useCallback(
+    (json = false): Record<string, string> => ({
+      ...(json ? { 'Content-Type': 'application/json' } : {}),
+      ...(authToken && authToken.split('.').length === 3
+        ? { Authorization: `Bearer ${authToken}` }
+        : {}),
+    }),
+    [authToken]
+  );
 
   const navigateUrl = useCallback((nextPath: string) => {
     const cleanPath = nextPath.split('?')[0] || '/';
@@ -183,7 +364,7 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // Restore session on mount (cookie httpOnly via /api/auth/me or Neon Auth session)
+  // Restore session on mount strictly from authenticated backend cookie / Neon Auth (no localStorage credentials)
   useEffect(() => {
     let cancelled = false;
     const isValidJwtToken = (t?: string | null): boolean =>
@@ -191,32 +372,10 @@ export default function App() {
 
     if (typeof window !== 'undefined') {
       try {
-        const rawPilot = window.localStorage.getItem('recontrate_pilot_session');
-        if (rawPilot) {
-          const parsed = JSON.parse(rawPilot);
-          if (!isValidJwtToken(parsed?.token)) {
-            window.localStorage.removeItem('recontrate_pilot_session');
-          }
-        }
-        const rawUsers = window.localStorage.getItem('recontrate_pilot_users_v1');
-        if (rawUsers) {
-          const parsedUsers = JSON.parse(rawUsers) as Record<string, any>;
-          let changed = false;
-          for (const key of Object.keys(parsedUsers || {})) {
-            if (!isValidJwtToken(parsedUsers[key]?.token)) {
-              delete parsedUsers[key];
-              changed = true;
-            }
-          }
-          if (changed) {
-            window.localStorage.setItem(
-              'recontrate_pilot_users_v1',
-              JSON.stringify(parsedUsers)
-            );
-          }
-        }
-      } catch {
         window.localStorage.removeItem('recontrate_pilot_session');
+        window.localStorage.removeItem('recontrate_pilot_users_v1');
+      } catch {
+        // ignore storage errors
       }
     }
 
@@ -234,9 +393,6 @@ export default function App() {
             }
             return;
           }
-        }
-        if (res && res.status === 401 && typeof window !== 'undefined') {
-          window.localStorage.removeItem('recontrate_pilot_session');
         }
 
         // Check Neon Auth client session (e.g., after Google OAuth redirect)
@@ -261,18 +417,6 @@ export default function App() {
           }
         } catch {
           // ignore Neon Auth client errors when offline
-        }
-
-        // Fallback to locally stored real JWT session only if backend API is temporarily unavailable (5xx/offline)
-        if ((!res || res.status >= 500) && typeof window !== 'undefined') {
-          const rawPilot = window.localStorage.getItem('recontrate_pilot_session');
-          if (rawPilot) {
-            const parsed = JSON.parse(rawPilot);
-            if (!cancelled && parsed?.user && isValidJwtToken(parsed?.token)) {
-              setAuthUser(parsed.user);
-              setAuthToken(parsed.token);
-            }
-          }
         }
       } catch {
         // ignore session restore failures
@@ -334,6 +478,9 @@ export default function App() {
                   ? 'Essencial'
                   : 'Gratuito',
           ratingAvg: Number(p.rating_avg ?? 0),
+          publicScore: p.public_score ?? null,
+          hasSufficientReputation: Boolean(p.has_sufficient_reputation),
+          reputationLabel: p.reputation_label,
           reviewsCount: Number(p.reviews_count || 0),
           completedJobs: Number(p.completed_jobs || 0),
           responseTimeMinutes: Number(p.response_time_minutes ?? 0),
@@ -358,6 +505,135 @@ export default function App() {
       active = false;
     };
   }, []);
+
+  // Load authenticated user's real service requests, opportunities, and own provider profile
+  useEffect(() => {
+    if (!authChecked || !authUser || demoMode) return;
+    let active = true;
+    const headers = buildAuthHeaders(false);
+
+    if (
+      authUser.roles.includes('cliente') ||
+      authUser.activeRole === 'cliente' ||
+      authUser.activeRole === 'admin'
+    ) {
+      fetch('/api/app/cliente/requests', { credentials: 'include', headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => {
+          if (!active || !body?.ok || !Array.isArray(body.requests)) return;
+          setServiceRequests(
+            body.requests.map((r: any) => ({
+              id: r.id,
+              category: r.category_name as CategoryName,
+              problemTitle: r.problem_title,
+              description: r.description,
+              neighborhood: r.neighborhood,
+              city: r.city || 'São Paulo, SP',
+              urgency: r.urgency || 'Hoje',
+              preferredTime: r.preferred_time || 'Comercial',
+              estimatedBudget: r.estimated_budget || '',
+              lgpdContactConsent: Boolean(r.lgpd_contact_consent),
+              createdAt: r.created_at
+                ? new Date(r.created_at).toLocaleDateString('pt-BR')
+                : 'Recente',
+              status: r.status || 'oportunidades_enviadas',
+              photosCount: 0,
+            }))
+          );
+        })
+        .catch(() => null);
+    }
+
+    if (authUser.providerProfileId) {
+      fetch('/api/app/prestador/profile', { credentials: 'include', headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => {
+          if (!active || !body?.ok || !body.profile) return;
+          const p = body.profile;
+          const tier: PlanTier =
+            p.planSlug === 'premium'
+              ? 'Premium'
+              : p.planSlug === 'profissional'
+                ? 'Profissional'
+                : p.planSlug === 'essencial'
+                  ? 'Essencial'
+                  : 'Gratuito';
+          setOwnProviderProfile({
+            id: p.id,
+            name: p.name,
+            initials: String(p.name || 'PR')
+              .split(/\s+/)
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((w: string) => w[0]?.toUpperCase() || '')
+              .join(''),
+            category: (p.category || 'Eletricista') as CategoryName,
+            specialties: [],
+            neighborhoods: Array.isArray(p.neighborhoods) ? p.neighborhoods : [],
+            city: p.city || '',
+            yearsExperience: Number(p.yearsExperience || 0),
+            bio: p.bio || '',
+            isVerified: Boolean(p.isVerified),
+            isTopRegion: Boolean(p.isTopRegion),
+            isMentor: Boolean(p.isMentor),
+            menteesCount: 0,
+            plan: tier,
+            ratingAvg: Number(p.ratingAvg ?? 0),
+            hasSufficientReputation: Boolean(p.hasSufficientReputation),
+            reviewsCount: Number(p.reviewsCount || 0),
+            completedJobs: Number(p.completedJobs || 0),
+            responseTimeMinutes: Number(p.responseTimeMinutes || 0),
+            responseRatePercent: Number(p.responseRatePercent || 0),
+            attendanceRatePercent: 100,
+            profileCompletenessPercent: Number(
+              p.profileCompletenessPercent || 0
+            ),
+            availableToday: Boolean(p.availableToday),
+            whatsapp: p.whatsapp || '',
+            trustedSubstitutesIds: [],
+            portfolio: [],
+            reviews: [],
+          });
+        })
+        .catch(() => null);
+
+      fetch('/api/app/prestador/opportunities', {
+        credentials: 'include',
+        headers,
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => {
+          if (!active || !body?.ok || !Array.isArray(body.opportunities)) return;
+          setOpportunities(
+            body.opportunities.map((o: any) => ({
+              id: o.id,
+              serviceRequestId: o.serviceRequestId,
+              customerUserId: o.customerUserId,
+              category: (o.category || 'Eletricista') as CategoryName,
+              title: o.title,
+              description: o.description,
+              neighborhood: o.neighborhood,
+              distanceKm: Number(o.distanceKm || 0),
+              urgency: o.urgency || 'Hoje',
+              preferredTime: o.preferredTime || 'Comercial',
+              clientNameMasked: o.clientNameMasked || 'Cliente Verificado',
+              clientNameFull:
+                o.clientNameFull || o.clientNameMasked || 'Cliente',
+              clientWhatsapp: o.clientWhatsapp || '',
+              origin: o.origin || 'Matching Local',
+              photosAttached: 0,
+              expiresInMinutes: 30,
+              status: o.status || 'pendente',
+            }))
+          );
+        })
+        .catch(() => null);
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [authChecked, authUser, demoMode, buildAuthHeaders]);
 
   // Track mobile viewport / PWA standalone mode & install prompt
   useEffect(() => {
@@ -444,57 +720,80 @@ export default function App() {
   };
 
   const handleCreateServiceRequest = async (newReq: ServiceRequest) => {
-    setServiceRequests((prev) => [newReq, ...prev]);
+    if (demoMode) {
+      setServiceRequests((prev) => [newReq, ...prev]);
+      setActiveCategory(newReq.category);
+      setLocationQuery(newReq.neighborhood);
+      setSearchQuery('');
+      navigateUrl('/encontrar-profissional');
+      return;
+    }
+
+    if (!authUser) {
+      throw new Error('Faça login na sua conta antes de registrar uma solicitação.');
+    }
+
+    const res = await fetch('/api/app/cliente/requests', {
+      method: 'POST',
+      credentials: 'include',
+      headers: buildAuthHeaders(true),
+      body: JSON.stringify({
+        categoryName: newReq.category,
+        problemTitle: newReq.problemTitle,
+        description: newReq.description,
+        neighborhood: newReq.neighborhood,
+        city: newReq.city,
+        urgency: newReq.urgency,
+        preferredTime: newReq.preferredTime,
+        estimatedBudget: newReq.estimatedBudget,
+        lgpdContactConsent: newReq.lgpdContactConsent,
+        customerPhone: authUser.phone || clientProfile.phone,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body?.ok || !body.request) {
+      throw new Error(
+        body?.error || 'Não foi possível registrar sua solicitação no servidor.'
+      );
+    }
+
+    const persistedRequest: ServiceRequest = {
+      ...newReq,
+      id: body.request.id,
+      status: body.request.status || 'oportunidades_enviadas',
+      createdAt: 'Agora mesmo',
+    };
+    setServiceRequests((prev) => [persistedRequest, ...prev]);
     setActiveCategory(newReq.category);
     setLocationQuery(newReq.neighborhood);
     setSearchQuery('');
-
-    if (authUser) {
-      await fetch('/api/app/cliente/requests', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken && authToken.split('.').length === 3
-            ? { Authorization: `Bearer ${authToken}` }
-            : {}),
-        },
-        body: JSON.stringify({
-          categoryName: newReq.category,
-          problemTitle: newReq.problemTitle,
-          description: newReq.description,
-          neighborhood: newReq.neighborhood,
-          city: newReq.city,
-          urgency: newReq.urgency,
-          preferredTime: newReq.preferredTime,
-          estimatedBudget: newReq.estimatedBudget,
-          lgpdContactConsent: newReq.lgpdContactConsent,
-          customerPhone: clientProfile.phone,
-        }),
-      }).catch(() => null);
-    }
-
-    const newOpp: ProviderOpportunity = {
-      id: `opp-${Date.now()}`,
-      category: newReq.category,
-      title: newReq.problemTitle,
-      description: newReq.description,
-      neighborhood: newReq.neighborhood,
-      distanceKm: 1.2,
-      urgency: newReq.urgency,
-      preferredTime: newReq.preferredTime,
-      clientNameMasked: `${(authUser?.fullName || clientProfile.name).split(' ')[0]} (Cliente Verificado)`,
-      clientNameFull: authUser?.fullName || clientProfile.name,
-      clientWhatsapp: clientProfile.phone,
-      origin: newReq.preferredPreviousProviderId
-        ? 'Recontratação Direta'
-        : 'Matching Local',
-      photosAttached: newReq.photosCount,
-      expiresInMinutes: 30,
-      status: 'pendente',
-    };
-    setOpportunities((prev) => [newOpp, ...prev]);
     navigateUrl('/encontrar-profissional');
+  };
+
+  const handleCompleteServiceRequest = async (requestId: string) => {
+    if (demoMode) {
+      setServiceRequests((prev) =>
+        prev.map((r) => (r.id === requestId ? { ...r, status: 'concluido' } : r))
+      );
+      return;
+    }
+    const res = await fetch(
+      `/api/app/cliente/requests/${encodeURIComponent(requestId)}/complete`,
+      {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: buildAuthHeaders(false),
+      }
+    );
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body?.ok) {
+      throw new Error(
+        body?.error || 'Não foi possível concluir a solicitação no servidor.'
+      );
+    }
+    setServiceRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? { ...r, status: 'concluido' } : r))
+    );
   };
 
   const handleLogout = async () => {
@@ -505,50 +804,37 @@ export default function App() {
     await authClient.signOut().catch(() => null);
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem('recontrate_pilot_session');
+      window.localStorage.removeItem('recontrate_pilot_users_v1');
     }
     setAuthUser(null);
     setAuthToken('');
+    setOwnProviderProfile(null);
+    setServiceRequests([]);
+    setOpportunities([]);
+    setRepeatRequests([]);
     navigateUrl('/entrar');
   };
 
   const handleSwitchRole = async (targetRole: UserRole) => {
     if (!authToken && !authUser) return;
-    try {
-      const res = await fetch('/api/auth/switch-role', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken && authToken.split('.').length === 3
-            ? { Authorization: `Bearer ${authToken}` }
-            : {}),
-        },
-        body: JSON.stringify({ targetRole, enableIfMissing: true }),
-      }).catch(() => null);
-      const text = res ? await res.text() : '';
-      const body = text ? JSON.parse(text) : null;
-      if (res && res.ok && body?.ok) {
-        setAuthUser(body.user);
-        setAuthToken(body.token);
-        navigateUrl(body.redirectTo);
-        return;
-      }
-    } catch {
-      // Fallback below
+    const res = await fetch('/api/auth/switch-role', {
+      method: 'POST',
+      credentials: 'include',
+      headers: buildAuthHeaders(true),
+      body: JSON.stringify({ targetRole, enableIfMissing: true }),
+    }).catch(() => null);
+    const text = res ? await res.text() : '';
+    const body = text ? JSON.parse(text) : null;
+    if (res && res.ok && body?.ok) {
+      setAuthUser(body.user);
+      setAuthToken(body.token);
+      navigateUrl(body.redirectTo);
+      return;
     }
-    if (authUser) {
-      const nextRoles = authUser.roles.includes(targetRole)
-        ? authUser.roles
-        : [...authUser.roles, targetRole];
-      const redirectTo =
-        targetRole === 'prestador' ? '/app/prestador' : '/app';
-      setAuthUser({
-        ...authUser,
-        roles: nextRoles,
-        activeRole: targetRole,
-        redirectTo,
-      });
-      navigateUrl(redirectTo);
+    if (typeof window !== 'undefined') {
+      window.alert(
+        body?.error || 'Não foi possível alternar o papel da conta no servidor.'
+      );
     }
   };
 
@@ -556,10 +842,9 @@ export default function App() {
     ? pathname.replace('/profissionais/', '')
     : null;
   const authenticatedProviderProfile: ProviderProfile | undefined =
-    authUser &&
-    (authUser.providerProfileId || authUser.roles.includes('prestador'))
+    authUser && authUser.providerProfileId
       ? {
-          id: authUser.providerProfileId || `prov-${authUser.userId.slice(0, 8)}`,
+          id: authUser.providerProfileId,
           name: authUser.fullName,
           initials:
             authUser.fullName
@@ -567,11 +852,11 @@ export default function App() {
               .slice(0, 2)
               .map((w) => w[0]?.toUpperCase() || '')
               .join('') || 'PR',
-          category: (authUser.category || 'Elétrica') as CategoryName,
-          specialties: ['Atendimento residencial e comercial'],
-          neighborhoods: [authUser.neighborhood || locationQuery || 'Centro'],
+          category: (authUser.category || 'Eletricista') as CategoryName,
+          specialties: [],
+          neighborhoods: [authUser.neighborhood || locationQuery || 'Pinheiros'],
           city: authUser.city || 'São Paulo, SP',
-          yearsExperience: 1,
+          yearsExperience: 0,
           bio: authUser.bio || 'Perfil profissional ativo no Recontrate.',
           isVerified: false,
           isTopRegion: false,
@@ -579,12 +864,13 @@ export default function App() {
           menteesCount: 0,
           plan: authProviderPlanOverride || 'Gratuito',
           ratingAvg: 0,
+          hasSufficientReputation: false,
           reviewsCount: 0,
           completedJobs: 0,
-          responseTimeMinutes: 15,
-          responseRatePercent: 100,
-          attendanceRatePercent: 100,
-          profileCompletenessPercent: 85,
+          responseTimeMinutes: 0,
+          responseRatePercent: 0,
+          attendanceRatePercent: 0,
+          profileCompletenessPercent: 75,
           availableToday: true,
           whatsapp: authUser.phone || '',
           trustedSubstitutesIds: [],
@@ -596,14 +882,14 @@ export default function App() {
     providers.find(
       (p) => p.id === (slugFromProfileRoute || selectedProviderId)
     ) ||
-    providers[0] ||
-    authenticatedProviderProfile;
-  const dashboardProvider =
-    (authUser?.providerProfileId
-      ? providers.find((p) => p.id === authUser.providerProfileId)
-      : undefined) ||
-    authenticatedProviderProfile ||
     (demoMode ? providers[0] : undefined);
+  const dashboardProvider = demoMode
+    ? providers[0]
+    : authUser?.providerProfileId
+      ? ownProviderProfile ||
+        providers.find((p) => p.id === authUser.providerProfileId) ||
+        authenticatedProviderProfile
+      : undefined;
 
   const isDemoRoute = pathname === '/demo';
   const showDemoBanner = demoMode || isDemoRoute;
@@ -618,6 +904,12 @@ export default function App() {
           Ambiente de demonstração · Dados fictícios · Sem cobrança, e-mail ou WhatsApp reais
         </div>
       )}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:rounded-xl focus:bg-brand-primary focus:text-white focus:font-semibold focus:shadow-lg"
+      >
+        Pular para o conteúdo principal
+      </a>
       {/* HEADER PÚBLICO / AUTENTICADO */}
       {showMobileLoginHome ? (
         <header className="bg-white/95 backdrop-blur border-b border-brand-primary/10">
@@ -641,7 +933,7 @@ export default function App() {
                 Instalar App
               </button>
             ) : (
-              <span className="text-[11px] font-mono uppercase tracking-wider text-brand-ink/55">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-brand-ink/70">
                 App Mobile
               </span>
             )}
@@ -653,7 +945,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => navigateUrl('/')}
-              className="text-left focus:outline-none cursor-pointer shrink-0"
+              className="text-left focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-xl cursor-pointer shrink-0"
               aria-label="Início do Recontrate"
             >
               <BrandLogo variant="dark" size="sm" decorative />
@@ -741,7 +1033,7 @@ export default function App() {
                 </>
               ) : (
 
-                <div className="flex items-center gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
                   <button
                     type="button"
                     onClick={() => navigateUrl(authUser.redirectTo)}
@@ -759,6 +1051,17 @@ export default function App() {
                     }`}
                   >
                     Indicar (+15 dias)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateUrl('/app/privacidade')}
+                    className={`px-3 py-2 rounded-xl font-semibold cursor-pointer ${
+                      pathname === '/app/privacidade'
+                        ? 'bg-brand-primary text-white'
+                        : 'bg-brand-background text-brand-ink hover:bg-brand-surface-hover'
+                    }`}
+                  >
+                    Privacidade LGPD
                   </button>
                   <button
                     type="button"
@@ -789,7 +1092,18 @@ export default function App() {
       )}
 
       {/* MAIN ROUTER VIEWPORT */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8"
+      >
+        <Suspense
+          fallback={
+            <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 text-center text-xs text-brand-ink/75 my-8">
+              Carregando módulo...
+            </div>
+          }
+        >
         {/* ÁREA PÚBLICA */}
         {pathname === '/' &&
           (showMobileLoginHome ? (
@@ -850,6 +1164,9 @@ export default function App() {
             }
             onPlanUpdated={(newPlan) => {
               setAuthProviderPlanOverride(newPlan);
+              setOwnProviderProfile((prev) =>
+                prev ? { ...prev, plan: newPlan } : prev
+              );
               if (authUser?.providerProfileId) {
                 setProviders((prev) =>
                   prev.map((p) =>
@@ -888,6 +1205,9 @@ export default function App() {
               allProviders={providers}
               onSelectProvider={(id) => navigateUrl(`/profissionais/${id}`)}
               onNavigate={handleLegacyScreenNavigate}
+              onOpenReportModal={(target) =>
+                setReportModalTarget({ open: true, ...target })
+              }
             />
           ) : (
             <div className="max-w-xl mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 text-center space-y-3 my-8">
@@ -926,12 +1246,47 @@ export default function App() {
           <ForgotAndResetPasswordPage onNavigateUrl={navigateUrl} />
         )}
 
-        {pathname === '/termos' && <TermsAndPrivacyPage mode="termos" />}
+        {pathname === '/verificar-email' && (
+          <VerifyEmailPage
+            onAuthenticated={(user, token, redirectTo) => {
+              setAuthUser(user);
+              setAuthToken(token);
+              navigateUrl(redirectTo);
+            }}
+            onNavigateUrl={navigateUrl}
+          />
+        )}
+
+        {pathname === '/termos' && (
+          <TermsAndPrivacyPage mode="termos" onNavigateUrl={navigateUrl} />
+        )}
         {pathname === '/privacidade' && (
-          <TermsAndPrivacyPage mode="privacidade" />
+          <TermsAndPrivacyPage
+            mode="privacidade"
+            onNavigateUrl={navigateUrl}
+          />
+        )}
+        {pathname === '/descadastrar-email' && (
+          <EmailUnsubscribeConfirmView onNavigateUrl={navigateUrl} />
         )}
 
         {/* ÁREA AUTENTICADA PROTEGIDA */}
+        {authUser && pathname === '/app/privacidade' && (
+          <PrivacyCenterPage
+            authToken={authToken}
+            userEmail={authUser.email}
+            onOpenCookieBanner={() => setCookieBannerSignal((s) => s + 1)}
+            onAccountDeleted={() => {
+              setAuthUser(null);
+              setAuthToken('');
+              setOwnProviderProfile(null);
+              setServiceRequests([]);
+              setOpportunities([]);
+              navigateUrl('/');
+            }}
+            onNavigateUrl={navigateUrl}
+          />
+        )}
         {authUser && pathname === '/app/onboarding' && (
           <OnboardingPage
             user={authUser}
@@ -1007,17 +1362,15 @@ export default function App() {
             providers={providers}
             selectedProviderId={selectedProviderId}
             repeatRequests={repeatRequests}
-            onCreateRepeatRequest={(newRepeat) => {
-              setRepeatRequests((prev) => [newRepeat, ...prev]);
-              fetch('/api/app/cliente/repeat-requests', {
+            onCreateRepeatRequest={async (newRepeat) => {
+              if (demoMode) {
+                setRepeatRequests((prev) => [newRepeat, ...prev]);
+                return;
+              }
+              const res = await fetch('/api/app/cliente/repeat-requests', {
                 method: 'POST',
                 credentials: 'include',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...(authToken && authToken.split('.').length === 3
-                    ? { Authorization: `Bearer ${authToken}` }
-                    : {}),
-                },
+                headers: buildAuthHeaders(true),
                 body: JSON.stringify({
                   providerProfileId: newRepeat.providerId,
                   categoryName: newRepeat.category,
@@ -1026,8 +1379,20 @@ export default function App() {
                   urgency: newRepeat.urgency,
                   notes: newRepeat.notes,
                   lgpdShareConsent: newRepeat.lgpdShareConsent,
+                  customerPhone: authUser.phone || clientProfile.phone,
                 }),
-              }).catch(() => null);
+              });
+              const body = await res.json().catch(() => null);
+              if (!res.ok || !body?.ok) {
+                throw new Error(
+                  body?.error ||
+                    'Não foi possível salvar o pedido de recontratação no servidor.'
+                );
+              }
+              setRepeatRequests((prev) => [
+                { ...newRepeat, id: body.repeatRequest?.id || newRepeat.id },
+                ...prev,
+              ]);
             }}
             onTriggerSubstituteFlow={() => navigateUrl('/app/cliente/substituto')}
             onNavigate={handleLegacyScreenNavigate}
@@ -1038,7 +1403,49 @@ export default function App() {
           <SubstituteReferralScreen
             providers={providers}
             currentReferral={substituteReferral}
-            onUpdateReferral={setSubstituteReferral}
+            onUpdateReferral={async (updated) => {
+              if (demoMode) {
+                setSubstituteReferral(updated);
+                return;
+              }
+              const targetCustomerUserId =
+                updated.customerUserId ||
+                opportunities.find((o) => o.customerUserId)?.customerUserId;
+              if (!targetCustomerUserId) {
+                throw new Error(
+                  'É necessário possuir uma oportunidade de cliente recebida para enviar indicação de substituto real.'
+                );
+              }
+              const res = await fetch(
+                '/api/app/prestador/substitute-referrals',
+                {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: buildAuthHeaders(true),
+                  body: JSON.stringify({
+                    customerUserId: targetCustomerUserId,
+                    substituteProviderIds: updated.substituteProviderIds,
+                    reasonCategory: updated.reasonCategory,
+                    customNote: updated.customNote,
+                    serviceContext: updated.serviceContext,
+                    neighborhood: updated.neighborhood,
+                    urgency: updated.urgency,
+                    clientConsentShared: true,
+                  }),
+                }
+              );
+              const body = await res.json().catch(() => null);
+              if (!res.ok || !body?.ok) {
+                throw new Error(
+                  body?.error ||
+                    'Não foi possível persistir a indicação de substituto no servidor.'
+                );
+              }
+              setSubstituteReferral({
+                ...updated,
+                id: body.referral?.id || updated.id,
+              });
+            }}
             onAcceptSubstitute={(id) => setSelectedProviderId(id)}
             onNavigate={handleLegacyScreenNavigate}
           />
@@ -1047,24 +1454,28 @@ export default function App() {
         {authUser && pathname === '/app/cliente/avaliar' && (
           <PostServiceReviewScreen
             providers={providers}
+            serviceRequests={serviceRequests}
             selectedProviderId={selectedProviderId}
-            onSubmitReview={(providerId, reviewData) => {
-              setProviders((prev) =>
-                prev.map((p) =>
-                  p.id === providerId ? applyNewReviewToProvider(p, reviewData) : p
-                )
-              );
-              fetch('/api/app/cliente/reviews', {
+            onCompleteServiceRequest={handleCompleteServiceRequest}
+            onSubmitReview={async (providerId, reviewData) => {
+              if (demoMode) {
+                setProviders((prev) =>
+                  prev.map((p) =>
+                    p.id === providerId
+                      ? applyNewReviewToProvider(p, reviewData)
+                      : p
+                  )
+                );
+                return;
+              }
+              const res = await fetch('/api/app/cliente/reviews', {
                 method: 'POST',
                 credentials: 'include',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...(authToken && authToken.split('.').length === 3
-                    ? { Authorization: `Bearer ${authToken}` }
-                    : {}),
-                },
+                headers: buildAuthHeaders(true),
                 body: JSON.stringify({
                   providerProfileId: providerId,
+                  serviceRequestId: reviewData.serviceRequestId,
+                  displayPublicName: Boolean(reviewData.displayPublicName),
                   neighborhood: reviewData.neighborhood,
                   serviceTitle: reviewData.serviceTitle,
                   qualidade: reviewData.qualidade,
@@ -1074,7 +1485,33 @@ export default function App() {
                   wouldRecommend: reviewData.wouldRecommend,
                   comment: reviewData.comment,
                 }),
-              }).catch(() => null);
+              });
+              const body = await res.json().catch(() => null);
+              if (!res.ok || !body?.ok) {
+                throw new Error(
+                  body?.error ||
+                    'Não foi possível publicar sua avaliação no servidor.'
+                );
+              }
+              const updatedProv = body.updatedProvider;
+              if (updatedProv) {
+                const newReviews = Number(updatedProv.reviews_count || 0);
+                const newJobs = Number(updatedProv.completed_jobs || 0);
+                setProviders((prev) =>
+                  prev.map((p) =>
+                    p.id === providerId
+                      ? {
+                          ...p,
+                          ratingAvg: Number(updatedProv.rating_avg || 0),
+                          reviewsCount: newReviews,
+                          completedJobs: newJobs,
+                          hasSufficientReputation:
+                            newReviews >= 3 && newJobs >= 3,
+                        }
+                      : p
+                  )
+                );
+              }
             }}
             onNavigate={handleLegacyScreenNavigate}
           />
@@ -1092,14 +1529,72 @@ export default function App() {
               onAddRealtimeOpportunity={(newOpp) =>
                 setOpportunities((prev) => [newOpp, ...prev])
               }
-              onUpdateOpportunityStatus={(oppId, status) =>
+              onUpdateOpportunityStatus={async (oppId, status) => {
+                if (demoMode) {
+                  setOpportunities((prev) =>
+                    prev.map((o) => (o.id === oppId ? { ...o, status } : o))
+                  );
+                  return;
+                }
+                if (status === 'aceita') {
+                  const res = await fetch(
+                    `/api/app/prestador/opportunities/${encodeURIComponent(oppId)}/accept`,
+                    {
+                      method: 'POST',
+                      credentials: 'include',
+                      headers: buildAuthHeaders(false),
+                    }
+                  );
+                  const body = await res.json().catch(() => null);
+                  if (!res.ok || !body?.ok) {
+                    throw new Error(
+                      body?.error ||
+                        'Não foi possível confirmar interesse na oportunidade.'
+                    );
+                  }
+                  setOpportunities((prev) =>
+                    prev.map((o) =>
+                      o.id === oppId
+                        ? {
+                            ...o,
+                            status: 'aceita',
+                            clientNameFull:
+                              body.opportunity?.clientNameFull || o.clientNameFull,
+                            clientWhatsapp:
+                              body.opportunity?.clientWhatsapp || o.clientWhatsapp,
+                          }
+                        : o
+                    )
+                  );
+                  return;
+                }
+                if (status === 'recusada') {
+                  const res = await fetch(
+                    `/api/app/prestador/opportunities/${encodeURIComponent(oppId)}/decline`,
+                    {
+                      method: 'POST',
+                      credentials: 'include',
+                      headers: buildAuthHeaders(false),
+                    }
+                  );
+                  const body = await res.json().catch(() => null);
+                  if (!res.ok || !body?.ok) {
+                    throw new Error(
+                      body?.error ||
+                        'Não foi possível recusar a oportunidade no servidor.'
+                    );
+                  }
+                }
                 setOpportunities((prev) =>
                   prev.map((o) => (o.id === oppId ? { ...o, status } : o))
-                )
-              }
+                );
+              }}
               onChangeProviderPlan={(providerId: string, newPlan: PlanTier) => {
                 if (providerId === authUser.providerProfileId) {
                   setAuthProviderPlanOverride(newPlan);
+                  setOwnProviderProfile((prev) =>
+                    prev ? { ...prev, plan: newPlan } : prev
+                  );
                 }
                 setProviders((prev) =>
                   prev.map((p) =>
@@ -1107,15 +1602,41 @@ export default function App() {
                   )
                 );
               }}
-              onToggleProviderAvailability={(providerId: string) =>
+              onToggleProviderAvailability={async (providerId: string) => {
+                const target =
+                  (ownProviderProfile?.id === providerId
+                    ? ownProviderProfile
+                    : providers.find((p) => p.id === providerId)) ||
+                  dashboardProvider;
+                const nextAvailable = !target.availableToday;
+                if (!demoMode) {
+                  const res = await fetch('/api/app/prestador/profile', {
+                    method: 'PATCH',
+                    credentials: 'include',
+                    headers: buildAuthHeaders(true),
+                    body: JSON.stringify({ availableToday: nextAvailable }),
+                  });
+                  const body = await res.json().catch(() => null);
+                  if (!res.ok || !body?.ok) {
+                    throw new Error(
+                      body?.error ||
+                        'Não foi possível atualizar a disponibilidade no servidor.'
+                    );
+                  }
+                }
+                if (providerId === authUser.providerProfileId) {
+                  setOwnProviderProfile((prev) =>
+                    prev ? { ...prev, availableToday: nextAvailable } : prev
+                  );
+                }
                 setProviders((prev) =>
                   prev.map((p) =>
                     p.id === providerId
-                      ? { ...p, availableToday: !p.availableToday }
+                      ? { ...p, availableToday: nextAvailable }
                       : p
                   )
-                )
-              }
+                );
+              }}
               onNavigate={handleLegacyScreenNavigate}
             />
           ) : (
@@ -1142,17 +1663,18 @@ export default function App() {
         )}
 
         {authUser && pathname.startsWith('/admin') && (
-          <AdminMonetizationScreen />
+          <AdminMonetizationScreen authToken={authToken} />
         )}
+        </Suspense>
       </main>
 
-      {/* FOOTER COM TERMOS, PRIVACIDADE, CONTATO E REDES SOCIAIS */}
+      {/* FOOTER COM TERMOS, PRIVACIDADE, COOKIES ANPD, IDENTIDADE DO CONTROLADOR E DENÚNCIA UGC */}
       {showMobileLoginHome ? (
-        <footer className="py-5 px-4 text-center text-xs text-brand-ink/60 space-y-2">
+        <footer className="py-5 px-4 text-center text-xs text-brand-ink/75 space-y-2">
           <div className="flex justify-center">
             <BrandLogo variant="dark" size="sm" decorative />
           </div>
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <button
               type="button"
               onClick={() => navigateUrl('/termos')}
@@ -1168,11 +1690,34 @@ export default function App() {
             >
               Privacidade LGPD
             </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() => setCookieBannerSignal((s) => s + 1)}
+              className="hover:text-brand-ink cursor-pointer"
+            >
+              Cookies
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() =>
+                setReportModalTarget({
+                  open: true,
+                  targetType: 'other',
+                  targetId: pathname || '/',
+                  label: 'Plataforma / Conteúdo Geral',
+                })
+              }
+              className="hover:text-brand-ink cursor-pointer"
+            >
+              Denunciar
+            </button>
           </div>
         </footer>
       ) : (
         <footer className="bg-white border-t border-brand-primary/10 mt-12">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4 text-xs text-brand-ink/70">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4 text-xs text-brand-ink/75">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex flex-wrap items-center gap-3">
                 <BrandLogo variant="dark" size="sm" />
@@ -1215,23 +1760,74 @@ export default function App() {
                 >
                   Privacidade LGPD
                 </button>
+                {authUser && (
+                  <button
+                    type="button"
+                    onClick={() => navigateUrl('/app/privacidade')}
+                    className="hover:text-brand-ink cursor-pointer font-semibold text-brand-link"
+                  >
+                    Meus Dados LGPD
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setCookieBannerSignal((s) => s + 1)}
+                  className="hover:text-brand-ink cursor-pointer"
+                >
+                  Preferências de Cookies
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReportModalTarget({
+                      open: true,
+                      targetType: 'other',
+                      targetId: pathname || '/',
+                      label: 'Conteúdo ou Direitos Autorais',
+                    })
+                  }
+                  className="hover:text-brand-ink cursor-pointer"
+                >
+                  Denunciar conteúdo / Direitos autorais
+                </button>
               </div>
             </div>
-            <div className="pt-4 border-t border-brand-primary/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-brand-ink/60">
-              <p>
-                Recontrate · Plataforma de indicação e recontratação de profissionais — você não paga comissão à plataforma; todo valor do serviço é negociado diretamente com o cliente, fora da plataforma.
-              </p>
-              <p>
-                Contato do projeto:{' '}
-                <span className="font-mono text-brand-ink/75">
-                  {import.meta.env.VITE_PROJECT_CONTACT_EMAIL ||
-                    'Canal oficial em configuração (VITE_PROJECT_CONTACT_EMAIL)'}
-                </span>
+            <div className="pt-4 border-t border-brand-primary/10 space-y-1.5 text-[11px] text-brand-ink/75">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+                <p>
+                  Recontrate · Plataforma de indicação e recontratação de profissionais — você não paga comissão à plataforma; todo valor do serviço é negociado diretamente com o cliente, fora da plataforma.
+                </p>
+                <p>
+                  SAC: <span className="font-mono">{legalIdentity.supportEmail}</span> · DPO (LGPD):{' '}
+                  <span className="font-mono">{legalIdentity.dpoEmail}</span>
+                </p>
+              </div>
+              <p className="text-brand-ink/70">
+                Controlador: {legalIdentity.companyName} · CNPJ:{' '}
+                <span className="font-mono">{legalIdentity.cnpj}</span> · Endereço: {legalIdentity.address}
               </p>
             </div>
           </div>
         </footer>
       )}
+
+      <CookieConsentBanner
+        onNavigateUrl={navigateUrl}
+        authToken={authToken}
+        isAuthenticated={Boolean(authUser)}
+        externalOpenSignal={cookieBannerSignal}
+      />
+
+      <ReportContentModal
+        open={reportModalTarget.open}
+        onClose={() =>
+          setReportModalTarget((prev) => ({ ...prev, open: false }))
+        }
+        defaultTargetType={reportModalTarget.targetType}
+        defaultTargetId={reportModalTarget.targetId}
+        targetLabel={reportModalTarget.label}
+        authToken={authToken}
+      />
     </div>
   );
 }

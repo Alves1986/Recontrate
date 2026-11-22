@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { eq } from 'drizzle-orm';
 import { db, ensureSchemaAndSeed, INITIAL_PLANS_SEED, pool } from './index';
 import { plans } from './schema';
 
@@ -10,8 +11,20 @@ test.after(async () => {
 test('Plans seed: all 4 Recontrate plans use integer centavos, exact opportunity limits, and only Gratuito displays ads', async () => {
   await ensureSchemaAndSeed();
 
-  const dbPlans = await db.select().from(plans).orderBy(plans.ordemExibicao);
+  const dbPlans = await db
+    .select()
+    .from(plans)
+    .where(eq(plans.ativo, true))
+    .orderBy(plans.ordemExibicao);
   assert.equal(dbPlans.length, 4);
+
+  const [legacyPadrinho] = await db
+    .select()
+    .from(plans)
+    .where(eq(plans.slug, 'padrinho'));
+  if (legacyPadrinho) {
+    assert.equal(legacyPadrinho.ativo, false);
+  }
 
   const bySlug = Object.fromEntries(dbPlans.map((p) => [p.slug, p]));
 
@@ -53,5 +66,25 @@ test('Plans seed: all 4 Recontrate plans use integer centavos, exact opportunity
   for (const plan of INITIAL_PLANS_SEED) {
     assert.equal(Number.isInteger(plan.precoMensalCentavos), true);
     assert.equal(Number.isInteger(plan.precoAnualCentavos), true);
+  }
+
+  // Ensure startup seed never overwrites commercial prices edited manually (ON CONFLICT DO NOTHING)
+  const originalPrice = bySlug.essencial.precoMensalCentavos;
+  try {
+    await db
+      .update(plans)
+      .set({ precoMensalCentavos: originalPrice + 100 })
+      .where(eq(plans.slug, 'essencial'));
+    await ensureSchemaAndSeed();
+    const [afterSeed] = await db
+      .select()
+      .from(plans)
+      .where(eq(plans.slug, 'essencial'));
+    assert.equal(afterSeed.precoMensalCentavos, originalPrice + 100);
+  } finally {
+    await db
+      .update(plans)
+      .set({ precoMensalCentavos: originalPrice })
+      .where(eq(plans.slug, 'essencial'));
   }
 });

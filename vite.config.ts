@@ -3,25 +3,31 @@ import react from '@vitejs/plugin-react';
 import express from 'express';
 import path from 'path';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
-import { createApiRouter } from './src/server/apiRouter';
 
 function neonApiPlugin(): Plugin {
-  let apiApp: express.Express | null = null;
+  let apiAppPromise: Promise<express.Express> | null = null;
   const getApiApp = () => {
-    if (!apiApp) {
-      apiApp = express();
-      apiApp.use('/api', createApiRouter());
+    if (!apiAppPromise) {
+      apiAppPromise = import('./src/server/apiRouter').then(
+        ({ createApiRouter }) => {
+          const apiApp = express();
+          apiApp.use('/api', createApiRouter());
+          return apiApp;
+        }
+      );
     }
-    return apiApp;
+    return apiAppPromise;
   };
 
   return {
     name: 'confiare-neon-api',
-    configureServer(server) {
-      server.middlewares.use(getApiApp());
+    async configureServer(server) {
+      const app = await getApiApp();
+      server.middlewares.use(app);
     },
-    configurePreviewServer(server) {
-      server.middlewares.use(getApiApp());
+    async configurePreviewServer(server) {
+      const app = await getApiApp();
+      server.middlewares.use(app);
     },
   };
 }
@@ -45,6 +51,38 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+      },
+    },
+    build: {
+      chunkSizeWarningLimit: 500,
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: 'vendor-react',
+                test: /node_modules[\\/]react/,
+                priority: 30,
+              },
+              {
+                name: 'vendor-icons',
+                test: /node_modules[\\/]lucide-react/,
+                priority: 20,
+              },
+              {
+                name: 'vendor-motion',
+                test: /node_modules[\\/](motion|framer-motion)/,
+                priority: 15,
+              },
+              {
+                name: 'vendor',
+                test: /node_modules/,
+                maxSize: 380000,
+                priority: 10,
+              },
+            ],
+          },
+        },
       },
     },
     server: {

@@ -82,14 +82,14 @@ test('1. Client never sees ads across all client flow surfaces and client UI com
   }
 });
 
-test('2. Paid plans (Essencial, Profissional, Premium, Padrinho) never see ads on the provider panel', async () => {
+test('2. Paid plans (Essencial, Profissional, Premium) never see ads on the provider panel', async () => {
   await ensureSchemaAndSeed();
   const adService = new AdAndMetricsService();
   const lifecycle = new SubscriptionLifecycleService(
-    new AsaasBillingAdapter({ apiKey: '' })
+    new AsaasBillingAdapter({ apiKey: '', allowLocalFallback: true })
   );
 
-  for (const paidSlug of ['essencial', 'profissional', 'premium', 'padrinho']) {
+  for (const paidSlug of ['essencial', 'profissional', 'premium']) {
     const paidProvId = `prov-ad-${paidSlug}-${Date.now()}`;
     const paidCheckout = await lifecycle.startCheckout({
       providerProfileId: paidProvId,
@@ -99,6 +99,7 @@ test('2. Paid plans (Essencial, Profissional, Premium, Padrinho) never see ads o
       planSlug: paidSlug,
       cycle: 'mensal',
       paymentMethod: 'pix',
+      cpfCnpj: '52998224725',
     });
     await lifecycle.activateSubscription(paidCheckout.subscription.id);
 

@@ -31,12 +31,20 @@ import {
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createPhase1Router } from './phase1Routes';
-import { extractBearerOrCookieToken } from './authMiddleware';
-import { AuthService } from '../services/authService';
+import {
+  extractBearerOrCookieToken,
+  requireRole,
+} from './authMiddleware';
+import {
+  AuthService,
+  getSessionSecretBytes,
+  type AuthenticatedUserSession,
+} from '../services/authService';
 import { MonitoringAndBackupService } from '../services/monitoringAndBackupService';
 import {
   assertNonProductionGuard,
   assertRealExternalActionAllowed,
+  getNodeEnvironment,
 } from '../config/environment';
 import {
   checkLaunchOfferEligibility,
@@ -79,55 +87,28 @@ function rateLimit(maxRequestsPerMinute: number): express.RequestHandler {
   };
 }
 
-async function requireAdminRole(
-  req: express.Request,
-  res: express.Response,
-  next: express.NextFunction
-) {
-  const token = extractBearerOrCookieToken(req);
-  if (token) {
-    try {
-      const session = await authService.verifySessionToken(token);
-      if (session.activeRole === 'admin' || session.roles.includes('admin')) {
-        req.authSession = session;
-        next();
-        return;
-      }
-      res.status(403).json({
-        ok: false,
-        error: 'Acesso negado: permissão de administrador obrigatória.',
-      });
-      return;
-    } catch {
-      res.status(401).json({
-        ok: false,
-        error: 'Sessão administrativa inválida.',
-      });
-      return;
-    }
-  }
+const requireAdminRole: express.RequestHandler = requireRole(
+  ['admin'],
+  authService
+);
+const requireAdminInProd: express.RequestHandler = requireAdminRole;
+const requireProviderOrAdmin: express.RequestHandler = requireRole(
+  ['prestador', 'padrinho', 'admin'],
+  authService
+);
 
-  const role = req.headers['x-user-role'];
-  if (process.env.NODE_ENV !== 'production' && role === 'admin') {
-    next();
-    return;
-  }
-  res.status(403).json({
-    ok: false,
-    error: 'Acesso negado: permissão de administrador obrigatória.',
-  });
-}
-
-async function requireAdminInProd(
-  req: express.Request,
-  res: express.Response,
-  next: express.NextFunction
-) {
-  if (process.env.NODE_ENV !== 'production') {
-    next();
-    return;
-  }
-  await requireAdminRole(req, res, next);
+function canAccessProvider(
+  session: AuthenticatedUserSession | undefined,
+  targetProviderId: string
+): boolean {
+  if (!session) return false;
+  const isAdmin =
+    session.activeRole === 'admin' || session.roles.includes('admin');
+  if (isAdmin) return true;
+  return Boolean(
+    session.providerProfileId &&
+      session.providerProfileId === targetProviderId
+  );
 }
 
 async function attachOptionalSession(
@@ -179,6 +160,7 @@ const UpgradeSchema = z.object({
   ]),
   targetCycle: z.enum(['mensal', 'anual']).optional(),
   paymentMethod: z.enum(['pix', 'cartao', 'boleto']).optional(),
+  cpfCnpj: z.string().optional(),
 });
 
 const DowngradeSchema = z.object({
@@ -190,7 +172,26 @@ const DowngradeSchema = z.object({
   ]),
 });
 
+const LaunchOfferEligibilitySchema = z.object({
+  providerProfileId: z.string().min(1).optional(),
+  email: z.string().email().optional(),
+  phone: z.string().min(6).optional(),
+  cpfCnpj: z.string().min(11).optional(),
+  planSlug: z.enum(['gratuito', 'essencial', 'profissional', 'premium']).optional(),
+  cycle: z.enum(['mensal', 'anual']).default('mensal'),
+  deviceFingerprint: z.string().optional(),
+});
+
 export function createApiRouter(): express.Router {
+  const nodeEnv = getNodeEnvironment();
+  if (
+    nodeEnv === 'production' ||
+    nodeEnv === 'staging' ||
+    process.env.VERCEL_ENV === 'production' ||
+    process.env.VERCEL_ENV === 'preview'
+  ) {
+    getSessionSecretBytes();
+  }
   const router = express.Router();
 
   // 1. Secure Webhook Endpoint: reads raw body BEFORE express.json()
@@ -255,14 +256,10 @@ export function createApiRouter(): express.Router {
       const allPlans = await db
         .select()
         .from(plans)
+        .where(eq(plans.ativo, true))
         .orderBy(plans.ordemExibicao);
       res.json({ ok: true, plans: allPlans });
     } catch (err) {
-      if (process.env.NODE_ENV !== 'production') {
-        res.json({ ok: true, plans: INITIAL_PLANS_SEED });
-        return;
-      }
-
       res.status(500).json({ ok: false, error: (err as Error).message });
     }
   });
@@ -270,21 +267,14 @@ export function createApiRouter(): express.Router {
 
   router.get(
     '/providers/:providerId/subscription',
-    attachOptionalSession,
+    requireProviderOrAdmin,
     async (req, res) => {
       try {
         const providerId = String(req.params.providerId);
-        // Anti-IDOR check if x-provider-id header is passed
-        const callerProviderId = req.headers['x-provider-id'];
-        const callerRole = req.headers['x-user-role'];
-        if (
-          callerProviderId &&
-          callerProviderId !== providerId &&
-          callerRole !== 'admin'
-        ) {
+        if (!canAccessProvider(req.authSession, providerId)) {
           res.status(403).json({
             ok: false,
-            error: 'Acesso negado (proteção contra IDOR).',
+            error: 'Acesso negado: esta assinatura pertence a outro prestador.',
           });
           return;
         }
@@ -299,47 +289,22 @@ export function createApiRouter(): express.Router {
           ...summary,
           usage,
         });
-      } catch {
-        res.json({
-          ok: true,
-          subscription: null,
-          plan: INITIAL_PLANS_SEED[0],
-          scheduledPlan: null,
-          invoices: [],
-          inGracePeriod: false,
-          portalUrl: null,
-          activeLaunchOffer: null,
-          usage: {
-            used: 0,
-            limit: 5,
-            remaining: 5,
-            limitReached: false,
-            upgradeSuggested: false,
-            profileBlocked: false,
-            planSlug: 'gratuito',
-            planName: 'Gratuito',
-          },
-        });
+      } catch (err) {
+        res.status(500).json({ ok: false, error: (err as Error).message });
       }
     }
   );
 
   router.get(
     '/providers/:providerId/billing-portal',
-    attachOptionalSession,
+    requireProviderOrAdmin,
     async (req, res) => {
       try {
         const providerId = String(req.params.providerId);
-        const callerProviderId = req.headers['x-provider-id'];
-        const callerRole = req.headers['x-user-role'];
-        if (
-          callerProviderId &&
-          callerProviderId !== providerId &&
-          callerRole !== 'admin'
-        ) {
+        if (!canAccessProvider(req.authSession, providerId)) {
           res.status(403).json({
             ok: false,
-            error: 'Acesso negado (proteção contra IDOR).',
+            error: 'Acesso negado: esta assinatura pertence a outro prestador.',
           });
           return;
         }
@@ -360,50 +325,64 @@ export function createApiRouter(): express.Router {
     }
   );
 
-  router.get(
+  router.get('/promotions/launch-offer/eligibility', (_req, res) => {
+    res.status(405).json({
+      ok: false,
+      error:
+        'Método não permitido. Envie dados via POST no corpo JSON (nunca dados pessoais na URL).',
+    });
+  });
+
+  router.post(
     '/promotions/launch-offer/eligibility',
+    rateLimit(60),
     attachOptionalSession,
     async (req, res) => {
       try {
-        const providerProfileId = req.query.providerProfileId
-          ? String(req.query.providerProfileId)
-          : req.authSession?.providerProfileId || undefined;
-        const email = req.query.email
-          ? String(req.query.email)
-          : req.authSession?.email || undefined;
-        const phone = req.query.phone ? String(req.query.phone) : undefined;
-        const cpfCnpj = req.query.cpfCnpj ? String(req.query.cpfCnpj) : undefined;
-        const planSlug = req.query.planSlug
-          ? String(req.query.planSlug)
-          : undefined;
-        const cycle = req.query.cycle ? String(req.query.cycle) : 'mensal';
-        const deviceFingerprint = req.query.deviceFingerprint
-          ? String(req.query.deviceFingerprint)
-          : undefined;
+        const parsed = LaunchOfferEligibilitySchema.parse(req.body || {});
+        if (
+          parsed.providerProfileId &&
+          req.authSession &&
+          !canAccessProvider(req.authSession, parsed.providerProfileId)
+        ) {
+          res.status(403).json({
+            ok: false,
+            error: 'Acesso negado para consultar elegibilidade de outro prestador.',
+          });
+          return;
+        }
+
+        const providerProfileId =
+          parsed.providerProfileId ||
+          req.authSession?.providerProfileId ||
+          undefined;
+        const email = parsed.email || req.authSession?.email || undefined;
 
         const eligibility = await checkLaunchOfferEligibility(
           {
             userId: req.authSession?.userId || null,
             email,
-            phone,
-            cpfCnpj,
-            deviceFingerprint,
+            phone: parsed.phone,
+            cpfCnpj: parsed.cpfCnpj,
+            deviceFingerprint: parsed.deviceFingerprint,
             ipAddress: req.ip,
           },
           {
             providerProfileId,
-            whatsapp: phone,
-            cpfCnpj,
+            whatsapp: parsed.phone,
+            cpfCnpj: parsed.cpfCnpj,
           },
           {
-            planSlug,
-            cycle,
+            planSlug: parsed.planSlug,
+            cycle: parsed.cycle,
           }
         );
 
         res.json({ ok: true, ...eligibility });
       } catch (err) {
-        res.status(500).json({ ok: false, error: (err as Error).message });
+        const msg = (err as Error).message || 'Parâmetros inválidos.';
+        const isZod = (err as { name?: string })?.name === 'ZodError';
+        res.status(isZod ? 400 : 500).json({ ok: false, error: msg });
       }
     }
   );
@@ -411,7 +390,7 @@ export function createApiRouter(): express.Router {
   router.post(
     '/subscriptions/checkout',
     rateLimit(30),
-    attachOptionalSession,
+    requireProviderOrAdmin,
     async (req, res) => {
       try {
         const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
@@ -420,10 +399,20 @@ export function createApiRouter(): express.Router {
           return;
         }
         const parsed = CheckoutSchema.parse(req.body);
+        if (!canAccessProvider(req.authSession, parsed.providerProfileId)) {
+          res.status(403).json({
+            ok: false,
+            error: 'Acesso negado: você só pode contratar assinatura para o seu próprio perfil profissional.',
+          });
+          return;
+        }
         const result = await lifecycleService.startCheckout({
           ...parsed,
           ipAddress: req.ip,
-          userId: req.authSession?.userId,
+          userId:
+            req.authSession?.providerProfileId === parsed.providerProfileId
+              ? req.authSession.userId
+              : undefined,
         });
         res.status(201).json({ ok: true, ...result });
       } catch (err) {
@@ -434,7 +423,7 @@ export function createApiRouter(): express.Router {
 
   router.post(
     '/subscriptions/:id/upgrade',
-    attachOptionalSession,
+    requireProviderOrAdmin,
     async (req, res) => {
       try {
         const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
@@ -442,9 +431,25 @@ export function createApiRouter(): express.Router {
           res.status(403).json({ ok: false, error: payGuard.reason });
           return;
         }
+        const subId = String(req.params.id);
+        const [sub] = await db
+          .select()
+          .from(subscriptions)
+          .where(eq(subscriptions.id, subId));
+        if (!sub) {
+          res.status(404).json({ ok: false, error: 'Assinatura não encontrada.' });
+          return;
+        }
+        if (!canAccessProvider(req.authSession, sub.providerProfileId)) {
+          res.status(403).json({
+            ok: false,
+            error: 'Acesso negado: esta assinatura pertence a outro prestador.',
+          });
+          return;
+        }
         const parsed = UpgradeSchema.parse(req.body);
         const result = await lifecycleService.upgradeSubscription({
-          subscriptionId: String(req.params.id),
+          subscriptionId: subId,
           ...parsed,
         });
         res.json({ ok: true, ...result });
@@ -456,7 +461,7 @@ export function createApiRouter(): express.Router {
 
   router.post(
     '/subscriptions/:id/downgrade',
-    attachOptionalSession,
+    requireProviderOrAdmin,
     async (req, res) => {
       try {
         const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
@@ -464,9 +469,25 @@ export function createApiRouter(): express.Router {
           res.status(403).json({ ok: false, error: payGuard.reason });
           return;
         }
+        const subId = String(req.params.id);
+        const [sub] = await db
+          .select()
+          .from(subscriptions)
+          .where(eq(subscriptions.id, subId));
+        if (!sub) {
+          res.status(404).json({ ok: false, error: 'Assinatura não encontrada.' });
+          return;
+        }
+        if (!canAccessProvider(req.authSession, sub.providerProfileId)) {
+          res.status(403).json({
+            ok: false,
+            error: 'Acesso negado: esta assinatura pertence a outro prestador.',
+          });
+          return;
+        }
         const parsed = DowngradeSchema.parse(req.body);
         const result = await lifecycleService.scheduleDowngrade({
-          subscriptionId: String(req.params.id),
+          subscriptionId: subId,
           targetPlanSlug: parsed.targetPlanSlug,
         });
         res.json({ ok: true, ...result });
@@ -478,7 +499,7 @@ export function createApiRouter(): express.Router {
 
   router.post(
     '/subscriptions/:id/cancel',
-    attachOptionalSession,
+    requireProviderOrAdmin,
     async (req, res) => {
       try {
         const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
@@ -486,12 +507,37 @@ export function createApiRouter(): express.Router {
           res.status(403).json({ ok: false, error: payGuard.reason });
           return;
         }
+        const subId = String(req.params.id);
+        const [sub] = await db
+          .select()
+          .from(subscriptions)
+          .where(eq(subscriptions.id, subId));
+        if (!sub) {
+          res.status(404).json({ ok: false, error: 'Assinatura não encontrada.' });
+          return;
+        }
+        if (!canAccessProvider(req.authSession, sub.providerProfileId)) {
+          res.status(403).json({
+            ok: false,
+            error: 'Acesso negado: esta assinatura pertence a outro prestador.',
+          });
+          return;
+        }
         const reason = req.body?.reason || 'Cancelamento solicitado no painel';
-        const updated = await lifecycleService.cancelSubscription(
-          String(req.params.id),
-          reason
+        const exerciseWithdrawalRight = Boolean(
+          req.body?.exerciseWithdrawalRight
         );
-        res.json({ ok: true, subscription: updated });
+        const updated = await lifecycleService.cancelSubscription(
+          subId,
+          reason,
+          new Date(),
+          { exerciseWithdrawalRight }
+        );
+        res.json({
+          ok: true,
+          subscription: updated,
+          withdrawalRefund: updated.withdrawalRefund ?? null,
+        });
       } catch (err) {
         res.status(400).json({ ok: false, error: (err as Error).message });
       }
@@ -499,20 +545,31 @@ export function createApiRouter(): express.Router {
   );
 
   // 3. Opportunity Dispatch & Usage
-  router.post('/opportunities/dispatch', async (req, res) => {
-    try {
-      const providerProfileId = z
-        .string()
-        .min(1)
-        .parse(req.body?.providerProfileId);
-      const result = await limitService.recordOpportunitySent(
-        providerProfileId
-      );
-      res.status(result.allowed ? 200 : 403).json({ ok: result.allowed, ...result });
-    } catch (err) {
-      res.status(400).json({ ok: false, error: (err as Error).message });
+  router.post(
+    '/opportunities/dispatch',
+    requireProviderOrAdmin,
+    async (req, res) => {
+      try {
+        const providerProfileId = z
+          .string()
+          .min(1)
+          .parse(req.body?.providerProfileId);
+        if (!canAccessProvider(req.authSession, providerProfileId)) {
+          res.status(403).json({
+            ok: false,
+            error: 'Acesso negado: você só pode registrar envios para o seu próprio perfil.',
+          });
+          return;
+        }
+        const result = await limitService.recordOpportunitySent(
+          providerProfileId
+        );
+        res.status(result.allowed ? 200 : 403).json({ ok: result.allowed, ...result });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
     }
-  });
+  );
 
   // 4. Moderated Ads (Provider Panel Only)
   router.get('/ads/ads.txt', (_req, res) => {

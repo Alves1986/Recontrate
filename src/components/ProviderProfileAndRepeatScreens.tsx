@@ -18,12 +18,21 @@ import {
   RepeatServiceRequest,
   ScreenId,
 } from '../types/confiare';
+import {
+  getPublicReputationSummary,
+  hasSufficientReputationHistory,
+} from '../utils/marketplaceRules';
 
 interface ProviderProfileScreenProps {
   provider: ProviderProfile;
   allProviders: ProviderProfile[];
   onSelectProvider: (id: string) => void;
   onNavigate: (screen: ScreenId, providerId?: string) => void;
+  onOpenReportModal?: (target: {
+    targetType: 'provider_profile' | 'review' | 'other';
+    targetId: string;
+    label: string;
+  }) => void;
 }
 
 export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
@@ -31,6 +40,7 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
   allProviders,
   onSelectProvider,
   onNavigate,
+  onOpenReportModal,
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
@@ -186,6 +196,21 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
                 {copyFailed ? 'Não foi possível copiar o link' : copiedLink ? 'Link copiado' : 'Copiar link do perfil'}
               </span>
             </button>
+            {onOpenReportModal && (
+              <button
+                type="button"
+                onClick={() =>
+                  onOpenReportModal({
+                    targetType: 'provider_profile',
+                    targetId: provider.id,
+                    label: provider.name,
+                  })
+                }
+                className="w-full min-h-[38px] px-3 py-1.5 rounded-lg border border-brand-primary/15 hover:bg-red-50 text-brand-ink/75 hover:text-red-800 text-[11px] font-medium transition-colors cursor-pointer"
+              >
+                Denunciar conteúdo / Direitos autorais
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -223,10 +248,27 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
       </section>
 
       <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-2">
-        <h3 className="font-display font-bold text-lg text-brand-ink">Avaliações e pontuações</h3>
-        <p className="text-sm text-brand-ink/70">
-          Avaliações e métricas de reputação não são exibidas publicamente nesta versão.
-        </p>
+        <h3 className="font-display font-bold text-lg text-brand-ink">Avaliações e reputação</h3>
+        {(() => {
+          const repSummary = getPublicReputationSummary(provider);
+          if (!repSummary.hasSufficientHistory) {
+            return (
+              <p className="text-sm text-brand-ink/75">
+                <strong>Em avaliação inicial:</strong> o escore numérico e a Nota Composta só são exibidos após o mínimo de 3 avaliações verificadas e 3 atendimentos concluídos ({provider.reviewsCount}/3 avaliações registradas).
+              </p>
+            );
+          }
+          return (
+            <div className="space-y-2 text-sm text-brand-ink/80">
+              <p>
+                <strong>Nota média verificada:</strong> ★ {repSummary.publicRating?.toFixed(2)} / 5.00 ({provider.reviewsCount} avaliações · {provider.completedJobs} atendimentos)
+              </p>
+              <p className="text-xs text-brand-ink/70">
+                Nota Composta calculada com mérito auditável: ★ {repSummary.publicCompositeScore?.toFixed(2)}
+              </p>
+            </div>
+          );
+        })()}
       </section>
     </div>
   );
@@ -236,7 +278,7 @@ interface RepeatRequestScreenProps {
   providers: ProviderProfile[];
   selectedProviderId: string;
   repeatRequests: RepeatServiceRequest[];
-  onCreateRepeatRequest: (req: RepeatServiceRequest) => void;
+  onCreateRepeatRequest: (req: RepeatServiceRequest) => Promise<void> | void;
   onTriggerSubstituteFlow: (providerId: string, serviceSummary: string) => void;
   onNavigate: (screen: ScreenId, providerId?: string) => void;
 }
@@ -253,7 +295,7 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
   const [chosenProviderId, setChosenProviderId] = useState<string>(
     trustedProviders.some((p) => p.id === selectedProviderId)
       ? selectedProviderId
-      : trustedProviders[0]?.id || providers[0].id
+      : trustedProviders[0]?.id || providers[0]?.id || ''
   );
 
   const activeProvider =
@@ -269,15 +311,26 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
   const [notes, setNotes] = useState(
     'Mesmo endereço do último atendimento em Pinheiros. Portaria já autorizada.'
   );
-  const [lgpdShareConsent, setLgpdShareConsent] = useState(true);
+  const [lgpdShareConsent, setLgpdShareConsent] = useState(false);
+  const [repeatError, setRepeatError] = useState('');
+  const [repeatSubmitting, setRepeatSubmitting] = useState(false);
   const [confirmationMode, setConfirmationMode] = useState<
     'idle' | 'accepted' | 'unavailable'
   >('idle');
 
-  const handleDirectRepeatSubmit = (e: React.FormEvent) => {
+  const handleDirectRepeatSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!serviceType.trim()) return;
+    if (!activeProvider) {
+      setRepeatError('Nenhum profissional verificado selecionado para recontratação.');
+      return;
+    }
+    if (!serviceType.trim()) {
+      setRepeatError('Descreva o serviço que deseja solicitar novamente.');
+      return;
+    }
 
+    setRepeatError('');
+    setRepeatSubmitting(true);
     const newRepeat: RepeatServiceRequest = {
       id: `rep-${Date.now()}`,
       providerId: activeProvider.id,
@@ -290,9 +343,39 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
       status: 'aceito',
       createdAt: 'Agora mesmo',
     };
-    onCreateRepeatRequest(newRepeat);
-    setConfirmationMode('accepted');
+    try {
+      await onCreateRepeatRequest(newRepeat);
+      setConfirmationMode('accepted');
+    } catch (err) {
+      setConfirmationMode('idle');
+      setRepeatError(
+        (err as Error).message ||
+          'Não foi possível registrar seu pedido de recontratação.'
+      );
+    } finally {
+      setRepeatSubmitting(false);
+    }
   };
+
+  if (!activeProvider) {
+    return (
+      <div className="max-w-xl mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 text-center space-y-3 my-8">
+        <h2 className="font-display font-bold text-xl text-brand-ink">
+          Nenhum profissional disponível para recontratação
+        </h2>
+        <p className="text-xs text-brand-ink/70">
+          Encontre e contrate um profissional verificado primeiro para salvar em Meus Profissionais de Confiança.
+        </p>
+        <button
+          type="button"
+          onClick={() => onNavigate('profissionais-compativeis')}
+          className="min-h-[42px] px-5 py-2.5 rounded-xl bg-brand-primary text-white text-xs font-semibold cursor-pointer"
+        >
+          Buscar profissionais
+        </button>
+      </div>
+    );
+  }
 
   const handleSimulateUnavailableWithSubstitute = () => {
     onTriggerSubstituteFlow(activeProvider.id, serviceType);
@@ -348,7 +431,9 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
                     {tp.name}
                   </span>
                   <span className="font-mono text-xs font-semibold text-brand-accent-strong shrink-0">
-                    ★ {tp.ratingAvg.toFixed(2)}
+                    {hasSufficientReputationHistory(tp)
+                      ? `★ ${tp.ratingAvg.toFixed(2)}`
+                      : 'Em avaliação inicial'}
                   </span>
                 </div>
                 <p
@@ -502,6 +587,15 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
             </div>
           </div>
 
+          {repeatError && (
+            <div
+              role="alert"
+              className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium"
+            >
+              {repeatError}
+            </div>
+          )}
+
           <label className="flex items-start gap-2.5 cursor-pointer p-3.5 rounded-xl bg-brand-background/70">
             <input
               type="checkbox"
@@ -510,17 +604,22 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
               className="mt-0.5 w-4 h-4 accent-brand-link"
             />
             <span className="text-xs text-brand-ink">
-              Caso {activeProvider.name} esteja indisponível na data escolhida, autorizo que ele me envie até 2 indicações de substitutos verificados da sua rede de confiança.
+              Caso {activeProvider.name} esteja indisponível na data escolhida, autorizo que ele me envie até 2 indicações de substitutos verificados da sua rede de confiança (consentimento opcional LGPD).
             </span>
           </label>
 
           <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 pt-2">
             <button
               type="submit"
-              className="w-full sm:w-auto min-h-[48px] px-5 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs sm:text-sm transition-colors inline-flex items-center justify-center gap-2 text-center cursor-pointer"
+              disabled={repeatSubmitting}
+              className="w-full sm:w-auto min-h-[48px] px-5 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover disabled:opacity-60 text-white font-display font-semibold text-xs sm:text-sm transition-colors inline-flex items-center justify-center gap-2 text-center cursor-pointer"
             >
               <RotateCcw className="w-4 h-4 shrink-0" />
-              <span>Enviar solicitação direta a {activeProvider.name}</span>
+              <span>
+                {repeatSubmitting
+                  ? 'Enviando solicitação...'
+                  : `Enviar solicitação direta a ${activeProvider.name}`}
+              </span>
             </button>
 
             <button
@@ -528,7 +627,7 @@ export const RepeatRequestScreen: React.FC<RepeatRequestScreenProps> = ({
               onClick={handleSimulateUnavailableWithSubstitute}
               className="w-full sm:w-auto min-h-[48px] px-5 py-3 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-display font-semibold text-xs sm:text-sm transition-colors text-center cursor-pointer"
             >
-              Simular profissional ocupado → Receber Substituto
+              Indicar ou solicitar substituto →
             </button>
           </div>
         </form>

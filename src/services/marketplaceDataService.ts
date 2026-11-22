@@ -8,6 +8,7 @@ import {
 } from './essentialIntegrations';
 import { OpportunityLimitService } from './opportunityLimitService';
 import {
+  anonymizeCustomerDisplayName,
   getMatchingPriority,
   validateSubstituteSelection,
 } from '../utils/marketplaceRules';
@@ -478,14 +479,53 @@ export class MarketplaceDataService {
   }
 
   /**
-   * 2. Registra avaliação real pós-atendimento no banco, recalcula reputação do prestador
-   * e adiciona o profissional à lista de confiança (professional_trust_list) do cliente.
+   * 2. Marca solicitação de serviço como concluída pelo cliente autenticado e libera avaliação verificada.
+   */
+  async completeServiceRequest(input: {
+    requestId: string;
+    customerUserId: string;
+  }) {
+    await ensureSchemaAndSeed();
+    return withRlsContext(
+      { userId: input.customerUserId, role: 'cliente' },
+      async (client) => {
+        const existing = await client.query(
+          `SELECT id, customer_user_id, status
+           FROM service_requests
+           WHERE id = $1::uuid AND deleted_at IS NULL
+           LIMIT 1`,
+          [input.requestId]
+        );
+        if (existing.rows.length === 0) {
+          throw new Error('Solicitação de serviço não encontrada.');
+        }
+        if (existing.rows[0].customer_user_id !== input.customerUserId) {
+          throw new Error(
+            'Apenas o cliente autor da solicitação pode marcá-la como concluída.'
+          );
+        }
+        const upd = await client.query(
+          `UPDATE service_requests
+           SET status = 'concluido', updated_at = NOW()
+           WHERE id = $1::uuid
+           RETURNING *`,
+          [input.requestId]
+        );
+        return upd.rows[0];
+      }
+    );
+  }
+
+  /**
+   * 2b. Registra avaliação real pós-atendimento no banco exigindo solicitação concluída do cliente,
+   * anonimizando o nome exibido por padrão, recalculando reputação e atualizando Lista de Confiança.
    */
   async submitReviewAndRecalculateReputation(input: {
     customerUserId: string;
     customerName: string;
     providerProfileId: string;
-    serviceRequestId?: string;
+    serviceRequestId: string;
+    displayPublicName?: boolean;
     neighborhood: string;
     serviceTitle: string;
     qualidade: number;
@@ -497,6 +537,56 @@ export class MarketplaceDataService {
   }) {
     await ensureSchemaAndSeed();
 
+    if (!input.serviceRequestId) {
+      throw new Error(
+        'É obrigatório informar uma solicitação de serviço concluída para avaliar.'
+      );
+    }
+
+    const { rows: reqRows } = await pool.query(
+      `SELECT id, customer_user_id, status
+       FROM service_requests
+       WHERE id = $1::uuid AND deleted_at IS NULL
+       LIMIT 1`,
+      [input.serviceRequestId]
+    );
+    if (reqRows.length === 0) {
+      throw new Error('Solicitação de serviço informada não encontrada.');
+    }
+    const reqRow = reqRows[0];
+    if (reqRow.customer_user_id !== input.customerUserId) {
+      throw new Error(
+        'Você só pode avaliar atendimentos vinculados às suas próprias solicitações.'
+      );
+    }
+    if (reqRow.status !== 'concluido') {
+      throw new Error(
+        'A avaliação só pode ser publicada após marcar a solicitação de serviço como concluída.'
+      );
+    }
+
+    const { rows: linkRows } = await pool.query(
+      `SELECT 1 AS linked
+       FROM opportunities
+       WHERE service_request_id = $1::uuid
+         AND provider_profile_id = $2
+         AND status = 'aceita'
+         AND contact_released = TRUE
+       UNION ALL
+       SELECT 1 AS linked
+       FROM repeat_requests
+       WHERE customer_user_id = $3::uuid
+         AND provider_profile_id = $2
+         AND status = 'aceito'
+       LIMIT 1`,
+      [input.serviceRequestId, input.providerProfileId, input.customerUserId]
+    );
+    if (linkRows.length === 0) {
+      throw new Error(
+        'Apenas profissionais que aceitaram a solicitação com contato liberado podem receber avaliação verificada.'
+      );
+    }
+
     const avgCriteria =
       (input.qualidade +
         input.pontualidade +
@@ -504,55 +594,73 @@ export class MarketplaceDataService {
         input.organizacao) /
       4;
     const rating = Math.round(avgCriteria * 100) / 100;
+    const publicReviewerName = input.displayPublicName
+      ? sanitizeUserText(input.customerName)
+      : anonymizeCustomerDisplayName(input.customerName);
 
     // 1. Insert review under customer RLS policy
-    const createdReview = await withRlsContext(
-      { userId: input.customerUserId, role: 'cliente' },
-      async (client) => {
-        const ins = await client.query(
-          `INSERT INTO reviews (
-            service_request_id, provider_profile_id, customer_user_id,
-            client_name_display, neighborhood, service_title, rating,
-            qualidade, pontualidade, comunicacao, organizacao, would_recommend, comment
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-          RETURNING *`,
-          [
-            input.serviceRequestId || null,
-            input.providerProfileId,
-            input.customerUserId,
-            sanitizeUserText(input.customerName),
-            sanitizeUserText(input.neighborhood),
-            sanitizeUserText(input.serviceTitle),
-            rating,
-            input.qualidade,
-            input.pontualidade,
-            input.comunicacao,
-            input.organizacao,
-            input.wouldRecommend,
-            sanitizeUserText(input.comment),
-          ]
-        );
+    let createdReview: any;
+    try {
+      createdReview = await withRlsContext(
+        { userId: input.customerUserId, role: 'cliente' },
+        async (client) => {
+          const ins = await client.query(
+            `INSERT INTO reviews (
+              service_request_id, provider_profile_id, customer_user_id,
+              client_name_display, neighborhood, service_title, rating,
+              qualidade, pontualidade, comunicacao, organizacao, would_recommend, comment
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+            RETURNING *`,
+            [
+              input.serviceRequestId,
+              input.providerProfileId,
+              input.customerUserId,
+              publicReviewerName,
+              sanitizeUserText(input.neighborhood),
+              sanitizeUserText(input.serviceTitle),
+              rating,
+              input.qualidade,
+              input.pontualidade,
+              input.comunicacao,
+              input.organizacao,
+              input.wouldRecommend,
+              sanitizeUserText(input.comment),
+            ]
+          );
 
-        // Upsert into professional_trust_list under customer RLS
-        await client.query(
-          `INSERT INTO professional_trust_list (
-            customer_user_id, provider_profile_id, last_service_date, last_service_summary, times_hired
-          ) VALUES ($1, $2, TO_CHAR(NOW(), 'DD/MM/YYYY'), $3, 1)
-          ON CONFLICT (customer_user_id, provider_profile_id)
-          DO UPDATE SET
-            last_service_date = EXCLUDED.last_service_date,
-            last_service_summary = EXCLUDED.last_service_summary,
-            times_hired = professional_trust_list.times_hired + 1`,
-          [
-            input.customerUserId,
-            input.providerProfileId,
-            sanitizeUserText(input.serviceTitle),
-          ]
-        );
+          // Upsert into professional_trust_list under customer RLS
+          await client.query(
+            `INSERT INTO professional_trust_list (
+              customer_user_id, provider_profile_id, last_service_date, last_service_summary, times_hired
+            ) VALUES ($1, $2, TO_CHAR(NOW(), 'DD/MM/YYYY'), $3, 1)
+            ON CONFLICT (customer_user_id, provider_profile_id)
+            DO UPDATE SET
+              last_service_date = EXCLUDED.last_service_date,
+              last_service_summary = EXCLUDED.last_service_summary,
+              times_hired = professional_trust_list.times_hired + 1`,
+            [
+              input.customerUserId,
+              input.providerProfileId,
+              sanitizeUserText(input.serviceTitle),
+            ]
+          );
 
-        return ins.rows[0];
+          return ins.rows[0];
+        }
+      );
+    } catch (err: any) {
+      if (
+        err?.code === '23505' ||
+        String(err?.constraint || '').includes('idx_reviews_unique_service_request_customer')
+      ) {
+        const dupErr: any = new Error(
+          'Esta solicitação de serviço já foi avaliada por você.'
+        );
+        dupErr.code = 'DUPLICATE_REVIEW';
+        throw dupErr;
       }
-    );
+      throw err;
+    }
 
     // 2. Recalculate provider rating_avg, reviews_count, and completed_jobs in PostgreSQL
     const { rows: provRows } = await pool.query(

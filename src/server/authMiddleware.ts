@@ -81,6 +81,16 @@ export function requireAuth(authService = new AuthService()): express.RequestHan
     for (const token of candidates) {
       try {
         const session = await authService.verifySessionToken(token);
+        if (!session.emailVerified || session.status === 'pendente_confirmacao') {
+          res.status(403).json({
+            ok: false,
+            code: 'EMAIL_NOT_VERIFIED',
+            error:
+              'Confirme seu e-mail antes de acessar rotas autenticadas do Recontrate.',
+            redirectTo: '/verificar-email',
+          });
+          return;
+        }
         req.authSession = session;
         next();
         return;

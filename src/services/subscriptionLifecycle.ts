@@ -244,29 +244,41 @@ export class SubscriptionLifecycleService {
       fim = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
     }
 
-    const customer = await this.billing.createCustomer({
-      providerProfileId: input.providerProfileId,
-      name: input.providerName,
-      email: input.providerEmail,
-      phone: input.providerPhone,
-      cpfCnpj: input.cpfCnpj,
-    });
-
+    let gatewayCustomerId: string | null = null;
+    let gatewaySubscriptionId: string | null = null;
+    let gatewayInvoiceId: string | null = null;
+    let checkoutUrl = '';
     const subId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const dueDateStr = (isFreeLaunchPromo ? fim : now)
       .toISOString()
       .slice(0, 10);
 
-    const gatewaySub = await this.billing.createSubscription({
-      gatewayCustomerId: customer.gatewayCustomerId,
-      planSlug: plan.slug,
-      planName: plan.nome,
-      cycle: input.cycle,
-      amountCents,
-      paymentMethod: input.paymentMethod,
-      nextDueDate: dueDateStr,
-      externalReference: subId,
-    });
+    if (amountCents > 0 || (input.cpfCnpj && input.cpfCnpj.replace(/\D/g, '').length >= 11)) {
+      const customer = await this.billing.createCustomer({
+        providerProfileId: input.providerProfileId,
+        name: input.providerName,
+        email: input.providerEmail,
+        phone: input.providerPhone,
+        cpfCnpj: input.cpfCnpj,
+      });
+      gatewayCustomerId = customer.gatewayCustomerId;
+
+      if (amountCents > 0) {
+        const gatewaySub = await this.billing.createSubscription({
+          gatewayCustomerId: customer.gatewayCustomerId,
+          planSlug: plan.slug,
+          planName: plan.nome,
+          cycle: input.cycle,
+          amountCents,
+          paymentMethod: input.paymentMethod,
+          nextDueDate: dueDateStr,
+          externalReference: subId,
+        });
+        gatewaySubscriptionId = gatewaySub.gatewaySubscriptionId;
+        gatewayInvoiceId = gatewaySub.gatewayInvoiceId;
+        checkoutUrl = gatewaySub.checkoutUrl;
+      }
+    }
 
     const initialStatus: SubscriptionStatus =
       input.startWithTrial || isFreeLaunchPromo
@@ -290,8 +302,8 @@ export class SubscriptionLifecycleService {
         inicio: now,
         fim,
         proximaCobranca: fim,
-        gatewaySubscriptionId: gatewaySub.gatewaySubscriptionId,
-        gatewayCustomerId: customer.gatewayCustomerId,
+        gatewaySubscriptionId,
+        gatewayCustomerId,
       })
       .returning();
 
@@ -306,8 +318,8 @@ export class SubscriptionLifecycleService {
         metodo: input.paymentMethod,
         vencimento: now,
         pagoEm: amountCents === 0 ? now : null,
-        gatewayInvoiceId: gatewaySub.gatewayInvoiceId,
-        urlCheckout: gatewaySub.checkoutUrl,
+        gatewayInvoiceId,
+        urlCheckout: checkoutUrl,
       })
       .returning();
 
@@ -388,7 +400,7 @@ export class SubscriptionLifecycleService {
       subscription: finalSubscription,
       invoice: createdInvoice,
       plan,
-      checkoutUrl: gatewaySub.checkoutUrl,
+      checkoutUrl,
       launchOfferApplied: Boolean(appliedCampaignId),
       launchOfferRedemption: appliedRedemption,
       referralBonusDaysApplied,
@@ -591,14 +603,26 @@ export class SubscriptionLifecycleService {
   }
 
   /**
-   * Cancels subscription at provider's request: sets status='cancelada',
-   * keeps access to paid plan features until 'fim' (end of paid period).
+   * Cancels subscription at provider's request:
+   * - Standard cancel: status='cancelada', keeps paid plan features until 'fim'.
+   * - CDC art. 49 (7-day withdrawal right): if exerciseWithdrawalRight=true within 7 days of sub.inicio,
+   *   refunds paid invoice(s) in full, marks invoice 'estornada', returns to 'gratuito' immediately, and logs audit.
    */
   async cancelSubscription(
     subscriptionId: string,
     reason = 'Solicitação do prestador',
-    now = new Date()
-  ): Promise<SubscriptionRow> {
+    now = new Date(),
+    options?: { exerciseWithdrawalRight?: boolean }
+  ): Promise<
+    SubscriptionRow & {
+      withdrawalRefund?: {
+        refunded: boolean;
+        amountCents: number;
+        invoiceId: string;
+        refundedAt: string;
+      } | null;
+    }
+  > {
     const [sub] = await db
       .select()
       .from(subscriptions)
@@ -607,8 +631,106 @@ export class SubscriptionLifecycleService {
       throw new Error(`Assinatura não encontrada: ${subscriptionId}`);
     }
 
+    const exerciseWithdrawal = Boolean(options?.exerciseWithdrawalRight);
+    const elapsedMs = now.getTime() - new Date(sub.inicio).getTime();
+    const withinWithdrawalWindow = elapsedMs <= 7 * 24 * 60 * 60 * 1000;
+
+    if (exerciseWithdrawal && !withinWithdrawalWindow) {
+      throw new Error(
+        'O prazo legal de 7 dias corridos para arrependimento com estorno integral (CDC art. 49) encerrou para esta assinatura. Você ainda pode cancelar sem multa mantendo acesso até o fim do período pago.'
+      );
+    }
+
     if (sub.gatewaySubscriptionId) {
       await this.billing.cancelSubscription(sub.gatewaySubscriptionId, reason);
+    }
+
+    let withdrawalRefund: {
+      refunded: boolean;
+      amountCents: number;
+      invoiceId: string;
+      refundedAt: string;
+    } | null = null;
+
+    if (exerciseWithdrawal) {
+      const { rows: paidInvoices } = await pool.query<{
+        id: string;
+        gateway_invoice_id: string | null;
+        valor_centavos: number;
+      }>(
+        `SELECT id, gateway_invoice_id, valor_centavos
+         FROM invoices
+         WHERE subscription_id = $1
+           AND status = 'paga'
+           AND valor_centavos > 0
+         ORDER BY pago_em DESC NULLS LAST, criado_em DESC
+         LIMIT 1`,
+        [subscriptionId]
+      );
+
+      if (paidInvoices.length > 0) {
+        const inv = paidInvoices[0];
+        const refundResult = await this.billing.refundInvoice(
+          inv.gateway_invoice_id || inv.id,
+          inv.valor_centavos
+        );
+        await pool.query(
+          `UPDATE invoices
+           SET status = 'estornada', atualizado_em = $2
+           WHERE id = $1`,
+          [inv.id, now]
+        );
+        withdrawalRefund = {
+          refunded: true,
+          amountCents: refundResult.refundedAmountCents || inv.valor_centavos,
+          invoiceId: inv.id,
+          refundedAt: refundResult.refundedAt,
+        };
+      } else {
+        withdrawalRefund = {
+          refunded: true,
+          amountCents: 0,
+          invoiceId: '',
+          refundedAt: now.toISOString(),
+        };
+      }
+
+      const freePlan = await this.getPlanBySlug('gratuito');
+      const [updated] = await db
+        .update(subscriptions)
+        .set({
+          status: 'expirada',
+          planId: freePlan.id,
+          scheduledPlanId: null,
+          canceladaEm: now,
+          fim: now,
+          motivoCancelamento: `${reason} (CDC art. 49 — Direito de arrependimento em 7 dias)`,
+          proximaCobranca: null,
+          atualizadoEm: now,
+        })
+        .where(eq(subscriptions.id, subscriptionId))
+        .returning();
+
+      await db
+        .update(providerProfiles)
+        .set({ planSlug: 'gratuito' })
+        .where(eq(providerProfiles.id, sub.providerProfileId));
+
+      await forfeitLaunchOfferOnCancel(subscriptionId, now);
+
+      await this.logEvent({
+        subscriptionId: sub.id,
+        evento: 'subscription_canceled',
+        dadosAnteriores: { status: sub.status, planId: sub.planId },
+        dadosNovos: {
+          status: 'expirada',
+          cdcArt49WithdrawalRight: true,
+          withdrawalRefund,
+          motivo: reason,
+        },
+      });
+
+      return { ...updated, withdrawalRefund };
     }
 
     const [updated] = await db
@@ -636,7 +758,7 @@ export class SubscriptionLifecycleService {
       },
     });
 
-    return updated;
+    return { ...updated, withdrawalRefund: null };
   }
 
   /**
@@ -648,6 +770,7 @@ export class SubscriptionLifecycleService {
     targetPlanSlug: string;
     targetCycle?: BillingCycle;
     paymentMethod?: PaymentMethod;
+    cpfCnpj?: string;
     now?: Date;
   }) {
     const now = params.now || new Date();
@@ -687,6 +810,42 @@ export class SubscriptionLifecycleService {
       now,
     });
 
+    // Renewal date remains stable on monthly->monthly upgrade; extends if switching to annual
+    const newFim =
+      currentCycle === 'mensal' && targetCycle === 'anual'
+        ? calculateCycleEndDate(now, 'anual')
+        : sub.fim;
+
+    let resolvedGatewayCustomerId = sub.gatewayCustomerId;
+    if (!resolvedGatewayCustomerId && (proRataCents > 0 || newPriceCents > 0)) {
+      const [profile] = await db
+        .select()
+        .from(providerProfiles)
+        .where(eq(providerProfiles.id, sub.providerProfileId));
+      let ownerEmail = 'contato@recontrate.app.br';
+      if (profile?.userId) {
+        const { rows: userRows } = await pool.query<{ email: string }>(
+          'SELECT email FROM users WHERE id = $1::uuid LIMIT 1',
+          [profile.userId]
+        );
+        if (userRows[0]?.email) {
+          ownerEmail = userRows[0].email;
+        }
+      }
+      const cpfCnpj = params.cpfCnpj || profile?.cpfCnpjNormalizado || undefined;
+      if (profile || cpfCnpj) {
+        const customer = await this.billing.createCustomer({
+          providerProfileId: sub.providerProfileId,
+          name: profile?.professionalName || profile?.name || 'Prestador Recontrate',
+          email: ownerEmail,
+          phone: profile?.whatsapp || '',
+          cpfCnpj,
+        });
+        resolvedGatewayCustomerId = customer.gatewayCustomerId;
+      }
+    }
+
+    let resolvedGatewaySubscriptionId = sub.gatewaySubscriptionId;
     if (sub.gatewaySubscriptionId) {
       await this.billing.updateSubscription(sub.gatewaySubscriptionId, {
         planSlug: targetPlan.slug,
@@ -694,13 +853,24 @@ export class SubscriptionLifecycleService {
         cycle: targetCycle,
         amountCents: newPriceCents,
       });
+    } else if (newPriceCents > 0) {
+      if (!resolvedGatewayCustomerId) {
+        throw new Error(
+          'Informe um CPF ou CNPJ válido para ativar a cobrança recorrente desta assinatura.'
+        );
+      }
+      const createdGwSub = await this.billing.createSubscription({
+        gatewayCustomerId: resolvedGatewayCustomerId,
+        planSlug: targetPlan.slug,
+        planName: targetPlan.nome,
+        cycle: targetCycle,
+        amountCents: newPriceCents,
+        paymentMethod: params.paymentMethod || 'pix',
+        nextDueDate: newFim.toISOString().slice(0, 10),
+        externalReference: sub.id,
+      });
+      resolvedGatewaySubscriptionId = createdGwSub.gatewaySubscriptionId;
     }
-
-    // Renewal date remains stable on monthly->monthly upgrade; extends if switching to annual
-    const newFim =
-      currentCycle === 'mensal' && targetCycle === 'anual'
-        ? calculateCycleEndDate(now, 'anual')
-        : sub.fim;
 
     const [updatedSub] = await db
       .update(subscriptions)
@@ -709,6 +879,8 @@ export class SubscriptionLifecycleService {
         scheduledPlanId: null,
         ciclo: targetCycle,
         status: 'ativa',
+        gatewayCustomerId: resolvedGatewayCustomerId,
+        gatewaySubscriptionId: resolvedGatewaySubscriptionId,
         fim: newFim,
         proximaCobranca: newFim,
         atualizadoEm: now,
@@ -722,9 +894,9 @@ export class SubscriptionLifecycleService {
       .where(eq(providerProfiles.id, sub.providerProfileId));
 
     let proRataInvoice = null;
-    if (proRataCents > 0 && sub.gatewayCustomerId) {
+    if (proRataCents > 0 && resolvedGatewayCustomerId) {
       const checkout = await this.billing.createCheckoutSession({
-        gatewayCustomerId: sub.gatewayCustomerId,
+        gatewayCustomerId: resolvedGatewayCustomerId,
         subscriptionId: sub.id,
         planSlug: targetPlan.slug,
         planName: `${targetPlan.nome} (Pro-Rata Upgrade)`,

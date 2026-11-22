@@ -13,17 +13,19 @@ import {
 import {
   ProviderProfile,
   ScreenId,
+  ServiceRequest,
   SubstituteReferral,
 } from '../types/confiare';
 import {
   calculateCompositeScore,
+  hasSufficientReputationHistory,
   validateSubstituteSelection,
 } from '../utils/marketplaceRules';
 
 interface SubstituteReferralScreenProps {
   providers: ProviderProfile[];
   currentReferral: SubstituteReferral;
-  onUpdateReferral: (updated: SubstituteReferral) => void;
+  onUpdateReferral: (updated: SubstituteReferral) => Promise<void> | void;
   onAcceptSubstitute: (substituteProviderId: string) => void;
   onNavigate: (screen: ScreenId, providerId?: string) => void;
 }
@@ -47,6 +49,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
   const [customNote, setCustomNote] = useState(currentReferral.customNote);
   const [validationError, setValidationError] = useState('');
   const [providerSavedSuccess, setProviderSavedSuccess] = useState(false);
+  const [savingReferral, setSavingReferral] = useState(false);
 
   const originalProvider =
     providers.find((p) => p.id === currentReferral.originalProviderId) ||
@@ -66,7 +69,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
     );
   };
 
-  const handleSaveProviderReferral = (e: React.FormEvent) => {
+  const handleSaveProviderReferral = async (e: React.FormEvent) => {
     e.preventDefault();
     const check = validateSubstituteSelection(
       originalProvider.id,
@@ -78,15 +81,26 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
       return;
     }
     setValidationError('');
-    onUpdateReferral({
-      ...currentReferral,
-      substituteProviderIds: selectedSubIds,
-      reasonCategory,
-      customNote: customNote.trim(),
-      clientAcceptedProviderId: undefined,
-      createdAt: 'Agora mesmo',
-    });
-    setProviderSavedSuccess(true);
+    setProviderSavedSuccess(false);
+    setSavingReferral(true);
+    try {
+      await onUpdateReferral({
+        ...currentReferral,
+        substituteProviderIds: selectedSubIds,
+        reasonCategory,
+        customNote: customNote.trim(),
+        clientAcceptedProviderId: undefined,
+        createdAt: 'Agora mesmo',
+      });
+      setProviderSavedSuccess(true);
+    } catch (err) {
+      setValidationError(
+        (err as Error).message ||
+        'Não foi possível salvar a indicação de substituto no servidor.'
+      );
+    } finally {
+      setSavingReferral(false);
+    }
   };
 
   const acceptedProvider = providers.find(
@@ -114,11 +128,10 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
           <button
             type="button"
             onClick={() => setPerspective('cliente')}
-            className={`min-h-[38px] px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-center ${
-              perspective === 'cliente'
-                ? 'bg-brand-primary text-white font-semibold'
-                : 'text-brand-ink/70 hover:text-brand-ink'
-            }`}
+            className={`min-h-[38px] px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-center ${perspective === 'cliente'
+              ? 'bg-brand-primary text-white font-semibold'
+              : 'text-brand-ink/70 hover:text-brand-ink'
+              }`}
           >
             Visão do Cliente (Receber Indicação)
           </button>
@@ -128,11 +141,10 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
               setPerspective('prestador');
               setProviderSavedSuccess(false);
             }}
-            className={`min-h-[38px] px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-center ${
-              perspective === 'prestador'
-                ? 'bg-brand-link text-white font-semibold'
-                : 'text-brand-ink/70 hover:text-brand-ink'
-            }`}
+            className={`min-h-[38px] px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-center ${perspective === 'prestador'
+              ? 'bg-brand-link text-white font-semibold'
+              : 'text-brand-ink/70 hover:text-brand-ink'
+              }`}
           >
             Visão do Prestador (Indicar até 2)
           </button>
@@ -213,6 +225,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {indicatedProviders.map((sub) => {
+                const subHasScore = hasSufficientReputationHistory(sub);
                 const subScore = calculateCompositeScore(sub).totalScore;
                 const isAccepted =
                   currentReferral.clientAcceptedProviderId === sub.id;
@@ -220,11 +233,10 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
                 return (
                   <div
                     key={sub.id}
-                    className={`bg-white rounded-3xl p-5 sm:p-6 border transition-all flex flex-col justify-between gap-5 min-w-0 ${
-                      isAccepted
-                        ? 'border-2 border-brand-link'
-                        : 'border-brand-primary/10'
-                    }`}
+                    className={`bg-white rounded-3xl p-5 sm:p-6 border transition-all flex flex-col justify-between gap-5 min-w-0 ${isAccepted
+                      ? 'border-2 border-brand-link'
+                      : 'border-brand-primary/10'
+                      }`}
                   >
                     <div className="space-y-4">
                       <div className="flex items-start justify-between gap-2">
@@ -244,7 +256,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
 
                         <div className="text-right font-mono tabular-nums shrink-0">
                           <span className="text-sm sm:text-base font-bold text-brand-ink">
-                            ★ {subScore.toFixed(2)}
+                            {subHasScore ? `★ ${subScore.toFixed(2)}` : 'Em avaliação inicial'}
                           </span>
                           <p className="text-[11px] text-brand-ink/60">
                             {sub.reviewsCount} avaliações
@@ -376,24 +388,24 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
                     key={col.id}
                     type="button"
                     onClick={() => toggleSubSelection(col.id)}
-                    className={`text-left p-4 rounded-2xl border transition-all cursor-pointer min-w-0 ${
-                      selected
-                        ? 'bg-brand-primary text-white border-brand-primary'
-                        : 'bg-brand-background/60 text-brand-ink border-brand-primary/15'
-                    }`}
+                    className={`text-left p-4 rounded-2xl border transition-all cursor-pointer min-w-0 ${selected
+                      ? 'bg-brand-primary text-white border-brand-primary'
+                      : 'bg-brand-background/60 text-brand-ink border-brand-primary/15'
+                      }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-display font-bold text-sm truncate">
                         {selected ? `✓ ${col.name}` : col.name}
                       </span>
                       <span className="font-mono text-xs text-brand-accent-strong shrink-0">
-                        ★ {col.ratingAvg.toFixed(2)}
+                        {hasSufficientReputationHistory(col)
+                          ? `★ ${col.ratingAvg.toFixed(2)}`
+                          : 'Em avaliação inicial'}
                       </span>
                     </div>
                     <p
-                      className={`text-xs mt-1 ${
-                        selected ? 'text-white/80' : 'text-brand-ink/70'
-                      }`}
+                      className={`text-xs mt-1 ${selected ? 'text-white/80' : 'text-brand-ink/70'
+                        }`}
                     >
                       {col.mentorName
                         ? `Seu apadrinhado na rede`
@@ -453,9 +465,12 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
 
           <button
             type="submit"
-            className="w-full sm:w-auto min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-sm transition-colors cursor-pointer"
+            disabled={savingReferral}
+            className="w-full sm:w-auto min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover disabled:opacity-60 text-white font-display font-semibold text-sm transition-colors cursor-pointer"
           >
-            Enviar indicação de substituto ao cliente
+            {savingReferral
+              ? 'Salvando indicação...'
+              : 'Enviar indicação de substituto ao cliente'}
           </button>
         </form>
       )}
@@ -465,10 +480,14 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
 
 interface PostServiceReviewScreenProps {
   providers: ProviderProfile[];
+  serviceRequests?: ServiceRequest[];
   selectedProviderId: string;
+  onCompleteServiceRequest?: (requestId: string) => Promise<void> | void;
   onSubmitReview: (
     providerId: string,
     reviewData: {
+      serviceRequestId: string;
+      displayPublicName?: boolean;
       clientName: string;
       neighborhood: string;
       serviceTitle: string;
@@ -479,23 +498,33 @@ interface PostServiceReviewScreenProps {
       wouldRecommend: boolean;
       comment: string;
     }
-  ) => void;
+  ) => Promise<void> | void;
   onNavigate: (screen: ScreenId, providerId?: string) => void;
 }
 
 export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = ({
   providers,
+  serviceRequests = [],
   selectedProviderId,
+  onCompleteServiceRequest,
   onSubmitReview,
   onNavigate,
 }) => {
   const [targetProviderId, setTargetProviderId] = useState<string>(
-    selectedProviderId || providers[0].id
+    selectedProviderId || providers[0]?.id || ''
   );
   const provider =
     providers.find((p) => p.id === targetProviderId) || providers[0];
 
-  const [clientName, setClientName] = useState('Mariana Souza');
+  const [selectedRequestId, setSelectedRequestId] = useState<string>(
+    serviceRequests.find((r) => r.status === 'concluido')?.id ||
+    serviceRequests[0]?.id ||
+    ''
+  );
+  const [completingRequest, setCompletingRequest] = useState(false);
+  const [displayPublicName, setDisplayPublicName] = useState(false);
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [clientName, setClientName] = useState('');
   const [neighborhood, setNeighborhood] = useState('Pinheiros');
   const [serviceTitle, setServiceTitle] = useState(
     'Substituição de disjuntor DR e revisão de tomada 20A'
@@ -511,30 +540,84 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
+  const selectedRequest = serviceRequests.find((r) => r.id === selectedRequestId);
+
   const previewAverage =
     Math.round(((qualidade + pontualidade + comunicacao + organizacao) / 4) * 10) /
     10;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleMarkRequestComplete = async () => {
+    if (!selectedRequestId || !onCompleteServiceRequest) return;
+    setError('');
+    setCompletingRequest(true);
+    try {
+      await onCompleteServiceRequest(selectedRequestId);
+    } catch (err) {
+      setError(
+        (err as Error).message ||
+        'Não foi possível marcar a solicitação como concluída.'
+      );
+    } finally {
+      setCompletingRequest(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!provider) {
+      setError('Nenhum profissional selecionado para avaliação.');
+      return;
+    }
+    if (!selectedRequestId) {
+      setError(
+        'Selecione uma solicitação de serviço concluída para vincular esta avaliação.'
+      );
+      return;
+    }
     if (!serviceTitle.trim() || !comment.trim()) {
       setError('Informe o serviço realizado e escreva seu depoimento sobre o atendimento.');
       return;
     }
     setError('');
-    onSubmitReview(provider.id, {
-      clientName,
-      neighborhood,
-      serviceTitle,
-      qualidade,
-      pontualidade,
-      comunicacao,
-      organizacao,
-      wouldRecommend,
-      comment,
-    });
-    setSubmitted(true);
+    setSubmitted(false);
+    setSubmittingReview(true);
+    try {
+      await onSubmitReview(provider.id, {
+        serviceRequestId: selectedRequestId,
+        displayPublicName,
+        clientName,
+        neighborhood,
+        serviceTitle,
+        qualidade,
+        pontualidade,
+        comunicacao,
+        organizacao,
+        wouldRecommend,
+        comment,
+      });
+      setSubmitted(true);
+    } catch (err) {
+      setError(
+        (err as Error).message ||
+        'Não foi possível publicar a avaliação. Verifique se o atendimento está concluído e vinculado ao prestador.'
+      );
+    } finally {
+      setSubmittingReview(false);
+    }
   };
+
+  if (!provider) {
+    return (
+      <div className="max-w-xl mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 text-center space-y-3 my-8">
+        <h2 className="font-display font-bold text-xl text-brand-ink">
+          Nenhum profissional disponível para avaliação
+        </h2>
+        <p className="text-xs text-brand-ink/70">
+          Conclua uma solicitação com um profissional verificado para liberar a avaliação pós-atendimento.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 pb-12">
@@ -547,7 +630,7 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
             Avaliação pós-atendimento
           </h1>
           <p className="text-sm text-brand-ink/75 mt-1">
-            Avaliações só podem ser registradas após atendimento vinculado e atualizam imediatamente a Nota Composta do profissional e a lista “Meus profissionais de confiança”.
+            Avaliações só podem ser registradas após atendimento concluído e atualizam a Nota Composta verificada após atingir histórico mínimo.
           </p>
         </div>
 
@@ -581,10 +664,10 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
             >
               <div className="space-y-1">
                 <p className="text-xs text-brand-accent-contrast font-semibold">
-                  ✓ Avaliação publicada e Nota Composta recalculada!
+                  ✓ Avaliação verificada salva com sucesso!
                 </p>
                 <p className="text-sm font-display font-semibold">
-                  {provider.name} agora possui {provider.reviewsCount} avaliações verificadas e foi salvo em Meus Profissionais.
+                  {provider.name} agora possui {provider.reviewsCount} avaliações registradas.
                 </p>
               </div>
               <button
@@ -596,6 +679,49 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
               </button>
             </div>
           )}
+
+          <div className="p-4 rounded-2xl bg-brand-background/70 border border-brand-primary/10 space-y-2.5 text-xs">
+            <label
+              htmlFor="rev-request"
+              className="block font-semibold text-brand-ink"
+            >
+              Solicitação de serviço concluída vinculada *
+            </label>
+            {serviceRequests.length === 0 ? (
+              <p className="text-brand-ink/75">
+                Nenhuma solicitação de serviço encontrada na sua conta. Crie e conclua uma solicitação para habilitar uma avaliação auditável.
+              </p>
+            ) : (
+              <div className="flex flex-col sm:flex-row gap-2">
+                <select
+                  id="rev-request"
+                  value={selectedRequestId}
+                  onChange={(e) => setSelectedRequestId(e.target.value)}
+                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-brand-primary/15 text-xs text-brand-ink"
+                >
+                  {serviceRequests.map((req) => (
+                    <option key={req.id} value={req.id}>
+                      {req.problemTitle} ({req.status})
+                    </option>
+                  ))}
+                </select>
+                {selectedRequest &&
+                  selectedRequest.status !== 'concluido' &&
+                  onCompleteServiceRequest && (
+                    <button
+                      type="button"
+                      disabled={completingRequest}
+                      onClick={handleMarkRequestComplete}
+                      className="min-h-[40px] px-4 py-2 rounded-xl bg-brand-primary text-white font-semibold cursor-pointer whitespace-nowrap disabled:opacity-60"
+                    >
+                      {completingRequest
+                        ? 'Concluindo...'
+                        : 'Marcar atendimento como concluído'}
+                    </button>
+                  )}
+              </div>
+            )}
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -688,11 +814,10 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
                         type="button"
                         aria-label={`${crit.label}: ${star} estrelas`}
                         onClick={() => crit.setter(star)}
-                        className={`w-9 h-9 rounded-lg font-mono text-xs font-bold transition-colors cursor-pointer ${
-                          star <= crit.val
-                            ? 'bg-brand-accent-strong text-white'
-                            : 'bg-white text-brand-ink/50 border border-brand-primary/10'
-                        }`}
+                        className={`w-9 h-9 rounded-lg font-mono text-xs font-bold transition-colors cursor-pointer ${star <= crit.val
+                          ? 'bg-brand-accent-strong text-white'
+                          : 'bg-white text-brand-ink/50 border border-brand-primary/10'
+                          }`}
                       >
                         ★
                       </button>
@@ -713,22 +838,20 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
                 <button
                   type="button"
                   onClick={() => setWouldRecommend(true)}
-                  className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
-                    wouldRecommend
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-white text-brand-ink'
-                  }`}
+                  className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${wouldRecommend
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-white text-brand-ink'
+                    }`}
                 >
                   Sim, recomendo
                 </button>
                 <button
                   type="button"
                   onClick={() => setWouldRecommend(false)}
-                  className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
-                    !wouldRecommend
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-white text-brand-ink'
-                  }`}
+                  className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${!wouldRecommend
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-white text-brand-ink'
+                    }`}
                 >
                   Não
                 </button>
@@ -750,13 +873,30 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
                 className="w-full px-4 py-2.5 rounded-xl bg-brand-background/60 border border-brand-primary/15 text-sm text-brand-ink"
               />
             </div>
+
+            <label className="flex items-start gap-2.5 cursor-pointer p-3.5 rounded-xl bg-brand-background/70">
+              <input
+                type="checkbox"
+                checked={displayPublicName}
+                onChange={(e) => setDisplayPublicName(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-brand-link rounded"
+              />
+              <span className="text-xs text-brand-ink leading-relaxed">
+                Exibir meu nome completo publicamente nesta avaliação (opcional — por padrão exibimos apenas de forma anonimizada, ex.: João S.).
+              </span>
+            </label>
           </div>
 
           <button
             type="submit"
-            className="min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-sm transition-colors inline-flex items-center gap-2 cursor-pointer"
+            disabled={submittingReview}
+            className="min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover disabled:opacity-60 text-white font-display font-semibold text-sm transition-colors inline-flex items-center gap-2 cursor-pointer"
           >
-            <span>Publicar avaliação verificada</span>
+            <span>
+              {submittingReview
+                ? 'Publicando avaliação...'
+                : 'Publicar avaliação verificada'}
+            </span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
@@ -764,8 +904,8 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
         {/* Right Side: Impacto na Reputação */}
         <aside className="lg:col-span-4 space-y-4">
           <div className="bg-brand-primary text-white rounded-3xl p-6 space-y-4">
-          <p className="text-xs font-semibold text-brand-accent-contrast">
-            Integridade de Avaliações
+            <p className="text-xs font-semibold text-brand-accent-contrast">
+              Integridade de Avaliações
             </p>
             <h2 className="font-display font-bold text-lg">
               Como sua avaliação protege toda a comunidade

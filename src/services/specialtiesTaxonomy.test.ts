@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import { createApp } from '../server/index';
 import { ensureSchemaAndSeed, pool } from '../db/index';
+import { setEmailDeliveryObserverForTests } from './essentialIntegrations';
 
 let server: Server;
 let baseUrl: string;
@@ -22,6 +23,7 @@ test.before(async () => {
 });
 
 test.after(async () => {
+  setEmailDeliveryObserverForTests(null);
   if (server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
@@ -33,7 +35,14 @@ async function createProviderAndAdminTokens() {
   const password = 'Confiare#2026!Password';
 
   const provEmail = `prov.spec.${ts}@example.com`;
-  const regProv = (await (
+  let provVfyToken = '';
+  setEmailDeliveryObserverForTests((d) => {
+    if (d.to === provEmail && d.variables.verificationToken) {
+      provVfyToken = d.variables.verificationToken;
+    }
+  });
+  let vfyProv: any;
+  try {
     await fetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -45,37 +54,55 @@ async function createProviderAndAdminTokens() {
         neighborhood: 'Pinheiros',
         role: 'prestador',
         category: 'Elétrica',
+        birthDate: '1990-05-15',
         lgpdConsent: true,
       }),
-    })
-  ).json()) as any;
-  await fetch(`${baseUrl}/api/auth/verify-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ verificationToken: regProv.verificationToken }),
-  });
+    });
+    vfyProv = (await (
+      await fetch(`${baseUrl}/api/auth/verify-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verificationToken: provVfyToken }),
+      })
+    ).json()) as any;
+  } finally {
+    setEmailDeliveryObserverForTests(null);
+  }
 
   const adminEmail = `admin.spec.${ts}@example.com`;
-  const regAdmin = (await (
-    await fetch(`${baseUrl}/api/auth/register`, {
+  let adminVfyToken = '';
+  setEmailDeliveryObserverForTests((d) => {
+    if (d.to === adminEmail && d.variables.verificationToken) {
+      adminVfyToken = d.variables.verificationToken;
+    }
+  });
+  let regAdmin: any;
+  try {
+    regAdmin = (await (
+      await fetch(`${baseUrl}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: adminEmail,
+          password,
+          fullName: 'Admin Taxonomia Confiare',
+          phone: '(11) 99123-0001',
+          neighborhood: 'Pinheiros',
+          role: 'cliente',
+          birthDate: '1990-05-15',
+          lgpdConsent: true,
+        }),
+      })
+    ).json()) as any;
+    await fetch(`${baseUrl}/api/auth/verify-email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: adminEmail,
-        password,
-        fullName: 'Admin Taxonomia Confiare',
-        phone: '(11) 99123-0001',
-        neighborhood: 'Pinheiros',
-        role: 'cliente',
-        lgpdConsent: true,
-      }),
-    })
-  ).json()) as any;
-  await fetch(`${baseUrl}/api/auth/verify-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ verificationToken: regAdmin.verificationToken }),
-  });
+      body: JSON.stringify({ verificationToken: adminVfyToken }),
+    });
+  } finally {
+    setEmailDeliveryObserverForTests(null);
+  }
+
   await pool.query(
     `UPDATE users SET roles = ARRAY['admin']::TEXT[], active_role = 'admin', onboarding_completed = true WHERE id = $1`,
     [regAdmin.user.userId]
@@ -89,8 +116,8 @@ async function createProviderAndAdminTokens() {
   ).json()) as any;
 
   return {
-    providerToken: regProv.token as string,
-    providerProfileId: regProv.user.providerProfileId as string,
+    providerToken: vfyProv.token as string,
+    providerProfileId: vfyProv.user.providerProfileId as string,
     adminToken: loginAdmin.token as string,
   };
 }

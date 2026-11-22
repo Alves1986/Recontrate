@@ -17,6 +17,11 @@ import {
 import { CategoryName, ProviderProfile } from '../types/confiare';
 import { CATEGORIES_LIST } from '../data/seedData';
 import { BrandLogo } from './BrandLogo';
+import {
+  CURRENT_PRIVACY_VERSION,
+  CURRENT_TERMS_VERSION,
+  getLegalIdentity,
+} from '../config/legalIdentity';
 
 const CATEGORY_ICONS: Record<CategoryName, React.ReactNode> = {
   Eletricista: <Zap className="w-5 h-5 text-brand-link" />,
@@ -43,6 +48,7 @@ export const PublicLandingPage: React.FC<{
   const [interestCategory, setInterestCategory] = useState<string>('Eletricista');
   const [interestConsent, setInterestConsent] = useState(false);
   const [interestHoneypot, setInterestHoneypot] = useState('');
+  const [interestSubmitting, setInterestSubmitting] = useState(false);
   const [interestFeedback, setInterestFeedback] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -62,7 +68,7 @@ export const PublicLandingPage: React.FC<{
     onStartSearch(problemInput, locationInput);
   };
 
-  const handleInterestSubmit = (e: React.FormEvent) => {
+  const handleInterestSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setInterestFeedback(null);
     if (interestHoneypot.trim() !== '') {
@@ -79,17 +85,53 @@ export const PublicLandingPage: React.FC<{
       setInterestFeedback({
         type: 'error',
         message:
-          'Marque a caixa de consentimento para autorizar o registro de interesse no piloto.',
+          'Marque a caixa de consentimento para autorizar o registro na lista de interesse.',
       });
       return;
     }
-    setInterestFeedback({
-      type: 'success',
-      message: `Interesse registrado localmente no ambiente de preview para ${interestCategory} em ${interestLocation}. Nenhum dado foi enviado para serviços externos.`,
-    });
-    setInterestEmail('');
-    setInterestLocation('');
-    setInterestConsent(false);
+
+    setInterestSubmitting(true);
+    try {
+      const res = await fetch('/api/public/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: interestEmail.trim(),
+          location: interestLocation.trim(),
+          category: interestCategory,
+          roleInterest: 'cliente',
+          lgpdConsent: interestConsent,
+          honeypot: interestHoneypot,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.ok) {
+        setInterestFeedback({
+          type: 'error',
+          message:
+            body?.error ||
+            'Não foi possível registrar seu interesse no momento. Tente novamente.',
+        });
+        return;
+      }
+
+      setInterestFeedback({
+        type: 'success',
+        message:
+          body.message ||
+          `Interesse registrado com sucesso para ${interestCategory} em ${interestLocation}.`,
+      });
+      setInterestEmail('');
+      setInterestLocation('');
+      setInterestConsent(false);
+    } catch {
+      setInterestFeedback({
+        type: 'error',
+        message: 'Erro de conexão ao salvar seu interesse. Tente novamente.',
+      });
+    } finally {
+      setInterestSubmitting(false);
+    }
   };
 
   return (
@@ -132,7 +174,7 @@ export const PublicLandingPage: React.FC<{
                       value={problemInput}
                       onChange={(e) => setProblemInput(e.target.value)}
                       placeholder="Ex.: Disjuntor desarmando, vazamento..."
-                      className="w-full bg-transparent text-sm font-medium text-brand-ink placeholder:text-brand-ink/45 focus:outline-none"
+                      className="w-full bg-transparent text-sm font-medium text-brand-ink placeholder:text-brand-ink/70 focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-lg"
                     />
                   </div>
                 </div>
@@ -142,7 +184,7 @@ export const PublicLandingPage: React.FC<{
                   <div className="w-full min-w-0">
                     <label
                       htmlFor="landing-search-where"
-                      className="block text-[11px] font-medium text-brand-ink/65"
+                      className="block text-[11px] font-medium text-brand-ink/75"
                     >
                       Onde?
                     </label>
@@ -152,7 +194,7 @@ export const PublicLandingPage: React.FC<{
                       value={locationInput}
                       onChange={(e) => setLocationInput(e.target.value)}
                       placeholder="Bairro ou cidade"
-                      className="w-full bg-transparent text-sm font-medium text-brand-ink placeholder:text-brand-ink/45 focus:outline-none"
+                      className="w-full bg-transparent text-sm font-medium text-brand-ink placeholder:text-brand-ink/70 focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-lg"
                     />
                   </div>
                 </div>
@@ -591,13 +633,13 @@ export const PublicLandingPage: React.FC<{
           <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-4">
             <div className="space-y-1">
               <p className="text-xs font-semibold text-brand-accent-strong">
-                Lista de Interesse por Localidade · Piloto
+                Lista de Interesse por Localidade
               </p>
               <h3 className="font-display font-bold text-lg text-brand-ink">
                 Sua cidade ou bairro ainda não tem cobertura confirmada?
               </h3>
-              <p className="text-xs text-brand-ink/70 leading-relaxed">
-                Registre seu interesse com dados mínimos (sem CPF, RG ou endereço completo). Na fase de preview, este registro fica restrito ao ambiente de teste e não envia dados para terceiros.
+              <p className="text-xs text-brand-ink/75 leading-relaxed">
+                Registre seu interesse com dados mínimos (sem CPF, RG ou endereço completo). Seu pedido é gravado com consentimento explícito para avisarmos quando novos profissionais verificados entrarem na região.
               </p>
             </div>
 
@@ -693,13 +735,13 @@ export const PublicLandingPage: React.FC<{
                   className="mt-0.5"
                 />
                 <span className="text-brand-ink/80 leading-relaxed">
-                  Autorizo o registro mínimo para aviso sobre o piloto na minha localidade, ciente dos{' '}
+                  Autorizo o uso do meu e-mail e região informada para aviso sobre disponibilidade de atendimento na minha localidade, conforme os{' '}
                   <button
                     type="button"
                     onClick={() => onNavigateUrl('/privacidade')}
                     className="underline font-semibold text-brand-link cursor-pointer"
                   >
-                    avisos de privacidade em revisão
+                    Termos e Política de Privacidade (LGPD)
                   </button>
                   .
                 </span>
@@ -707,9 +749,10 @@ export const PublicLandingPage: React.FC<{
 
               <button
                 type="submit"
-                className="w-full min-h-[42px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold cursor-pointer"
+                disabled={interestSubmitting}
+                className="w-full min-h-[42px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover disabled:opacity-60 text-white font-display font-semibold cursor-pointer"
               >
-                Enviar interesse e receber novidades
+                {interestSubmitting ? 'Registrando...' : 'Enviar interesse e receber novidades'}
               </button>
             </form>
           </div>
@@ -945,48 +988,160 @@ export const ForProvidersPage: React.FC<{
 
 export const TermsAndPrivacyPage: React.FC<{
   mode: 'termos' | 'privacidade';
-}> = ({ mode }) => {
+  onNavigateUrl?: (path: string) => void;
+}> = ({ mode, onNavigateUrl }) => {
   const isTerms = mode === 'termos';
-  const projectContact =
-    import.meta.env.VITE_PROJECT_CONTACT_EMAIL ||
-    'suporte@recontrate.com.br';
+  const legal = getLegalIdentity();
 
   return (
-    <div className="max-w-4xl mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 space-y-6 mb-12">
-      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-primary/10 text-brand-primary text-xs font-semibold">
-        <span>Recontrate · Documentação Comercial e LGPD</span>
+    <div className="max-w-4xl mx-auto bg-white rounded-3xl p-6 sm:p-10 border border-brand-primary/10 space-y-6 mb-12 text-xs sm:text-sm text-brand-ink/85 leading-relaxed">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-primary/10 text-brand-primary text-xs font-semibold">
+          <span>Recontrate · Documentação Comercial, CDC & LGPD</span>
+        </div>
+        <span className="font-mono text-xs text-brand-ink/70">
+          Versão:{' '}
+          {isTerms ? CURRENT_TERMS_VERSION : CURRENT_PRIVACY_VERSION}
+        </span>
       </div>
+
       <h1 className="font-display font-bold text-2xl sm:text-3xl text-brand-ink">
-        {isTerms ? 'Termos de Uso e Assinaturas' : 'Política de Privacidade e LGPD'}
+        {isTerms
+          ? 'Termos de Uso e Condições Comerciais'
+          : 'Política de Privacidade, Cookies e Proteção de Dados (LGPD)'}
       </h1>
-      <div className="space-y-4 text-xs sm:text-sm text-brand-ink/80 leading-relaxed">
-        {isTerms ? (
-          <>
-            <p>
-              <strong>1. Objeto da plataforma:</strong> O <strong>Recontrate</strong> conecta clientes que precisam de serviços locais a profissionais autônomos avaliados, permitindo busca compatível, histórico de atendimentos, recontratação direta e indicação de substitutos.
-            </p>
-            <p>
-              <strong>2. Assinaturas, cobrança e cancelamento:</strong> Os planos comerciais para prestadores (Gratuito, Essencial, Profissional e Premium) são cobrados de forma recorrente via Asaas por Pix, Cartão de Crédito ou Boleto, sem fidelidade nem multa, com promoção de 90 dias grátis nos 3 primeiros meses para novos assinantes mensais. Upgrades têm efeito imediato com cobrança proporcional (pro-rata); downgrades e cancelamentos mantêm o acesso até o fim do período vigente. Em falhas de renovação aplica-se tolerância de 7 dias antes do retorno ao plano Gratuito.
-            </p>
-            <p>
-              <strong>3. Relação direta entre cliente e prestador:</strong> O prestador não paga comissão à plataforma. Todo orçamento, negociação de valor, execução técnica, prazo e pagamento pelo serviço prestado ocorrem diretamente entre cliente e profissional autônomo, fora da plataforma, sem intermediação financeira do Recontrate. Estrelas e avaliações nunca podem ser compradas.
-            </p>
-          </>
-        ) : (
-          <>
-            <p>
-              <strong>1. Coleta necessária e finalidade:</strong> Coletamos apenas os dados cadastrais indispensáveis para autenticação, exibição do perfil profissional, match local e emissão segura de faturas de assinatura junto ao gateway Asaas (como CPF/CNPJ quando contratado plano pago).
-            </p>
-            <p>
-              <strong>2. Proteção de contato pessoal:</strong> O telefone completo ou e-mail do cliente e do prestador só é liberado no contexto autorizado de atendimento (solicitação aceita com consentimento LGPD explícito), respeitando sigilo e controle de acesso por linha no banco de dados.
-            </p>
-            <p>
-              <strong>3. Direitos do titular e canal de contato:</strong> Você pode solicitar revisão ou exclusão de seus dados a qualquer momento pelo canal oficial de atendimento:{' '}
-              <code className="font-mono">{projectContact}</code>.
-            </p>
-          </>
-        )}
-      </div>
+
+      {/* Identificação do Controlador (Decreto 7.962/2013 & LGPD art. 41) */}
+      <section className="p-4 sm:p-5 rounded-2xl bg-brand-background/70 border border-brand-primary/10 space-y-1.5 text-xs">
+        <h2 className="font-display font-bold text-sm text-brand-ink">
+          Identificação do Controlador e Canais Oficiais (SAC / DPO)
+        </h2>
+        <p>
+          <strong>Razão Social:</strong> {legal.companyName}
+        </p>
+        <p>
+          <strong>CNPJ:</strong> <span className="font-mono">{legal.cnpj}</span>
+        </p>
+        <p>
+          <strong>Endereço físico:</strong> {legal.address}
+        </p>
+        <p>
+          <strong>SAC / Atendimento ao Consumidor (Decreto 7.962/2013):</strong>{' '}
+          <span className="font-mono">{legal.supportEmail}</span> ({legal.supportHours})
+        </p>
+        <p>
+          <strong>Encarregado pelo Tratamento de Dados (DPO — LGPD art. 41):</strong>{' '}
+          {legal.dpoName} · <span className="font-mono">{legal.dpoEmail}</span>
+        </p>
+      </section>
+
+      {isTerms ? (
+        <div className="space-y-4">
+          <p>
+            <strong>1. Objeto e Natureza da Plataforma:</strong> O{' '}
+            <strong>Recontrate</strong> é uma plataforma tecnológica de descoberta, histórico de recontratação e indicação de profissionais locais. O prestador de serviços atua como profissional autônomo ou pessoa jurídica independente, sem vínculo trabalhista, societário ou subordinação com a plataforma.
+          </p>
+          <p>
+            <strong>2. Idade Mínima e Veracidade Cadastral (LGPD art. 14):</strong>{' '}
+            O cadastro e a contratação de serviços são restritos a pessoas capazes maiores de <strong>18 anos completos</strong>. Cadastros de menores de 12 anos são tecnicamente bloqueados (LGPD art. 14 §1º).
+          </p>
+          <p>
+            <strong>3. Planos, Assinaturas e Transparência de Preços (CDC art. 31):</strong>{' '}
+            Os planos para prestadores (Gratuito R$ 0,00; Essencial R$ 29,90/mês ou R$ 299,00/ano; Profissional R$ 59,90/mês ou R$ 599,00/ano; Premium R$ 99,90/mês ou R$ 999,00/ano) exibem sempre o valor total final sem taxas ocultas, com renovação automática periódica via gateway <strong>Asaas</strong> (Pix, Cartão de Crédito ou Boleto). Novos assinantes mensais contam com promoção de lançamento de <strong>90 dias grátis (3 ciclos a R$ 0,00)</strong>, passando ao preço padrão no 4º ciclo após notificação prévia.
+          </p>
+          <p>
+            <strong>4. Negociação Direta e Comissão Zero:</strong> O prestador{' '}
+            <strong>não paga comissão à plataforma (0%)</strong>. Todo orçamento, escopo técnico, prazo, garantia legal do serviço e pagamento pelo atendimento ocorrem diretamente entre cliente e profissional, fora da plataforma.
+          </p>
+          <p>
+            <strong>5. Direito de Arrependimento (CDC art. 49) e Cancelamento Direto:</strong>{' '}
+            Em cumprimento ao art. 49 do Código de Defesa do Consumidor, o assinante pode desistir da contratação inicial no prazo de{' '}
+            <strong>7 (sete) dias corridos</strong> com estorno integral imediato dos valores eventualmente pagos. Após esse prazo, o cancelamento pode ser efetuado diretamente em 1 clique no painel do prestador sem multa nem fidelidade, preservando o acesso até o término do período já pago.
+          </p>
+          <p>
+            <strong>6. Meritocracia, Avaliações Auditáveis e Conteúdo de Terceiros (UGC):</strong>{' '}
+            Estrelas nunca podem ser compradas em nenhum plano. Avaliações exigem vínculo real com solicitação concluída e exibem o nome do avaliador anonimizado por padrão. Perfis, fotos ou relatos ilícitos ou que violem direitos autorais podem ser denunciados pelo botão{' '}
+            <em>Denunciar conteúdo / Direitos autorais</em> disponível nos perfis e no rodapé.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <p>
+            <strong>1. Dados Coletados e Bases Legais (LGPD art. 7º):</strong>{' '}
+            Coletamos exclusivamente os dados necessários para autenticação segura, verificação de identidade profissional, correspondência geográfica local (raio/bairro) e faturamento de assinaturas (CPF/CNPJ no gateway Asaas): execução de contrato (art. 7º, V), cumprimento de obrigação legal/fiscal (art. 7º, II), proteção ao crédito/prevenção à fraude (art. 7º, IX/X) e consentimento explícito para contato, cookies não essenciais e marketing opcional (art. 7º, I).
+          </p>
+
+          <p>
+            <strong>2. Sigilo de Contato e Proteção em Camadas (RLS):</strong>{' '}
+            O número de WhatsApp e o nome completo do cliente permanecem ocultos do prestador até a aceitação da oportunidade vinculada ao consentimento expresso da solicitação, com isolamento por políticas Row Level Security (RLS) no PostgreSQL.
+          </p>
+
+          <p>
+            <strong>3. Suboperadores e Compartilhamento para DPA:</strong>{' '}
+            Os dados estritamente necessários podem trafegar pelos seguintes suboperadores sob acordos de proteção de dados (DPA / cláusulas-padrão quando aplicável transferência internacional):
+          </p>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs border border-brand-primary/10">
+              <thead className="bg-brand-background">
+                <tr>
+                  <th className="p-2.5 border-b border-brand-primary/10">Suboperador</th>
+                  <th className="p-2.5 border-b border-brand-primary/10">Finalidade</th>
+                  <th className="p-2.5 border-b border-brand-primary/10">Localização / Salvaguarda</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-brand-primary/10">
+                <tr><td className="p-2.5 font-semibold">Neon (Lakebase PostgreSQL)</td><td className="p-2.5">Banco de dados relacional, RLS e Neon Auth</td><td className="p-2.5">EUA (AWS us-east-2 · TLS/AES-256)</td></tr>
+                <tr><td className="p-2.5 font-semibold">Vercel</td><td className="p-2.5">Hospedagem web e funções serverless HTTPS</td><td className="p-2.5">Infraestrutura global / Edge TLS</td></tr>
+                <tr><td className="p-2.5 font-semibold">Asaas</td><td className="p-2.5">Processamento de pagamentos e faturas Pix/Cartão/Boleto</td><td className="p-2.5">Brasil (instituição regulada)</td></tr>
+                <tr><td className="p-2.5 font-semibold">Resend</td><td className="p-2.5">Envio de e-mails transacionais (verificação, senha e alertas)</td><td className="p-2.5">EUA (criptografia em trânsito + RFC 8058)</td></tr>
+                <tr><td className="p-2.5 font-semibold">WhatsApp Cloud API / Meta</td><td className="p-2.5">Notificações operacionais autorizadas ao prestador</td><td className="p-2.5">Global (DPA Meta)</td></tr>
+                <tr><td className="p-2.5 font-semibold">Google (Maps & AdSense NPA)</td><td className="p-2.5">Geocodificação de bairros e anúncios contextuais não personalizados</td><td className="p-2.5">Anúncios apenas após consentimento ANPD</td></tr>
+                <tr><td className="p-2.5 font-semibold">AWS S3 / Neon Object Storage</td><td className="p-2.5">Armazenamento privado de documentos e portfólio (URL assinada)</td><td className="p-2.5">Criptografia em repouso e acesso privado</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            <strong>4. Tabela de Prazos de Retenção e Expurgo:</strong>
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs border border-brand-primary/10">
+              <thead className="bg-brand-background">
+                <tr>
+                  <th className="p-2.5 border-b border-brand-primary/10">Categoria de Dado</th>
+                  <th className="p-2.5 border-b border-brand-primary/10">Prazo de Retenção</th>
+                  <th className="p-2.5 border-b border-brand-primary/10">Base Legal / Expurgo</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-brand-primary/10">
+                <tr><td className="p-2.5 font-semibold">Cadastro, perfis e solicitações</td><td className="p-2.5">Enquanto ativa a conta ou até solicitação de exclusão</td><td className="p-2.5">Anonimização imediata em /app/privacidade</td></tr>
+                <tr><td className="p-2.5 font-semibold">Faturas, cobranças e comprovantes fiscais</td><td className="p-2.5">5 (cinco) anos após o exercício</td><td className="p-2.5">Obrigação fiscal/tributária (CTN art. 173 / LGPD art. 16, I)</td></tr>
+                <tr><td className="p-2.5 font-semibold">Logs de acesso, segurança e consentimentos</td><td className="p-2.5">Mínimo de 6 meses (acesso) / 5 anos (auditoria)</td><td className="p-2.5">Marco Civil da Internet (art. 15) e Res. ANPD 15/2024</td></tr>
+                <tr><td className="p-2.5 font-semibold">Tokens de verificação e redefinição de senha</td><td className="p-2.5">30 minutos (senha) / 24 horas (e-mail), hash único</td><td className="p-2.5">Limpeza automática após uso único</td></tr>
+                <tr><td className="p-2.5 font-semibold">Lista de descadastro de e-mail (suppression)</td><td className="p-2.5">Indeterminado (apenas hash/e-mail mínimo)</td><td className="p-2.5">Garantir respeito contínuo ao opt-out RFC 8058</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            <strong>5. Inteligência Artificial, Cookies (ANPD) e Direitos do Titular (Art. 18):</strong>{' '}
+            Recursos assistidos por algoritmo/IA (ordenação de matching e catálogo AI Gateway) são sinalizados na interface, sem uso dos seus dados para treinamento externo por padrão (opt-out ativo). Cookies não essenciais ficam bloqueados antes do aceite. Você pode exportar seus dados (JSON/CSV), gerenciar preferências ou solicitar exclusão definitiva em{' '}
+            {onNavigateUrl ? (
+              <button
+                type="button"
+                onClick={() => onNavigateUrl('/app/privacidade')}
+                className="underline font-semibold text-brand-link cursor-pointer"
+              >
+                Central de Privacidade LGPD (/app/privacidade)
+              </button>
+            ) : (
+              <span className="font-mono">/app/privacidade</span>
+            )}
+            .
+          </p>
+        </div>
+      )}
     </div>
   );
 };

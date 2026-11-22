@@ -5,10 +5,91 @@ import { createApp } from '../server/index';
 import { ensureSchemaAndSeed, pool } from '../db/index';
 import { withRlsContext } from '../db/rls';
 import { canUserAccessRoute, isProtectedRoutePath } from '../App';
-import { getRedirectPathForRole } from './authService';
+import {
+  getRedirectPathForRole,
+  getSessionSecretBytes,
+  resetSessionSecretCacheForTests,
+} from './authService';
+import { setEmailDeliveryObserverForTests } from './essentialIntegrations';
 
 let server: Server;
 let baseUrl: string;
+
+async function registerAndVerifyUser(input: {
+  email: string;
+  password: string;
+  fullName: string;
+  phone?: string;
+  neighborhood?: string;
+  role: 'cliente' | 'prestador';
+  category?: string;
+}) {
+  let capturedVfyToken = '';
+  const targetEmail = input.email.trim().toLowerCase();
+  setEmailDeliveryObserverForTests((delivery) => {
+    if (
+      delivery.to.trim().toLowerCase() === targetEmail &&
+      delivery.variables.verificationToken
+    ) {
+      capturedVfyToken = delivery.variables.verificationToken;
+    }
+  });
+  let regBody: any;
+  try {
+    const regRes = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: input.email,
+        password: input.password,
+        fullName: input.fullName,
+        phone: input.phone || '(11) 99123-4567',
+        neighborhood: input.neighborhood || 'Pinheiros',
+        role: input.role,
+        category: input.category,
+        birthDate: '1990-05-15',
+        lgpdConsent: true,
+      }),
+    });
+    assert.equal(regRes.status, 201);
+    regBody = (await regRes.json()) as any;
+    assert.equal(regBody.ok, true);
+    assert.equal(regBody.requiresEmailVerification, true);
+    assert.equal(regBody.verificationToken, undefined);
+    assert.equal(regBody.token, undefined);
+    assert.ok(capturedVfyToken.startsWith('vfy_'));
+  } finally {
+    setEmailDeliveryObserverForTests(null);
+  }
+
+  // Unverified account cannot login before email confirmation
+  const blockedLogin = await fetch(`${baseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: input.email, password: input.password }),
+  });
+  assert.equal(blockedLogin.status, 403);
+  const blockedLoginBody = (await blockedLogin.json()) as any;
+  assert.equal(blockedLoginBody.code, 'EMAIL_NOT_VERIFIED');
+
+  const vfyRes = await fetch(`${baseUrl}/api/auth/verify-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ verificationToken: capturedVfyToken }),
+  });
+  assert.equal(vfyRes.status, 200);
+  const vfyBody = (await vfyRes.json()) as any;
+  assert.equal(vfyBody.user.emailVerified, true);
+  assert.equal(vfyBody.user.status, 'ativo');
+  assert.ok(vfyBody.token);
+
+  return {
+    regBody,
+    capturedVfyToken,
+    token: vfyBody.token as string,
+    user: vfyBody.user,
+  };
+}
 
 test.before(async () => {
   await ensureSchemaAndSeed();
@@ -25,40 +106,38 @@ test.before(async () => {
 });
 
 test.after(async () => {
+  setEmailDeliveryObserverForTests(null);
   if (server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
   await pool.end();
 });
 
-test('1. Cadastro (Signup) & Confirmação de E-mail: cria usuário via Neon Auth sem armazenar senha na tabela users', async () => {
+test('1. Cadastro (Signup) & Confirmação de E-mail via e-mail (hash SHA-256, uso único, zero vazamento HTTP)', async () => {
   const email = `cliente.fase1.${Date.now()}@example.com`;
   const password = 'Confiare#2026!Password';
 
-  const regRes = await fetch(`${baseUrl}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email,
-      password,
-      fullName: 'Helena Cliente Fase 1',
-      phone: '(11) 99123-4567',
-      neighborhood: 'Pinheiros',
-      role: 'cliente',
-      lgpdConsent: true,
-    }),
+  const verified = await registerAndVerifyUser({
+    email,
+    password,
+    fullName: 'Helena Cliente Fase 1',
+    role: 'cliente',
   });
 
-  assert.equal(regRes.status, 201);
-  const regBody = (await regRes.json()) as any;
-  assert.equal(regBody.ok, true);
-  assert.equal(regBody.user.email, email);
-  assert.deepEqual(regBody.user.roles, ['cliente']);
-  assert.equal(regBody.user.onboardingCompleted, false);
-  assert.equal(regBody.user.redirectTo, '/app/onboarding');
-  assert.ok(regBody.verificationToken);
+  assert.equal(verified.user.email, email);
+  assert.deepEqual(verified.user.roles, ['cliente']);
+  assert.equal(verified.user.onboardingCompleted, true);
+  assert.equal(verified.user.redirectTo, '/app');
 
-  // Verify that application table `users` has no password_hash column
+  // Re-using verification token must fail (single-use)
+  const reuseVfy = await fetch(`${baseUrl}/api/auth/verify-email`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ verificationToken: verified.capturedVfyToken }),
+  });
+  assert.equal(reuseVfy.status, 400);
+
+  // Verify that application table `users` has no password_hash column and cleared plaintext token
   const colCheck = await pool.query(
     `SELECT column_name FROM information_schema.columns
      WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'password_hash'`
@@ -68,38 +147,21 @@ test('1. Cadastro (Signup) & Confirmação de E-mail: cria usuário via Neon Aut
     0,
     'Application table users must never store passwords'
   );
-
-  // Confirm email
-  const vfyRes = await fetch(`${baseUrl}/api/auth/verify-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ verificationToken: regBody.verificationToken }),
-  });
-  assert.equal(vfyRes.status, 200);
-  const vfyBody = (await vfyRes.json()) as any;
-  assert.equal(vfyBody.user.email_verified, true);
-  assert.equal(vfyBody.user.status, 'ativo');
 });
 
 test('2. Login, Onboarding & Redirecionamento por Papel (Cliente, Prestador, Padrinho, Admin)', async () => {
   const email = `prestador.fase1.${Date.now()}@example.com`;
   const password = 'Confiare#2026!Password';
 
-  const regRes = await fetch(`${baseUrl}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email,
-      password,
-      fullName: 'Marcos Prestador Fase 1',
-      phone: '(11) 99888-7766',
-      neighborhood: 'Vila Madalena',
-      role: 'prestador',
-      category: 'Eletricista',
-      lgpdConsent: true,
-    }),
+  const verified = await registerAndVerifyUser({
+    email,
+    password,
+    fullName: 'Marcos Prestador Fase 1',
+    phone: '(11) 99888-7766',
+    neighborhood: 'Vila Madalena',
+    role: 'prestador',
+    category: 'Eletricista',
   });
-  const regBody = (await regRes.json()) as any;
 
   // Wrong password must fail with 401
   const wrongLogin = await fetch(`${baseUrl}/api/auth/login`, {
@@ -114,7 +176,7 @@ test('2. Login, Onboarding & Redirecionamento por Papel (Cliente, Prestador, Pad
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${regBody.token}`,
+      Authorization: `Bearer ${verified.token}`,
     },
     body: JSON.stringify({
       city: 'São Paulo, SP',
@@ -144,40 +206,55 @@ test('2. Login, Onboarding & Redirecionamento por Papel (Cliente, Prestador, Pad
   assert.equal(getRedirectPathForRole('admin', true), '/admin');
 });
 
-test('3. Recuperação de Senha (forgot-password + reset-password no Neon Auth + login com nova senha)', async () => {
+test('3. Recuperação de Senha (token enviado só por e-mail, hash SHA-256 no banco e uso único)', async () => {
   const email = `recuperacao.fase1.${Date.now()}@example.com`;
   const oldPassword = 'OldPassword#2026!';
   const newPassword = 'NewPassword#2026!Strong';
 
-  await fetch(`${baseUrl}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email,
-      password: oldPassword,
-      fullName: 'Usuário Recuperação',
-      role: 'cliente',
-      lgpdConsent: true,
-    }),
+  await registerAndVerifyUser({
+    email,
+    password: oldPassword,
+    fullName: 'Usuário Recuperação',
+    role: 'cliente',
   });
 
-  // Request password reset token
-  const forgotRes = await fetch(`${baseUrl}/api/auth/forgot-password`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
+  // Request password reset token (captured exclusively via email service observer)
+  let capturedResetToken = '';
+  setEmailDeliveryObserverForTests((delivery) => {
+    if (delivery.to === email && delivery.template === 'recuperacao_senha') {
+      capturedResetToken = delivery.variables.resetToken || '';
+    }
   });
-  assert.equal(forgotRes.status, 200);
-  const forgotBody = (await forgotRes.json()) as any;
-  assert.equal(forgotBody.ok, true);
-  assert.ok(forgotBody.resetToken);
+  try {
+    const forgotRes = await fetch(`${baseUrl}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    assert.equal(forgotRes.status, 200);
+    const forgotBody = (await forgotRes.json()) as any;
+    assert.equal(forgotBody.ok, true);
+    assert.equal(forgotBody.resetToken, undefined);
+    assert.ok(capturedResetToken.startsWith('rst_'));
+  } finally {
+    setEmailDeliveryObserverForTests(null);
+  }
+
+  // DB stores SHA-256 hash and NULL plaintext reset_password_token
+  const { rows: hashRows } = await pool.query(
+    `SELECT reset_password_token, reset_password_token_hash FROM users WHERE email = $1`,
+    [email]
+  );
+  assert.equal(hashRows[0].reset_password_token, null);
+  assert.ok(hashRows[0].reset_password_token_hash);
+  assert.notEqual(hashRows[0].reset_password_token_hash, capturedResetToken);
 
   // Reset password via Neon Auth
   const resetRes = await fetch(`${baseUrl}/api/auth/reset-password`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      resetToken: forgotBody.resetToken,
+      resetToken: capturedResetToken,
       newPassword,
     }),
   });
@@ -188,7 +265,7 @@ test('3. Recuperação de Senha (forgot-password + reset-password no Neon Auth +
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      resetToken: forgotBody.resetToken,
+      resetToken: capturedResetToken,
       newPassword,
     }),
   });
@@ -210,7 +287,7 @@ test('3. Recuperação de Senha (forgot-password + reset-password no Neon Auth +
   assert.equal(newLogin.status, 200);
 });
 
-test('4. Proteção de Rotas Privadas e Papéis (RBAC, Duplo Papel Cliente+Prestador e Bloqueio de Conta Suspensa)', async () => {
+test('4. Proteção de Rotas Privadas, Papéis (RBAC), Anti-IDOR em assinaturas e SESSION_SECRET em produção', async () => {
   // Unauthenticated requests to private routes must return 401 and redirectTo: '/entrar'
   for (const privatePath of [
     '/api/app/cliente/requests',
@@ -222,6 +299,40 @@ test('4. Proteção de Rotas Privadas e Papéis (RBAC, Duplo Papel Cliente+Prest
     assert.equal(unauthRes.status, 401, `${privatePath} must reject anonymous`);
     const body = (await unauthRes.json()) as any;
     assert.equal(body.redirectTo, '/entrar');
+  }
+
+  // Admin spoof header x-user-role MUST fail even outside production
+  const spoofAdminRes = await fetch(`${baseUrl}/api/admin/metrics`, {
+    headers: { 'x-user-role': 'admin' },
+  });
+  assert.equal(spoofAdminRes.status, 401);
+
+  // GET /api/promotions/launch-offer/eligibility must reject PII in query string with 405
+  const eligGetRes = await fetch(
+    `${baseUrl}/api/promotions/launch-offer/eligibility?email=test@example.com`
+  );
+  assert.equal(eligGetRes.status, 405);
+
+  // SESSION_SECRET must fail in production/staging if missing or weak
+  const prevNodeEnv = process.env.NODE_ENV;
+  const prevSessionSecret = process.env.SESSION_SECRET;
+  try {
+    process.env.NODE_ENV = 'production';
+    delete process.env.SESSION_SECRET;
+    resetSessionSecretCacheForTests();
+    assert.throws(() => getSessionSecretBytes(), /SESSION_SECRET/);
+
+    process.env.SESSION_SECRET = 'short-weak-secret';
+    resetSessionSecretCacheForTests();
+    assert.throws(() => getSessionSecretBytes(), /32 caracteres/);
+  } finally {
+    process.env.NODE_ENV = prevNodeEnv;
+    if (prevSessionSecret !== undefined) {
+      process.env.SESSION_SECRET = prevSessionSecret;
+    } else {
+      delete process.env.SESSION_SECRET;
+    }
+    resetSessionSecretCacheForTests();
   }
 
   // Frontend route guard checks
@@ -237,18 +348,13 @@ test('4. Proteção de Rotas Privadas e Papéis (RBAC, Duplo Papel Cliente+Prest
 
   // Register a customer and test role boundaries
   const email = `rbac.fase1.${Date.now()}@example.com`;
-  const regRes = await fetch(`${baseUrl}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email,
-      password: 'Confiare#2026!Password',
-      fullName: 'Cliente RBAC Teste',
-      role: 'cliente',
-      lgpdConsent: true,
-    }),
+  const verified = await registerAndVerifyUser({
+    email,
+    password: 'Confiare#2026!Password',
+    fullName: 'Cliente RBAC Teste',
+    role: 'cliente',
   });
-  const { token, user } = (await regRes.json()) as any;
+  const { token, user } = verified;
 
   // Customer trying to access Provider, Padrinho, or Admin routes without those roles gets 403
   const forbiddenProvider = await fetch(
@@ -299,29 +405,19 @@ test('4. Proteção de Rotas Privadas e Papéis (RBAC, Duplo Papel Cliente+Prest
 
 test('5. RLS (Row Level Security no PostgreSQL) e Prevenção de Acesso Indevido / Sigilo de Contato LGPD', async () => {
   // Create Customer A and Customer B
-  const regCustomerA = await fetch(`${baseUrl}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: `clienteA.rls.${Date.now()}@example.com`,
-      password: 'Confiare#2026!Password',
-      fullName: 'Cliente A RLS',
-      role: 'cliente',
-      lgpdConsent: true,
-    }),
-  }).then((r) => r.json() as Promise<any>);
+  const regCustomerA = await registerAndVerifyUser({
+    email: `clienteA.rls.${Date.now()}@example.com`,
+    password: 'Confiare#2026!Password',
+    fullName: 'Cliente A RLS',
+    role: 'cliente',
+  });
 
-  const regCustomerB = await fetch(`${baseUrl}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: `clienteB.rls.${Date.now()}@example.com`,
-      password: 'Confiare#2026!Password',
-      fullName: 'Cliente B RLS',
-      role: 'cliente',
-      lgpdConsent: true,
-    }),
-  }).then((r) => r.json() as Promise<any>);
+  const regCustomerB = await registerAndVerifyUser({
+    email: `clienteB.rls.${Date.now()}@example.com`,
+    password: 'Confiare#2026!Password',
+    fullName: 'Cliente B RLS',
+    role: 'cliente',
+  });
 
   // Customer A creates a real service request
   const createReqRes = await fetch(`${baseUrl}/api/app/cliente/requests`, {
@@ -369,30 +465,51 @@ test('5. RLS (Row Level Security no PostgreSQL) e Prevenção de Acesso Indevido
   });
   assert.equal(anonRows.length, 0, 'Anonymous RLS context must return 0 rows');
 
-  // Create Provider A and Provider B to test opportunity RLS and LGPD contact masking
-  const regProviderA = await fetch(`${baseUrl}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: `prestadorA.rls.${Date.now()}@example.com`,
-      password: 'Confiare#2026!Password',
-      fullName: 'Prestador A RLS',
-      role: 'prestador',
-      lgpdConsent: true,
-    }),
-  }).then((r) => r.json() as Promise<any>);
+  // Create Provider A and Provider B to test opportunity RLS and IDOR protection
+  const regProviderA = await registerAndVerifyUser({
+    email: `prestadorA.rls.${Date.now()}@example.com`,
+    password: 'Confiare#2026!Password',
+    fullName: 'Prestador A RLS',
+    role: 'prestador',
+  });
 
-  const regProviderB = await fetch(`${baseUrl}/api/auth/register`, {
+  const regProviderB = await registerAndVerifyUser({
+    email: `prestadorB.rls.${Date.now()}@example.com`,
+    password: 'Confiare#2026!Password',
+    fullName: 'Prestador B RLS',
+    role: 'prestador',
+  });
+
+  // Subscription & opportunity endpoints must block cross-provider access even with x-provider-id header spoof
+  const crossSubRes = await fetch(
+    `${baseUrl}/api/providers/${regProviderA.user.providerProfileId}/subscription`,
+    {
+      headers: {
+        Authorization: `Bearer ${regProviderB.token}`,
+        'x-provider-id': regProviderA.user.providerProfileId,
+        'x-user-role': 'admin',
+      },
+    }
+  );
+  assert.equal(crossSubRes.status, 403);
+
+  const crossDispatchRes = await fetch(`${baseUrl}/api/opportunities/dispatch`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: `prestadorB.rls.${Date.now()}@example.com`,
-      password: 'Confiare#2026!Password',
-      fullName: 'Prestador B RLS',
-      role: 'prestador',
-      lgpdConsent: true,
-    }),
-  }).then((r) => r.json() as Promise<any>);
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${regProviderB.token}`,
+    },
+    body: JSON.stringify({ providerProfileId: regProviderA.user.providerProfileId }),
+  });
+  assert.equal(crossDispatchRes.status, 403);
+
+  const ownSubRes = await fetch(
+    `${baseUrl}/api/providers/${regProviderA.user.providerProfileId}/subscription`,
+    {
+      headers: { Authorization: `Bearer ${regProviderA.token}` },
+    }
+  );
+  assert.equal(ownSubRes.status, 200);
 
   // Insert an opportunity for Provider A
   const oppInsert = await pool.query(

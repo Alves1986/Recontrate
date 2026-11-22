@@ -477,13 +477,14 @@ export const ProviderSpecialtiesManager: React.FC<{
             2. Buscar Especialidade Oficial (com sinônimos)
           </label>
           <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-brand-primary/15">
-            <Search className="w-4 h-4 text-brand-ink/50" />
+            <Search className="w-4 h-4 text-brand-ink/70" aria-hidden="true" />
             <input
               type="text"
+              aria-label="Buscar especialidade oficial"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Ex.: chuveiro, porcelanato, split..."
-              className="w-full focus:outline-none text-xs"
+              className="w-full focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-md text-xs"
             />
           </div>
         </div>
@@ -579,7 +580,7 @@ export const ProviderSpecialtiesManager: React.FC<{
                 <button
                   type="button"
                   onClick={() => handleRemoveTag(t.id)}
-                  className="text-brand-ink/50 hover:text-red-600 cursor-pointer"
+                  className="text-brand-ink/70 hover:text-red-700 cursor-pointer"
                   aria-label={`Remover tag ${t.tag}`}
                 >
                   <Trash2 className="w-3 h-3" />

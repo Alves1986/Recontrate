@@ -1,4 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import {
+  COOKIE_CONSENT_EVENT,
+  hasAdvertisingConsent,
+} from '../utils/cookieConsent';
 
 declare global {
   interface Window {
@@ -33,8 +37,18 @@ export const GoogleModeratedAdSlot: React.FC<GoogleModeratedAdSlotProps> = ({
     clientId.startsWith('ca-pub-') &&
     clientId !== 'ca-pub-0000000000000000';
 
+  const [advertisingAllowed, setAdvertisingAllowed] = useState<boolean>(() =>
+    hasAdvertisingConsent()
+  );
+
   useEffect(() => {
-    if (!isLivePublisherId) return;
+    const syncConsent = () => setAdvertisingAllowed(hasAdvertisingConsent());
+    window.addEventListener(COOKIE_CONSENT_EVENT, syncConsent);
+    return () => window.removeEventListener(COOKIE_CONSENT_EVENT, syncConsent);
+  }, []);
+
+  useEffect(() => {
+    if (!isLivePublisherId || !advertisingAllowed) return;
 
     // Enforce LGPD / Non-Personalized Ads (NPA=1): zero personal or sensitive data shared with Google
     window.adsbygoogle = window.adsbygoogle || [];
@@ -59,7 +73,7 @@ export const GoogleModeratedAdSlot: React.FC<GoogleModeratedAdSlotProps> = ({
     } catch {
       // AdSense push safe fallback when blocked by browser extension
     }
-  }, [clientId, isLivePublisherId, sponsoredAd?.id]);
+  }, [advertisingAllowed, clientId, isLivePublisherId, sponsoredAd?.id]);
 
   if (!sponsoredAd) return null;
 
@@ -90,8 +104,8 @@ export const GoogleModeratedAdSlot: React.FC<GoogleModeratedAdSlotProps> = ({
             </span>
           </div>
           <p className="text-brand-ink/80">{sponsoredAd.texto}</p>
-          <p className="text-[11px] text-brand-ink/60">
-            Privacidade LGPD garantida: anúncios não personalizados (`requestNonPersonalizedAds=1`), restritos ao painel do prestador Gratuito e zero compartilhamento de dados pessoais.
+          <p className="text-[11px] text-brand-ink/70">
+            Privacidade LGPD / ANPD: anúncios não personalizados (`requestNonPersonalizedAds=1`), restritos ao painel do prestador Gratuito; scripts externos de anúncios só são carregados se você autorizar cookies de publicidade.
           </p>
         </div>
 
@@ -115,8 +129,8 @@ export const GoogleModeratedAdSlot: React.FC<GoogleModeratedAdSlotProps> = ({
         </div>
       </div>
 
-      {/* Bloco <ins class="adsbygoogle"> montado apenas quando um Publisher ID real (ca-pub-...) está configurado */}
-      {isLivePublisherId && (
+      {/* Bloco <ins class="adsbygoogle"> montado apenas quando Publisher ID real e consentimento ANPD de publicidade estão ativos */}
+      {isLivePublisherId && advertisingAllowed && (
         <div className="pt-2 border-t border-brand-primary/10">
           <ins
             className="adsbygoogle"
