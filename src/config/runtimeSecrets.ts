@@ -49,6 +49,7 @@ export function getSessionSecretBytes(): Uint8Array {
 export function getAppBaseUrl(): string {
   return (
     process.env.APP_URL ||
+    process.env.APP_BASE_URL ||
     process.env.VITE_APP_URL ||
     'http://localhost:3005'
   ).replace(/\/$/, '');

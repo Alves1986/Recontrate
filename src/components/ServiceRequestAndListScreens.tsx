@@ -470,6 +470,9 @@ export const CompatibleProvidersListScreen: React.FC<
           <p className="text-sm text-brand-ink/75 mt-1">
             Use categoria, nome e localidade informada para filtrar os perfis publicados. Localidade não confirma agenda ou cobertura de atendimento.
           </p>
+          <p className="text-xs text-brand-ink/75 mt-1.5">
+            Transparência algorítmica/IA (LGPD art. 20): ordenação assistida por algoritmo de compatibilidade (sem venda de estrelas ou impulsionamento pago de notas); seus dados não são usados para treino de IA por padrão (<code className="font-mono">/app/privacidade</code>).
+          </p>
         </div>
 
         <div className="bg-white rounded-2xl p-4 sm:p-5 border border-brand-primary/10 space-y-4">
@@ -524,7 +527,7 @@ export const CompatibleProvidersListScreen: React.FC<
             </p>
             <p className="text-xs text-brand-ink/70 max-w-md mx-auto">
               {publishedProviders.length === 0
-                ? 'A lista de interesse ainda não está disponível. Esta tela não coleta seus dados quando não encontra perfis.'
+                ? 'Ainda não há perfis verificados publicados para esta busca; você pode deixar seu interesse na página inicial.'
                 : 'Ajuste categoria, nome ou localidade informada, ou limpe os filtros para consultar os perfis publicados.'}
             </p>
             <button
