@@ -1,17 +1,23 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  AlertTriangle,
+  Award,
   Bell,
   CheckCircle2,
   Clock,
+  Copy,
+  CreditCard,
+  ExternalLink,
+  FileText,
   MapPin,
   MessageSquare,
+  QrCode,
   ShieldCheck,
   Sparkles,
   Star,
   TrendingUp,
   UserCheck,
-  Award,
-  Copy,
+  XCircle,
 } from 'lucide-react';
 import {
   PlanTier,
@@ -25,14 +31,36 @@ import {
   calculateCompositeScore,
   createRealtimeNotification,
 } from '../utils/marketplaceRules';
+import {
+  calculateAnnualMonthlyEquivalentCentavos,
+  calculateAnnualSavingsCentavos,
+  formatCentavosBRL,
+} from '../utils/pricingCalculations';
+import {
+  DEFAULT_OFFICIAL_PLANS,
+  formatCpfCnpjInput,
+  getPlanAudienceLabel,
+  getPlanBullets,
+  getSubscriptionActionType,
+  normalizeDigits,
+  planTierToSlug,
+  slugToPlanTier,
+  type BillingCycleOption,
+  type CommercialPlanDisplay,
+  type LaunchOfferCardState,
+} from './PlansPricingPage';
 import { ProviderRealtimeNotifications } from './ProviderRealtimeNotifications';
 import { GoogleModeratedAdSlot } from './GoogleModeratedAdSlot';
 import { ProviderSpecialtiesManager } from './ProviderSpecialtiesManager';
 import { BrandLogo } from './BrandLogo';
+import { ReferralDashboardPanel } from './ReferralDashboardPanel';
 
 interface ProviderDashboardScreenProps {
   activeProvider: ProviderProfile;
   opportunities: ProviderOpportunity[];
+  providerEmail?: string;
+  providerPhone?: string;
+  authToken?: string;
   onAddRealtimeOpportunity?: (newOpp: ProviderOpportunity) => void;
   onUpdateOpportunityStatus: (
     oppId: string,
@@ -43,86 +71,13 @@ interface ProviderDashboardScreenProps {
   onNavigate: (screen: ScreenId, providerId?: string) => void;
 }
 
-const PLANS_CONFIG: {
-  tier: PlanTier;
-  slug: string;
-  audience: string;
-  priceMonthly: string;
-  priceAnnual: string;
-  monthlyLimit: number;
-  limitLabel: string;
-  badge?: string;
-  showsAds: boolean;
-  features: string[];
-}[] = [
-  {
-    tier: 'Gratuito',
-    slug: 'gratuito',
-    audience: 'Entrada sem custo fixo',
-    priceMonthly: 'R$ 0,00/mês',
-    priceAnnual: 'R$ 0,00/ano',
-    monthlyLimit: 5,
-    limitLabel: 'Até 5 oportunidades/mês',
-    showsAds: true,
-    features: [
-      'Perfil público básico e contato por WhatsApp',
-      'Avaliações visíveis para clientes',
-      'Exibição moderada de anúncios relevantes no painel',
-    ],
-  },
-  {
-    tier: 'Essencial',
-    slug: 'essencial',
-    audience: 'Para iniciantes na plataforma',
-    priceMonthly: 'R$ 29,90/mês',
-    priceAnnual: 'R$ 299,00/ano',
-    monthlyLimit: 15,
-    limitLabel: 'Até 15 oportunidades/mês',
-    showsAds: false,
-    features: [
-      'Prioridade leve justa no matching (+2 pts)',
-      'Perfil profissional completo e portfólio até 10 fotos',
-      'Relatório mensal básico e painel sem anúncios',
-    ],
-  },
-  {
-    tier: 'Profissional',
-    slug: 'profissional',
-    audience: 'Para prestadores ativos',
-    priceMonthly: 'R$ 59,90/mês',
-    priceAnnual: 'R$ 599,00/ano',
-    monthlyLimit: 40,
-    limitLabel: 'Até 40 oportunidades/mês',
-    badge: 'Profissional Recontrate',
-    showsAds: false,
-    features: [
-      'Prioridade média justa no matching (+5 pts)',
-      'Destaque em buscas locais e portfólio ilimitado',
-      'Estatísticas de conversão e selo Profissional Recontrate',
-    ],
-  },
-  {
-    tier: 'Premium',
-    slug: 'premium',
-    audience: 'Em definição para lançamento',
-    priceMonthly: 'R$ 99,90/mês (Em definição)',
-    priceAnnual: 'R$ 999,00/ano (Em definição)',
-    monthlyLimit: 100,
-    limitLabel: 'Escopo premium em definição',
-    badge: 'Em definição',
-    showsAds: false,
-    features: [
-      'Aguardando validação de entregáveis mensuráveis',
-      'Gestão avançada e relatórios dedicados em desenho',
-      'Sem comercialização ativa durante o piloto inicial',
-    ],
-  },
-];
-
 
 export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = ({
   activeProvider,
   opportunities,
+  providerEmail,
+  providerPhone,
+  authToken,
   onAddRealtimeOpportunity,
   onUpdateOpportunityStatus,
   onChangeProviderPlan,
@@ -130,11 +85,36 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   onNavigate,
 }) => {
   const [activeTab, setActiveTab] = useState<
-    'oportunidades' | 'reputacao' | 'plano'
+    'oportunidades' | 'reputacao' | 'plano' | 'indicacoes'
   >('oportunidades');
-  const [billingCycle, setBillingCycle] = useState<'mensal' | 'anual'>('mensal');
-  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'cartao' | 'boleto'>('pix');
-  const [checkoutNotice, setCheckoutNotice] = useState<string>('');
+  const [plansList, setPlansList] = useState<CommercialPlanDisplay[]>(
+    DEFAULT_OFFICIAL_PLANS
+  );
+  const [subSummary, setSubSummary] = useState<any>(null);
+  const [launchOffer, setLaunchOffer] = useState<LaunchOfferCardState | null>(
+    null
+  );
+  const [billingCycle, setBillingCycle] =
+    useState<BillingCycleOption>('mensal');
+  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'cartao' | 'boleto'>(
+    'pix'
+  );
+  const [cpfCnpj, setCpfCnpj] = useState('');
+  const [billingPhone, setBillingPhone] = useState(
+    providerPhone || activeProvider.whatsapp || ''
+  );
+  const [applyLaunchOffer, setApplyLaunchOffer] = useState(true);
+  const [planSubmittingSlug, setPlanSubmittingSlug] = useState<string | null>(
+    null
+  );
+  const [checkoutNotice, setCheckoutNotice] = useState<{
+    type: 'success' | 'error';
+    message: string;
+    checkoutUrl?: string;
+  } | null>(null);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelLoading, setCancelLoading] = useState(false);
   const [copiedQuoteTemplate, setCopiedQuoteTemplate] = useState(false);
   const [realtimeNotifications, setRealtimeNotifications] = useState<
     ProviderRealtimeNotification[]
@@ -142,6 +122,91 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   const [sponsoredAd, setSponsoredAd] = useState<any | null>(null);
   const [sessionBannersShown, setSessionBannersShown] = useState(0);
   const [adClickConfirmed, setAdClickConfirmed] = useState(false);
+
+  const loadSubscriptionData = useCallback(async () => {
+    const headers: Record<string, string> = {
+      'x-provider-id': activeProvider.id,
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    };
+    const eligQuery = new URLSearchParams({
+      cycle: 'mensal',
+      providerProfileId: activeProvider.id,
+      ...(providerEmail ? { email: providerEmail } : {}),
+      ...(providerPhone || activeProvider.whatsapp
+        ? { phone: providerPhone || activeProvider.whatsapp }
+        : {}),
+    });
+
+    const [pRes, sRes, eRes] = await Promise.all([
+      fetch('/api/plans')
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch(
+        `/api/providers/${encodeURIComponent(activeProvider.id)}/subscription`,
+        {
+          credentials: 'include',
+          headers,
+        }
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch(`/api/promotions/launch-offer/eligibility?${eligQuery.toString()}`, {
+        credentials: 'include',
+        headers,
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+    ]);
+
+    if (pRes?.ok && Array.isArray(pRes.plans) && pRes.plans.length > 0) {
+      const loadedPlans: CommercialPlanDisplay[] = pRes.plans
+        .filter(
+          (p: CommercialPlanDisplay) => p.ativo !== false && p.slug !== 'padrinho'
+        )
+        .sort(
+          (a: CommercialPlanDisplay, b: CommercialPlanDisplay) =>
+            a.ordemExibicao - b.ordemExibicao
+        );
+      if (loadedPlans.length > 0) {
+        setPlansList(loadedPlans);
+      }
+    }
+
+    if (sRes?.ok) {
+      setSubSummary(sRes);
+      if (sRes.plan?.slug) {
+        const backendTier = slugToPlanTier(sRes.plan.slug);
+        if (backendTier !== activeProvider.plan) {
+          onChangeProviderPlan(activeProvider.id, backendTier);
+        }
+      }
+    }
+
+    if (eRes?.ok) {
+      setLaunchOffer({
+        eligible: Boolean(eRes.eligible),
+        resultado: eRes.resultado,
+        reason: eRes.reason,
+        discountPercent: eRes.discountPercent ?? 50,
+        durationCycles: eRes.durationCycles ?? 3,
+        promoPricesCentavos: eRes.promoPricesCentavos || {},
+        fullPricesCentavos: eRes.fullPricesCentavos || {},
+        fullPriceStartDate: eRes.fullPriceStartDate,
+      });
+    }
+  }, [
+    activeProvider.id,
+    activeProvider.plan,
+    activeProvider.whatsapp,
+    authToken,
+    onChangeProviderPlan,
+    providerEmail,
+    providerPhone,
+  ]);
+
+  useEffect(() => {
+    loadSubscriptionData();
+  }, [loadSubscriptionData]);
 
   useEffect(() => {
     if (activeProvider.plan !== 'Gratuito') {
@@ -186,32 +251,243 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
         setSponsoredAd((prev: any) => (prev ? { ...prev, ...body.ad } : prev));
       }
     } catch {
-      // Offline preview fallback
+      // Offline fallback
     }
   };
 
   const currentPlanConfig =
-    PLANS_CONFIG.find((p) => p.tier === activeProvider.plan) || PLANS_CONFIG[0];
-  const opportunitiesUsedInCycle = Math.min(
-    opportunities.length,
-    currentPlanConfig.monthlyLimit
-  );
-  const opportunitiesRemainingInCycle = Math.max(
-    0,
-    currentPlanConfig.monthlyLimit - opportunitiesUsedInCycle
-  );
+    plansList.find((p) => p.slug === planTierToSlug(activeProvider.plan)) ||
+    plansList[0] ||
+    DEFAULT_OFFICIAL_PLANS[0];
 
-  const handleSelectPlanWithAsaas = async (planItem: (typeof PLANS_CONFIG)[number]) => {
-    if (planItem.slug === 'premium') {
-      setCheckoutNotice(
-        'O plano Premium está em definição e permanece bloqueado durante a fase de piloto.'
-      );
+  const monthlyLimit =
+    typeof subSummary?.usage?.limit === 'number'
+      ? subSummary.usage.limit
+      : currentPlanConfig.limiteOportunidadesMensal;
+  const opportunitiesUsedInCycle =
+    typeof subSummary?.usage?.used === 'number'
+      ? subSummary.usage.used
+      : Math.min(opportunities.length, monthlyLimit);
+  const opportunitiesRemainingInCycle =
+    typeof subSummary?.usage?.remaining === 'number'
+      ? subSummary.usage.remaining
+      : Math.max(0, monthlyLimit - opportunitiesUsedInCycle);
+
+  const handleSelectPlanWithAsaas = async (
+    planItem: CommercialPlanDisplay
+  ) => {
+    setCheckoutNotice(null);
+    const actionType = getSubscriptionActionType({
+      activeSubStatus: subSummary?.subscription?.status,
+      activeSubCycle: subSummary?.subscription?.ciclo,
+      currentPlan: currentPlanConfig,
+      targetPlan: planItem,
+      targetCycle: billingCycle,
+    });
+
+    if (actionType === 'current') return;
+
+    const digitsDoc = normalizeDigits(cpfCnpj);
+    const phoneToUse =
+      billingPhone.trim() ||
+      providerPhone ||
+      activeProvider.whatsapp ||
+      '(11) 99999-0000';
+    const isFreeLaunchPromo =
+      actionType === 'checkout' &&
+      billingCycle === 'mensal' &&
+      planItem.precoMensalCentavos > 0 &&
+      applyLaunchOffer &&
+      Boolean(launchOffer?.eligible) &&
+      (launchOffer?.promoPricesCentavos?.[planItem.slug] ?? 0) === 0;
+
+    if (
+      actionType === 'checkout' &&
+      planItem.precoMensalCentavos > 0 &&
+      !isFreeLaunchPromo &&
+      digitsDoc.length !== 11 &&
+      digitsDoc.length !== 14
+    ) {
+      setCheckoutNotice({
+        type: 'error',
+        message:
+          'Preencha seu CPF (11 dígitos) ou CNPJ (14 dígitos) acima antes de gerar a cobrança no Asaas.',
+      });
       return;
     }
-    onChangeProviderPlan(activeProvider.id, planItem.tier);
-    setCheckoutNotice(
-      `Plano ${planItem.tier} (${billingCycle}) selecionado em modo Piloto Controlado (60 a 90 dias gratuitos, sem cobrança real e sem conversão automática neste preview).`
-    );
+
+    setPlanSubmittingSlug(planItem.slug);
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      };
+
+      if (actionType === 'upgrade' && subSummary?.subscription?.id) {
+        const res = await fetch(
+          `/api/subscriptions/${encodeURIComponent(
+            subSummary.subscription.id
+          )}/upgrade`,
+          {
+            method: 'POST',
+            credentials: 'include',
+            headers,
+            body: JSON.stringify({
+              targetPlanSlug: planItem.slug,
+              targetCycle: billingCycle,
+              paymentMethod,
+            }),
+          }
+        );
+        const body = await res.json();
+        if (!res.ok || !body.ok) {
+          throw new Error(body.error || 'Erro ao realizar upgrade.');
+        }
+        onChangeProviderPlan(activeProvider.id, slugToPlanTier(planItem.slug));
+        await loadSubscriptionData();
+        setCheckoutNotice({
+          type: 'success',
+          message: `Upgrade imediato para ${planItem.nome} concluído!${
+            body.proRataCents > 0
+              ? ` Fatura pro-rata de ${formatCentavosBRL(body.proRataCents)} gerada.`
+              : ''
+          }`,
+          checkoutUrl: body.proRataInvoice?.urlCheckout,
+        });
+        return;
+      }
+
+      if (actionType === 'downgrade' && subSummary?.subscription?.id) {
+        const res = await fetch(
+          `/api/subscriptions/${encodeURIComponent(
+            subSummary.subscription.id
+          )}/downgrade`,
+          {
+            method: 'POST',
+            credentials: 'include',
+            headers,
+            body: JSON.stringify({
+              targetPlanSlug: planItem.slug,
+            }),
+          }
+        );
+        const body = await res.json();
+        if (!res.ok || !body.ok) {
+          throw new Error(body.error || 'Erro ao agendar mudança de plano.');
+        }
+        await loadSubscriptionData();
+        const effDate = body.effectiveDate
+          ? new Date(body.effectiveDate).toLocaleDateString('pt-BR')
+          : 'próximo ciclo';
+        setCheckoutNotice({
+          type: 'success',
+          message: `Mudança para ${planItem.nome} agendada para ${effDate}. Seu plano atual segue ativo até o fim do período pago.`,
+        });
+        return;
+      }
+
+      const usePromo =
+        billingCycle === 'mensal' &&
+        planItem.precoMensalCentavos > 0 &&
+        applyLaunchOffer &&
+        Boolean(launchOffer?.eligible);
+
+      const res = await fetch('/api/subscriptions/checkout', {
+        method: 'POST',
+        credentials: 'include',
+        headers,
+        body: JSON.stringify({
+          providerProfileId: activeProvider.id,
+          providerName: activeProvider.name,
+          providerEmail:
+            providerEmail || `${activeProvider.id}@recontrate.com.br`,
+          providerPhone: phoneToUse,
+          cpfCnpj: digitsDoc || undefined,
+          planSlug: planItem.slug,
+          cycle: billingCycle,
+          paymentMethod,
+          applyLaunchOffer: usePromo,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.ok) {
+        throw new Error(body.error || 'Erro ao criar assinatura.');
+      }
+      onChangeProviderPlan(activeProvider.id, slugToPlanTier(planItem.slug));
+      await loadSubscriptionData();
+      const invoiceAmount = body.invoice?.valorCentavos ?? planItem.precoMensalCentavos;
+      setCheckoutNotice({
+        type: 'success',
+        message:
+          planItem.precoMensalCentavos === 0
+            ? 'Plano Gratuito ativado com sucesso.'
+            : isFreeLaunchPromo && invoiceAmount === 0
+              ? `Promoção de 90 dias grátis ativada no plano ${planItem.nome}! Seus benefícios já estão liberados sem custo até ${
+                  body.subscription?.fim
+                    ? new Date(body.subscription.fim).toLocaleDateString('pt-BR')
+                    : '90 dias'
+                }.`
+              : `Assinatura ${planItem.nome} (${billingCycle}) registrada via Asaas! Valor da fatura: ${formatCentavosBRL(
+                  invoiceAmount
+                )}.`,
+        checkoutUrl: body.checkoutUrl || body.invoice?.urlCheckout,
+      });
+    } catch (err) {
+      setCheckoutNotice({
+        type: 'error',
+        message:
+          (err as Error).message || 'Não foi possível processar a assinatura.',
+      });
+    } finally {
+      setPlanSubmittingSlug(null);
+    }
+  };
+
+  const handleConfirmCancelSubscription = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subSummary?.subscription?.id) return;
+    setCancelLoading(true);
+    try {
+      const res = await fetch(
+        `/api/subscriptions/${encodeURIComponent(
+          subSummary.subscription.id
+        )}/cancel`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({
+            reason:
+              cancelReason.trim() ||
+              'Cancelamento solicitado pelo prestador no painel',
+          }),
+        }
+      );
+      const body = await res.json();
+      if (!res.ok || !body.ok) {
+        throw new Error(body.error || 'Falha ao cancelar assinatura.');
+      }
+      setShowCancelModal(false);
+      setCancelReason('');
+      await loadSubscriptionData();
+      setCheckoutNotice({
+        type: 'success',
+        message:
+          'Assinatura cancelada sem multa. Seus benefícios seguem ativos até o fim do período já pago e seu histórico de avaliações permanece intacto.',
+      });
+    } catch (err) {
+      setCheckoutNotice({
+        type: 'error',
+        message:
+          (err as Error).message || 'Não foi possível cancelar agora.',
+      });
+      setShowCancelModal(false);
+    } finally {
+      setCancelLoading(false);
+    }
   };
 
 
@@ -260,7 +536,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
               <span aria-hidden="true">·</span>
               <span>Plano Atual: {activeProvider.plan}</span>
               <span aria-hidden="true">·</span>
-              <span>0% comissão sobre serviços</span>
+              <span>Sem comissão à plataforma · Negociação direta com o cliente</span>
             </div>
             <h1 className="font-display font-bold text-2xl sm:text-3xl text-white">
 
@@ -393,6 +669,17 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
           }`}
         >
           3. Plano & Assinatura ({activeProvider.plan})
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('indicacoes')}
+          className={`min-h-[42px] px-4 py-2 rounded-xl text-xs font-semibold transition-colors text-center cursor-pointer ${
+            activeTab === 'indicacoes'
+              ? 'bg-brand-accent-strong text-white'
+              : 'text-brand-ink/75 hover:text-brand-ink'
+          }`}
+        >
+          4. Indique e Ganhe (+15 dias)
         </button>
       </div>
 
@@ -636,123 +923,412 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       {/* TAB 3: PLANOS E ASSINATURA */}
       {activeTab === 'plano' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <p className="text-xs font-semibold text-brand-link">
-                Previsibilidade de Custo Mensal · Asaas Recorrente (Pix, Cartão, Boleto) · Cancelamento Livre sem Multa
-              </p>
-              <h2 className="font-display font-bold text-xl text-brand-ink">
-                Planos de assinatura para o prestador (0% comissão)
-              </h2>
-              <p className="text-xs text-brand-ink/70">
-                Consumo no ciclo atual: <strong>{opportunitiesUsedInCycle} utilizada(s)</strong> de{' '}
-                <strong>{currentPlanConfig.monthlyLimit}</strong> ({opportunitiesRemainingInCycle} restante(s)). Estrelas e reputação nunca podem ser compradas.
-              </p>
+          {/* Card Minha Assinatura Atual */}
+          <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-5">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-brand-link">
+                    Minha Assinatura Atual · Asaas Recorrente
+                  </span>
+                  {subSummary?.subscription?.status ? (
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                        subSummary.subscription.status === 'ativa'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : subSummary.subscription.status === 'inadimplente'
+                            ? 'bg-amber-100 text-amber-900'
+                            : subSummary.subscription.status === 'cancelada'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-brand-background text-brand-ink'
+                      }`}
+                    >
+                      {subSummary.subscription.status}
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase bg-brand-background text-brand-ink">
+                      Plano Gratuito Ativo
+                    </span>
+                  )}
+                  {subSummary?.activeLaunchOffer && (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-800">
+                      Promoção 90 dias grátis ativa
+                      {subSummary.activeLaunchOffer.dataRetornoPrecoCheio
+                        ? ` (até ${new Date(
+                            subSummary.activeLaunchOffer.dataRetornoPrecoCheio
+                          ).toLocaleDateString('pt-BR')})`
+                        : ''}
+                    </span>
+                  )}
+                </div>
+                <h2 className="font-display font-bold text-xl text-brand-ink">
+                  {currentPlanConfig.nome}
+                  {subSummary?.subscription?.ciclo &&
+                  currentPlanConfig.precoMensalCentavos > 0
+                    ? ` · Ciclo ${
+                        subSummary.subscription.ciclo === 'anual'
+                          ? 'Anual'
+                          : 'Mensal'
+                      }`
+                    : ' · Sem custo fixo'}
+                </h2>
+                <p className="text-xs text-brand-ink/70">
+                  {subSummary?.subscription?.proximaCobranca
+                    ? `Próxima renovação: ${new Date(
+                        subSummary.subscription.proximaCobranca
+                      ).toLocaleDateString('pt-BR')}`
+                    : subSummary?.subscription?.fim &&
+                        subSummary.subscription.status === 'cancelada'
+                      ? `Cancelamento agendado: benefícios mantidos até ${new Date(
+                          subSummary.subscription.fim
+                        ).toLocaleDateString('pt-BR')}`
+                      : 'Estrelas nunca podem ser compradas · Você não paga comissão à plataforma — todo valor é negociado diretamente com o cliente, fora da plataforma.'}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {subSummary?.portalUrl && (
+                  <a
+                    href={subSummary.portalUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3.5 py-2 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink text-xs font-semibold inline-flex items-center gap-1.5"
+                  >
+                    <span>Portal de Cobrança Asaas</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
+                {subSummary?.subscription &&
+                  ['ativa', 'trial', 'inadimplente', 'pendente'].includes(
+                    subSummary.subscription.status
+                  ) &&
+                  currentPlanConfig.precoMensalCentavos > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCancelModal(true)}
+                      className="px-3.5 py-2 rounded-xl border border-red-200 text-red-700 hover:bg-red-50 text-xs font-semibold cursor-pointer inline-flex items-center gap-1.5"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      <span>Cancelar assinatura</span>
+                    </button>
+                  )}
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => setBillingCycle('mensal')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
-                  billingCycle === 'mensal'
-                    ? 'bg-brand-primary text-white'
-                    : 'bg-brand-background text-brand-ink'
-                }`}
-              >
-                Ciclo Mensal
-              </button>
-              <button
-                type="button"
-                onClick={() => setBillingCycle('anual')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
-                  billingCycle === 'anual'
-                    ? 'bg-brand-accent-strong text-white'
-                    : 'bg-brand-background text-brand-ink'
-                }`}
-              >
-                Anual (2 meses grátis)
-              </button>
-              <select
-                aria-label="Método de pagamento Asaas"
-                value={paymentMethod}
-                onChange={(e) =>
-                  setPaymentMethod(
-                    e.target.value as 'pix' | 'cartao' | 'boleto'
-                  )
-                }
-                className="px-3 py-2 rounded-xl border border-brand-primary/15 text-xs font-semibold bg-white text-brand-ink"
-              >
-                <option value="pix">Pagamento: Pix</option>
-                <option value="cartao">Pagamento: Cartão</option>
-                <option value="boleto">Pagamento: Boleto</option>
-              </select>
+            {/* Barra de uso de oportunidades no ciclo */}
+            <div className="p-4 rounded-2xl bg-brand-background/70 space-y-2 text-xs">
+              <div className="flex items-center justify-between font-semibold text-brand-ink">
+                <span>Consumo de oportunidades neste ciclo</span>
+                <span className="font-mono">
+                  {opportunitiesUsedInCycle} / {monthlyLimit} utilizadas (
+                  {opportunitiesRemainingInCycle} restantes)
+                </span>
+              </div>
+              <div className="w-full h-2.5 rounded-full bg-brand-primary/10 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    opportunitiesRemainingInCycle === 0
+                      ? 'bg-amber-500'
+                      : 'bg-brand-accent-strong'
+                  }`}
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.round(
+                        (opportunitiesUsedInCycle / Math.max(1, monthlyLimit)) *
+                          100
+                      )
+                    )}%`,
+                  }}
+                />
+              </div>
             </div>
+
+            {subSummary?.inGracePeriod && (
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-700" />
+                <div>
+                  <strong>Pagamento pendente (Tolerância de 7 dias ativa):</strong>{' '}
+                  Regularize sua fatura em aberto abaixo até{' '}
+                  {subSummary.subscription?.toleranciaAte
+                    ? new Date(
+                        subSummary.subscription.toleranciaAte
+                      ).toLocaleDateString('pt-BR')
+                    : 'o prazo informado'}{' '}
+                  para evitar retorno automático ao plano Gratuito.
+                </div>
+              </div>
+            )}
+
+            {subSummary?.scheduledPlan && (
+              <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-950 text-xs">
+                <strong>Mudança agendada:</strong> Ao final do ciclo atual (
+                {subSummary.subscription?.fim
+                  ? new Date(subSummary.subscription.fim).toLocaleDateString(
+                      'pt-BR'
+                    )
+                  : 'próxima renovação'}
+                ), seu plano mudará automaticamente para{' '}
+                <strong>{subSummary.scheduledPlan.nome}</strong>.
+              </div>
+            )}
+          </div>
+
+          {/* Controles de Faturamento + Dados Asaas */}
+          <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <h3 className="font-display font-bold text-lg text-brand-ink">
+                  Alterar plano ou escolher novo ciclo
+                </h3>
+                <p className="text-xs text-brand-ink/70">
+                  Upgrades têm efeito imediato (pro-rata); downgrades passam a valer na próxima renovação.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBillingCycle('mensal')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
+                    billingCycle === 'mensal'
+                      ? 'bg-brand-primary text-white'
+                      : 'bg-brand-background text-brand-ink'
+                  }`}
+                >
+                  Ciclo Mensal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingCycle('anual')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold cursor-pointer ${
+                    billingCycle === 'anual'
+                      ? 'bg-brand-accent-strong text-white'
+                      : 'bg-brand-background text-brand-ink'
+                  }`}
+                >
+                  Anual (2 meses grátis)
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs pt-2 border-t border-brand-primary/10">
+              <div className="space-y-1">
+                <label className="font-semibold text-brand-ink block">
+                  Forma de pagamento (Asaas)
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {(
+                    [
+                      { id: 'pix', label: 'Pix', icon: QrCode },
+                      { id: 'cartao', label: 'Cartão', icon: CreditCard },
+                      { id: 'boleto', label: 'Boleto', icon: FileText },
+                    ] as const
+                  ).map(({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setPaymentMethod(id)}
+                      className={`py-2 px-2 rounded-xl border font-semibold inline-flex items-center justify-center gap-1 cursor-pointer ${
+                        paymentMethod === id
+                          ? 'bg-brand-primary text-white border-brand-primary'
+                          : 'bg-brand-background/70 text-brand-ink border-brand-primary/15'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-brand-ink block">
+                  CPF ou CNPJ do titular (Asaas)
+                </label>
+                <input
+                  type="text"
+                  value={cpfCnpj}
+                  onChange={(e) => setCpfCnpj(formatCpfCnpjInput(e.target.value))}
+                  placeholder="000.000.000-00"
+                  className="w-full px-3 py-2 rounded-xl border border-brand-primary/15 font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-brand-ink block">
+                  WhatsApp para avisos de fatura
+                </label>
+                <input
+                  type="text"
+                  value={billingPhone}
+                  onChange={(e) => setBillingPhone(e.target.value)}
+                  placeholder="(11) 99999-0000"
+                  className="w-full px-3 py-2 rounded-xl border border-brand-primary/15"
+                />
+              </div>
+            </div>
+
+            {billingCycle === 'mensal' && launchOffer?.eligible && (
+              <label className="flex items-center gap-2 text-xs text-emerald-800 font-semibold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={applyLaunchOffer}
+                  onChange={(e) => setApplyLaunchOffer(e.target.checked)}
+                />
+                <span>
+                  Aplicar Promoção de Lançamento (90 dias grátis nos 3 primeiros meses em novos checkouts mensais)
+                </span>
+              </label>
+            )}
           </div>
 
           {checkoutNotice && (
-            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-semibold">
-              ✓ {checkoutNotice}
+            <div
+              className={`p-4 rounded-2xl text-xs font-semibold flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                checkoutNotice.type === 'error'
+                  ? 'bg-red-50 border border-red-200 text-red-900'
+                  : 'bg-emerald-50 border border-emerald-200 text-emerald-900'
+              }`}
+            >
+              <span>{checkoutNotice.message}</span>
+              {checkoutNotice.checkoutUrl && (
+                <a
+                  href={checkoutNotice.checkoutUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-2 rounded-xl bg-emerald-700 text-white font-semibold inline-flex items-center gap-1.5 shrink-0"
+                >
+                  <span>Abrir cobrança no Asaas</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
             </div>
           )}
 
           {opportunitiesRemainingInCycle === 0 && (
             <div className="p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <span>
-                <strong>Limite mensal atingido ({currentPlanConfig.monthlyLimit} oportunidades):</strong> Seu perfil público permanece visível, mas faça upgrade para continuar recebendo novas oportunidades neste ciclo.
+                <strong>Limite mensal atingido ({monthlyLimit} oportunidades):</strong>{' '}
+                Seu perfil público permanece visível, mas faça upgrade para continuar recebendo novas oportunidades neste ciclo.
               </span>
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {PLANS_CONFIG.map((planItem) => {
-              const isCurrent = activeProvider.plan === planItem.tier;
+          {/* Grid dos 4 Planos Reais */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {plansList.map((planItem) => {
+              const actionType = getSubscriptionActionType({
+                activeSubStatus: subSummary?.subscription?.status,
+                activeSubCycle: subSummary?.subscription?.ciclo,
+                currentPlan: currentPlanConfig,
+                targetPlan: planItem,
+                targetCycle: billingCycle,
+              });
+              const isCurrent = actionType === 'current';
+              const showPromo =
+                billingCycle === 'mensal' &&
+                planItem.precoMensalCentavos > 0 &&
+                launchOffer?.eligible &&
+                applyLaunchOffer;
+              const promoCents =
+                launchOffer?.promoPricesCentavos?.[planItem.slug] ?? 0;
+              const annualMonthlyEq = calculateAnnualMonthlyEquivalentCentavos(
+                planItem.precoAnualCentavos
+              );
+              const annualSavings = calculateAnnualSavingsCentavos(
+                planItem.precoMensalCentavos,
+                planItem.precoAnualCentavos
+              );
+              const bullets = getPlanBullets(planItem);
+              const isSubmitting = planSubmittingSlug === planItem.slug;
+
               return (
                 <div
-                  key={planItem.tier}
+                  key={planItem.slug}
                   className={`rounded-3xl p-5 border flex flex-col justify-between gap-5 transition-all ${
                     isCurrent
                       ? 'bg-brand-primary text-white border-brand-primary'
                       : 'bg-white text-brand-ink border-brand-primary/10'
                   }`}
                 >
-                  <div className="space-y-3.5">
+                  <div className="space-y-3">
                     <div>
                       <p
                         className={`text-[11px] font-semibold ${
-                          isCurrent ? 'text-brand-accent-strong' : 'text-brand-link'
+                          isCurrent
+                            ? 'text-brand-accent-contrast'
+                            : 'text-brand-link'
                         }`}
                       >
-                        {planItem.audience}
+                        {getPlanAudienceLabel(planItem.slug)}
                       </p>
-                      <h3 className="font-display font-bold text-lg mt-1">
-                        {planItem.tier}
+                      <h3 className="font-display font-bold text-lg mt-0.5">
+                        {planItem.nome}
                       </h3>
-                      {planItem.badge && (
-                        <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-brand-accent-strong/20 text-brand-accent-strong text-[10px] font-bold">
-                          Selo: {planItem.badge}
+                      {planItem.selo && (
+                        <span
+                          className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                            isCurrent
+                              ? 'bg-white/15 text-brand-accent-contrast'
+                              : 'bg-brand-accent-strong/15 text-brand-accent-strong'
+                          }`}
+                        >
+                          Selo: {planItem.selo}
                         </span>
                       )}
-                      <p className="font-mono font-bold text-base mt-2">
-                        {billingCycle === 'anual'
-                          ? planItem.priceAnnual
-                          : planItem.priceMonthly}
-                      </p>
-                      <p
-                        className={`text-xs mt-1 ${
-                          isCurrent ? 'text-white/80' : 'text-brand-ink/70'
-                        }`}
-                      >
-                        {planItem.limitLabel}
-                      </p>
+
+                      {billingCycle === 'mensal' ? (
+                        showPromo && !isCurrent ? (
+                          <div className="mt-2">
+                            <p className="text-[11px] font-mono line-through opacity-60">
+                              {formatCentavosBRL(planItem.precoMensalCentavos)}/mês
+                            </p>
+                            <p className="font-mono font-bold text-base text-emerald-700">
+                              {promoCents === 0
+                                ? 'R$ 0,00 / 90 dias'
+                                : `${formatCentavosBRL(promoCents)}/mês`}
+                            </p>
+                            <p className="text-[10px] text-emerald-700 font-semibold">
+                              Depois {formatCentavosBRL(planItem.precoMensalCentavos)}/mês
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="font-mono font-bold text-base mt-2">
+                            {planItem.precoMensalCentavos === 0
+                              ? 'R$ 0,00/mês'
+                              : `${formatCentavosBRL(planItem.precoMensalCentavos)}/mês`}
+                          </p>
+                        )
+                      ) : (
+                        <div className="mt-2">
+                          <p className="font-mono font-bold text-base">
+                            {planItem.precoAnualCentavos === 0
+                              ? 'R$ 0,00/ano'
+                              : `${formatCentavosBRL(planItem.precoAnualCentavos)}/ano`}
+                          </p>
+                          {planItem.precoAnualCentavos > 0 && (
+                            <p
+                              className={`text-[10px] ${
+                                isCurrent ? 'text-white/80' : 'text-emerald-700'
+                              }`}
+                            >
+                              {formatCentavosBRL(annualMonthlyEq)}/mês · Economize{' '}
+                              {formatCentavosBRL(annualSavings)}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    <ul className="space-y-2 text-xs">
-                      {planItem.features.map((feat) => (
+                    <ul className="space-y-1.5 text-xs">
+                      {bullets.map((feat) => (
                         <li key={feat} className="flex items-start gap-2">
                           <CheckCircle2
-                            className={`w-4 h-4 shrink-0 mt-0.5 ${
-                              isCurrent ? 'text-brand-accent-strong' : 'text-brand-link'
+                            className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${
+                              isCurrent
+                                ? 'text-brand-accent-contrast'
+                                : 'text-brand-link'
                             }`}
                           />
                           <span>{feat}</span>
@@ -763,22 +1339,176 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
 
                   <button
                     type="button"
+                    disabled={isCurrent || isSubmitting}
                     onClick={() => handleSelectPlanWithAsaas(planItem)}
-                    className={`w-full min-h-[42px] px-3 py-2 rounded-xl text-xs font-display font-semibold transition-colors cursor-pointer ${
+                    className={`w-full min-h-[42px] px-3 py-2 rounded-xl text-xs font-display font-semibold transition-colors ${
                       isCurrent
-                        ? 'bg-brand-accent-strong text-white'
-                        : 'bg-brand-background hover:bg-brand-surface-hover text-brand-ink'
+                        ? 'bg-brand-accent-strong text-white cursor-default'
+                        : 'bg-brand-background hover:bg-brand-surface-hover text-brand-ink cursor-pointer disabled:opacity-50'
                     }`}
                   >
-                    {isCurrent
-                      ? '✓ Plano Atual'
-                      : `Assinar ${planItem.tier}`}
+                    {isSubmitting
+                      ? 'Processando...'
+                      : isCurrent
+                        ? '✓ Plano Atual'
+                        : actionType === 'upgrade'
+                          ? `Fazer upgrade`
+                          : actionType === 'downgrade'
+                            ? `Agendar downgrade`
+                            : `Assinar ${planItem.nome}`}
                   </button>
                 </div>
               );
             })}
           </div>
+
+          {/* Histórico de Faturas */}
+          <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-4">
+            <div>
+              <h3 className="font-display font-bold text-lg text-brand-ink">
+                Histórico de faturas
+              </h3>
+              <p className="text-xs text-brand-ink/70">
+                Acompanhe cobranças, vencimentos e links de pagamento Asaas.
+              </p>
+            </div>
+
+            {Array.isArray(subSummary?.invoices) &&
+            subSummary.invoices.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-brand-primary/10 text-brand-ink/70">
+                      <th className="py-2.5 pr-4">Vencimento</th>
+                      <th className="py-2.5 pr-4">Método</th>
+                      <th className="py-2.5 pr-4">Valor</th>
+                      <th className="py-2.5 pr-4">Status</th>
+                      <th className="py-2.5 pr-4">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-brand-primary/10">
+                    {subSummary.invoices.map((inv: any) => (
+                      <tr key={inv.id}>
+                        <td className="py-3 pr-4 font-mono">
+                          {inv.vencimento
+                            ? new Date(inv.vencimento).toLocaleDateString('pt-BR')
+                            : '—'}
+                        </td>
+                        <td className="py-3 pr-4 uppercase font-semibold">
+                          {inv.metodo || 'pix'}
+                        </td>
+                        <td className="py-3 pr-4 font-mono font-bold">
+                          {formatCentavosBRL(inv.valorCentavos ?? 0)}
+                        </td>
+                        <td className="py-3 pr-4">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                              inv.status === 'paga'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : inv.status === 'pendente'
+                                  ? 'bg-amber-100 text-amber-900'
+                                  : 'bg-red-100 text-red-800'
+                            }`}
+                          >
+                            {inv.status}
+                          </span>
+                        </td>
+                        <td className="py-3 pr-4">
+                          {inv.urlCheckout &&
+                          (inv.status === 'pendente' ||
+                            inv.status === 'falhou') ? (
+                            <a
+                              href={inv.urlCheckout}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-brand-link font-semibold hover:underline"
+                            >
+                              <span>Pagar agora</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          ) : inv.pagoEm ? (
+                            <span className="text-brand-ink/60">
+                              Pago em{' '}
+                              {new Date(inv.pagoEm).toLocaleDateString('pt-BR')}
+                            </span>
+                          ) : (
+                            <span className="text-brand-ink/50">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-xs text-brand-ink/65">
+                Nenhuma fatura registrada até o momento para esta conta.
+              </p>
+            )}
+          </div>
         </div>
+      )}
+
+      {/* Modal de confirmação de cancelamento */}
+      {showCancelModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Cancelar assinatura"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+        >
+          <form
+            onSubmit={handleConfirmCancelSubscription}
+            className="bg-white rounded-3xl max-w-md w-full p-6 space-y-4 text-xs shadow-2xl border border-brand-primary/15"
+          >
+            <h3 className="font-display font-bold text-lg text-brand-ink">
+              Confirmar cancelamento da assinatura
+            </h3>
+            <p className="text-brand-ink/80 leading-relaxed">
+              Não cobramos multa nem fidelidade. Você mantém os benefícios do plano{' '}
+              <strong>{currentPlanConfig.nome}</strong> até o final do período já pago e depois retorna automaticamente para o plano Gratuito sem perder suas avaliações.
+            </p>
+            <div className="space-y-1">
+              <label className="font-semibold text-brand-ink block">
+                Motivo do cancelamento (opcional)
+              </label>
+              <textarea
+                rows={2}
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Ex: pausa temporária na agenda..."
+                className="w-full px-3 py-2 rounded-xl border border-brand-primary/15"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCancelModal(false)}
+                className="px-4 py-2 rounded-xl bg-brand-background text-brand-ink font-semibold cursor-pointer"
+              >
+                Manter assinatura
+              </button>
+              <button
+                type="submit"
+                disabled={cancelLoading}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold cursor-pointer disabled:opacity-60"
+              >
+                {cancelLoading ? 'Cancelando...' : 'Confirmar cancelamento'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {activeTab === 'indicacoes' && (
+        <ReferralDashboardPanel
+          authToken={authToken}
+          userFullName={activeProvider.name}
+          onDaysApplied={loadSubscriptionData}
+          onNavigateUrl={(path) =>
+            path === '/planos' ? setActiveTab('plano') : onNavigate('home')
+          }
+        />
       )}
 
       {/* ESPAÇO PUBLICITÁRIO MODERADO (DIRETO + GOOGLE ADSENSE) — EXIBIDO EXCLUSIVAMENTE NO PLANO GRATUITO NO PAINEL DO PRESTADOR */}

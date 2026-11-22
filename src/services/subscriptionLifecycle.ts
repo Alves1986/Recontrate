@@ -5,6 +5,7 @@ import {
   opportunityUsage,
   plans,
   processedWebhookEvents,
+  promotionalRedemptions,
   providerProfiles,
   subscriptionEvents,
   subscriptions,
@@ -27,9 +28,11 @@ import {
   forfeitLaunchOfferOnCancel,
   recordLaunchOfferRedemption,
 } from './launchOfferService';
+import { ProviderReferralService } from './providerReferralService';
 
 const emailService = new TransactionalEmailService();
 const whatsappService = new WhatsAppBusinessService();
+const referralService = new ProviderReferralService();
 
 export type SubscriptionStatus =
   | 'trial'
@@ -192,7 +195,7 @@ export class SubscriptionLifecycleService {
     await ensureSchemaAndSeed();
     const plan = await this.getPlanBySlug(input.planSlug);
     const now = new Date();
-    const fim = calculateCycleEndDate(now, input.cycle);
+    let fim = calculateCycleEndDate(now, input.cycle);
     let amountCents =
       input.cycle === 'anual'
         ? plan.precoAnualCentavos
@@ -236,15 +239,23 @@ export class SubscriptionLifecycleService {
       }
     }
 
+    const isFreeLaunchPromo = Boolean(appliedCampaignId && amountCents === 0);
+    if (isFreeLaunchPromo) {
+      fim = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+    }
+
     const customer = await this.billing.createCustomer({
       providerProfileId: input.providerProfileId,
       name: input.providerName,
       email: input.providerEmail,
       phone: input.providerPhone,
+      cpfCnpj: input.cpfCnpj,
     });
 
     const subId = `sub-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    const dueDateStr = now.toISOString().slice(0, 10);
+    const dueDateStr = (isFreeLaunchPromo ? fim : now)
+      .toISOString()
+      .slice(0, 10);
 
     const gatewaySub = await this.billing.createSubscription({
       gatewayCustomerId: customer.gatewayCustomerId,
@@ -257,11 +268,16 @@ export class SubscriptionLifecycleService {
       externalReference: subId,
     });
 
-    const initialStatus: SubscriptionStatus = input.startWithTrial
-      ? 'trial'
-      : amountCents === 0
-        ? 'ativa'
-        : 'pendente';
+    const initialStatus: SubscriptionStatus =
+      input.startWithTrial || isFreeLaunchPromo
+        ? 'trial'
+        : amountCents === 0
+          ? 'ativa'
+          : 'pendente';
+
+    const usageCycleEnd = isFreeLaunchPromo
+      ? calculateCycleEndDate(now, 'mensal')
+      : fim;
 
     const [createdSub] = await db
       .insert(subscriptions)
@@ -299,7 +315,7 @@ export class SubscriptionLifecycleService {
       providerProfileId: input.providerProfileId,
       subscriptionId: subId,
       periodoInicio: now,
-      periodoFim: fim,
+      periodoFim: usageCycleEnd,
     });
 
     await this.logEvent({
@@ -310,10 +326,11 @@ export class SubscriptionLifecycleService {
         cycle: input.cycle,
         status: initialStatus,
         amountCents,
+        freeDaysPromo: isFreeLaunchPromo ? 90 : 0,
       },
     });
 
-    if (initialStatus === 'ativa') {
+    if (initialStatus === 'ativa' || initialStatus === 'trial') {
       await db
         .update(providerProfiles)
         .set({ planSlug: plan.slug })
@@ -332,13 +349,49 @@ export class SubscriptionLifecycleService {
       });
     }
 
+    let referralBonusDaysApplied = 0;
+    let finalSubscription = createdSub;
+    if (
+      plan.precoMensalCentavos > 0 &&
+      (initialStatus === 'ativa' || initialStatus === 'trial')
+    ) {
+      try {
+        let resolvedUserId = input.userId;
+        if (!resolvedUserId) {
+          const { rows: provUserRows } = await pool.query<{ user_id: string | null }>(
+            `SELECT user_id FROM provider_profiles WHERE id = $1 LIMIT 1`,
+            [input.providerProfileId]
+          );
+          resolvedUserId = provUserRows[0]?.user_id || undefined;
+        }
+        if (resolvedUserId) {
+          const refApply =
+            await referralService.applyAvailableDaysToReferrerSubscription(
+              resolvedUserId,
+              subId
+            );
+          if (refApply.applied && refApply.newEndDate) {
+            referralBonusDaysApplied = refApply.appliedDays;
+            finalSubscription = {
+              ...createdSub,
+              fim: new Date(refApply.newEndDate),
+              proximaCobranca: new Date(refApply.newEndDate),
+            };
+          }
+        }
+      } catch {
+        // Não bloquear checkout caso aplicação de saldo de indicação falhe
+      }
+    }
+
     return {
-      subscription: createdSub,
+      subscription: finalSubscription,
       invoice: createdInvoice,
       plan,
       checkoutUrl: gatewaySub.checkoutUrl,
       launchOfferApplied: Boolean(appliedCampaignId),
       launchOfferRedemption: appliedRedemption,
+      referralBonusDaysApplied,
     };
   }
 
@@ -393,6 +446,24 @@ export class SubscriptionLifecycleService {
       dadosNovos: { status: 'ativa', planSlug: plan.slug },
       gatewayEventId,
     });
+
+    if (plan.precoMensalCentavos > 0) {
+      try {
+        const { rows: provUserRows } = await pool.query<{ user_id: string | null }>(
+          `SELECT user_id FROM provider_profiles WHERE id = $1 LIMIT 1`,
+          [sub.providerProfileId]
+        );
+        const ownerUserId = provUserRows[0]?.user_id;
+        if (ownerUserId) {
+          await referralService.applyAvailableDaysToReferrerSubscription(
+            ownerUserId,
+            sub.id
+          );
+        }
+      } catch {
+        // Não bloquear ativação caso aplicação de saldo de indicação falhe
+      }
+    }
 
     // Se já era uma assinatura ativa (renovação mensal), avança o ciclo promocional e agenda retorno ao preço cheio no 4º ciclo
     if (sub.status === 'ativa') {
@@ -1065,6 +1136,28 @@ export class SubscriptionLifecycleService {
       .where(eq(subscriptions.providerProfileId, providerProfileId))
       .orderBy(desc(subscriptions.criadoEm));
 
+    const [latestRedemption] = await db
+      .select()
+      .from(promotionalRedemptions)
+      .where(eq(promotionalRedemptions.providerProfileId, providerProfileId))
+      .orderBy(desc(promotionalRedemptions.criadoEm))
+      .limit(1);
+
+    const activeLaunchOffer =
+      latestRedemption &&
+      (latestRedemption.status === 'ativo' ||
+        latestRedemption.status === 'ativa')
+        ? {
+            id: latestRedemption.id,
+            status: latestRedemption.status,
+            cicloPromocionalAtual: latestRedemption.cicloPromocionalAtual,
+            ciclosMaximos: 3,
+            dataInicioPromocao: latestRedemption.dataInicioPromocao,
+            dataFimPromocao: latestRedemption.dataFimPromocao,
+            dataRetornoPrecoCheio: latestRedemption.dataRetornoPrecoCheio,
+          }
+        : null;
+
     const currentSub = subs[0];
     if (!currentSub) {
       const freePlan = await this.getPlanBySlug('gratuito');
@@ -1074,6 +1167,8 @@ export class SubscriptionLifecycleService {
         scheduledPlan: null,
         invoices: [],
         inGracePeriod: false,
+        portalUrl: null,
+        activeLaunchOffer,
       };
     }
 
@@ -1087,6 +1182,22 @@ export class SubscriptionLifecycleService {
       .where(eq(invoices.subscriptionId, currentSub.id))
       .orderBy(desc(invoices.criadoEm));
 
+    let portalUrl: string | null = null;
+    if (
+      currentSub.gatewayCustomerId &&
+      !currentSub.gatewayCustomerId.startsWith('cus_free_') &&
+      plan.precoMensalCentavos > 0
+    ) {
+      try {
+        const portal = await this.billing.createBillingPortalSession(
+          currentSub.gatewayCustomerId
+        );
+        portalUrl = portal.portalUrl;
+      } catch {
+        portalUrl = null;
+      }
+    }
+
     return {
       subscription: currentSub,
       plan,
@@ -1095,6 +1206,8 @@ export class SubscriptionLifecycleService {
       inGracePeriod:
         currentSub.status === 'inadimplente' &&
         Boolean(currentSub.toleranciaAte && currentSub.toleranciaAte > new Date()),
+      portalUrl,
+      activeLaunchOffer,
     };
   }
 }

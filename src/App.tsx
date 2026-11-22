@@ -42,7 +42,11 @@ import {
   PublicLandingPage,
   TermsAndPrivacyPage,
 } from './components/PublicPages';
-import { PlansPricingPage } from './components/PlansPricingPage';
+import {
+  PlansPricingPage,
+  planTierToSlug,
+} from './components/PlansPricingPage';
+import { ReferralDashboardPanel } from './components/ReferralDashboardPanel';
 import { DemoShowcasePage } from './components/DemoShowcasePage';
 import {
   ForgotAndResetPasswordPage,
@@ -132,6 +136,8 @@ export default function App() {
 
   const [providers, setProviders] = useState<ProviderProfile[]>([]);
   const [selectedProviderId, setSelectedProviderId] = useState<string>('');
+  const [authProviderPlanOverride, setAuthProviderPlanOverride] =
+    useState<PlanTier | null>(null);
 
   // Filter & Search state
   const [activeCategory, setActiveCategory] = useState<CategoryName | 'Todas'>(
@@ -177,9 +183,43 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // Restore session on mount (cookie httpOnly via /api/auth/me, Neon Auth session, or pilot storage fallback)
+  // Restore session on mount (cookie httpOnly via /api/auth/me or Neon Auth session)
   useEffect(() => {
     let cancelled = false;
+    const isValidJwtToken = (t?: string | null): boolean =>
+      Boolean(t && t.split('.').length === 3);
+
+    if (typeof window !== 'undefined') {
+      try {
+        const rawPilot = window.localStorage.getItem('recontrate_pilot_session');
+        if (rawPilot) {
+          const parsed = JSON.parse(rawPilot);
+          if (!isValidJwtToken(parsed?.token)) {
+            window.localStorage.removeItem('recontrate_pilot_session');
+          }
+        }
+        const rawUsers = window.localStorage.getItem('recontrate_pilot_users_v1');
+        if (rawUsers) {
+          const parsedUsers = JSON.parse(rawUsers) as Record<string, any>;
+          let changed = false;
+          for (const key of Object.keys(parsedUsers || {})) {
+            if (!isValidJwtToken(parsedUsers[key]?.token)) {
+              delete parsedUsers[key];
+              changed = true;
+            }
+          }
+          if (changed) {
+            window.localStorage.setItem(
+              'recontrate_pilot_users_v1',
+              JSON.stringify(parsedUsers)
+            );
+          }
+        }
+      } catch {
+        window.localStorage.removeItem('recontrate_pilot_session');
+      }
+    }
+
     (async () => {
       try {
         const res = await fetch('/api/auth/me', {
@@ -189,23 +229,32 @@ export default function App() {
           const body = await res.json().catch(() => null);
           if (!cancelled && body?.ok && body.user) {
             setAuthUser(body.user);
+            if (isValidJwtToken(body.token)) {
+              setAuthToken(body.token);
+            }
             return;
           }
+        }
+        if (res && res.status === 401 && typeof window !== 'undefined') {
+          window.localStorage.removeItem('recontrate_pilot_session');
         }
 
         // Check Neon Auth client session (e.g., after Google OAuth redirect)
         try {
           const neonSession = await authClient.getSession();
           const jwtToken = (neonSession as any)?.data?.session?.token;
-          if (jwtToken) {
+          if (isValidJwtToken(jwtToken)) {
             const meRes = await fetch('/api/auth/me', {
+              credentials: 'include',
               headers: { Authorization: `Bearer ${jwtToken}` },
             }).catch(() => null);
             if (meRes && meRes.ok) {
               const meBody = await meRes.json().catch(() => null);
               if (!cancelled && meBody?.ok && meBody.user) {
                 setAuthUser(meBody.user);
-                setAuthToken(jwtToken);
+                setAuthToken(
+                  isValidJwtToken(meBody.token) ? meBody.token : jwtToken
+                );
                 return;
               }
             }
@@ -214,14 +263,14 @@ export default function App() {
           // ignore Neon Auth client errors when offline
         }
 
-        // Fallback to local pilot session only if backend API is unavailable
-        if ((!res || res.status >= 500 || res.status === 404) && typeof window !== 'undefined') {
+        // Fallback to locally stored real JWT session only if backend API is temporarily unavailable (5xx/offline)
+        if ((!res || res.status >= 500) && typeof window !== 'undefined') {
           const rawPilot = window.localStorage.getItem('recontrate_pilot_session');
           if (rawPilot) {
             const parsed = JSON.parse(rawPilot);
-            if (!cancelled && parsed?.user) {
+            if (!cancelled && parsed?.user && isValidJwtToken(parsed?.token)) {
               setAuthUser(parsed.user);
-              setAuthToken(parsed.token || '');
+              setAuthToken(parsed.token);
             }
           }
         }
@@ -277,15 +326,13 @@ export default function App() {
           isMentor: Boolean(p.is_mentor),
           menteesCount: 0,
           plan:
-            p.plan_slug === 'padrinho'
-              ? 'Padrinho'
-              : p.plan_slug === 'premium'
-                ? 'Premium'
-                : p.plan_slug === 'profissional'
-                  ? 'Profissional'
-                  : p.plan_slug === 'essencial'
-                    ? 'Essencial'
-                    : 'Gratuito',
+            p.plan_slug === 'premium'
+              ? 'Premium'
+              : p.plan_slug === 'profissional'
+                ? 'Profissional'
+                : p.plan_slug === 'essencial'
+                  ? 'Essencial'
+                  : 'Gratuito',
           ratingAvg: Number(p.rating_avg ?? 0),
           reviewsCount: Number(p.reviews_count || 0),
           completedJobs: Number(p.completed_jobs || 0),
@@ -405,9 +452,12 @@ export default function App() {
     if (authUser) {
       await fetch('/api/app/cliente/requests', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          ...(authToken && authToken.split('.').length === 3
+            ? { Authorization: `Bearer ${authToken}` }
+            : {}),
         },
         body: JSON.stringify({
           categoryName: newReq.category,
@@ -448,7 +498,10 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => null);
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => null);
     await authClient.signOut().catch(() => null);
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem('recontrate_pilot_session');
@@ -463,9 +516,12 @@ export default function App() {
     try {
       const res = await fetch('/api/auth/switch-role', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          ...(authToken && authToken.split('.').length === 3
+            ? { Authorization: `Bearer ${authToken}` }
+            : {}),
         },
         body: JSON.stringify({ targetRole, enableIfMissing: true }),
       }).catch(() => null);
@@ -511,17 +567,17 @@ export default function App() {
               .slice(0, 2)
               .map((w) => w[0]?.toUpperCase() || '')
               .join('') || 'PR',
-          category: 'Eletricista',
+          category: (authUser.category || 'Elétrica') as CategoryName,
           specialties: ['Atendimento residencial e comercial'],
-          neighborhoods: [locationQuery || 'Centro'],
-          city: 'São Paulo, SP',
+          neighborhoods: [authUser.neighborhood || locationQuery || 'Centro'],
+          city: authUser.city || 'São Paulo, SP',
           yearsExperience: 1,
-          bio: 'Perfil profissional ativo no ambiente de piloto do Recontrate.',
+          bio: authUser.bio || 'Perfil profissional ativo no Recontrate.',
           isVerified: false,
           isTopRegion: false,
           isMentor: false,
           menteesCount: 0,
-          plan: 'Gratuito',
+          plan: authProviderPlanOverride || 'Gratuito',
           ratingAvg: 0,
           reviewsCount: 0,
           completedJobs: 0,
@@ -530,7 +586,7 @@ export default function App() {
           attendanceRatePercent: 100,
           profileCompletenessPercent: 85,
           availableToday: true,
-          whatsapp: '',
+          whatsapp: authUser.phone || '',
           trustedSubstitutesIds: [],
           portfolio: [],
           reviews: [],
@@ -542,6 +598,12 @@ export default function App() {
     ) ||
     providers[0] ||
     authenticatedProviderProfile;
+  const dashboardProvider =
+    (authUser?.providerProfileId
+      ? providers.find((p) => p.id === authUser.providerProfileId)
+      : undefined) ||
+    authenticatedProviderProfile ||
+    (demoMode ? providers[0] : undefined);
 
   const isDemoRoute = pathname === '/demo';
   const showDemoBanner = demoMode || isDemoRoute;
@@ -674,7 +736,7 @@ export default function App() {
                     onClick={() => navigateUrl('/criar-conta')}
                     className="min-h-[40px] px-3 sm:px-4 py-2 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs sm:text-sm cursor-pointer whitespace-nowrap"
                   >
-                    Participar do piloto
+                    Criar conta grátis
                   </button>
                 </>
               ) : (
@@ -686,6 +748,17 @@ export default function App() {
                     className="px-3 py-2 rounded-xl bg-brand-primary text-white font-semibold cursor-pointer"
                   >
                     Painel ({authUser.activeRole})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateUrl('/app/indicacoes')}
+                    className={`px-3 py-2 rounded-xl font-semibold cursor-pointer ${
+                      pathname === '/app/indicacoes'
+                        ? 'bg-brand-accent-strong text-white'
+                        : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200'
+                    }`}
+                  >
+                    Indicar (+15 dias)
                   </button>
                   <button
                     type="button"
@@ -757,20 +830,36 @@ export default function App() {
         {pathname === '/planos' && (
           <PlansPricingPage
             onNavigateUrl={navigateUrl}
+            isLoggedIn={Boolean(authUser)}
             isLoggedProvider={Boolean(
               authUser &&
                 (authUser.activeRole === 'prestador' ||
                   authUser.roles.includes('prestador'))
             )}
+            authToken={authToken}
             providerContext={
               authUser?.providerProfileId
                 ? {
                     providerProfileId: authUser.providerProfileId,
                     fullName: authUser.fullName,
                     email: authUser.email,
+                    phone: dashboardProvider?.whatsapp || '',
+                    currentPlanSlug: planTierToSlug(dashboardProvider?.plan),
                   }
                 : null
             }
+            onPlanUpdated={(newPlan) => {
+              setAuthProviderPlanOverride(newPlan);
+              if (authUser?.providerProfileId) {
+                setProviders((prev) =>
+                  prev.map((p) =>
+                    p.id === authUser.providerProfileId
+                      ? { ...p, plan: newPlan }
+                      : p
+                  )
+                );
+              }
+            }}
           />
         )}
 
@@ -889,6 +978,13 @@ export default function App() {
                   >
                     Avaliar Atendimento
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateUrl('/app/indicacoes')}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold cursor-pointer"
+                  >
+                    Indicar Profissional (+15 dias)
+                  </button>
                 </div>
               </div>
 
@@ -915,9 +1011,12 @@ export default function App() {
               setRepeatRequests((prev) => [newRepeat, ...prev]);
               fetch('/api/app/cliente/repeat-requests', {
                 method: 'POST',
+                credentials: 'include',
                 headers: {
                   'Content-Type': 'application/json',
-                  ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+                  ...(authToken && authToken.split('.').length === 3
+                    ? { Authorization: `Bearer ${authToken}` }
+                    : {}),
                 },
                 body: JSON.stringify({
                   providerProfileId: newRepeat.providerId,
@@ -957,9 +1056,12 @@ export default function App() {
               );
               fetch('/api/app/cliente/reviews', {
                 method: 'POST',
+                credentials: 'include',
                 headers: {
                   'Content-Type': 'application/json',
-                  ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+                  ...(authToken && authToken.split('.').length === 3
+                    ? { Authorization: `Bearer ${authToken}` }
+                    : {}),
                 },
                 body: JSON.stringify({
                   providerProfileId: providerId,
@@ -980,10 +1082,13 @@ export default function App() {
 
         {authUser &&
           pathname.startsWith('/app/prestador') &&
-          (activeProvider ? (
+          (dashboardProvider ? (
             <ProviderDashboardScreen
-              activeProvider={activeProvider}
+              activeProvider={dashboardProvider}
               opportunities={opportunities}
+              providerEmail={authUser.email}
+              providerPhone={dashboardProvider.whatsapp}
+              authToken={authToken}
               onAddRealtimeOpportunity={(newOpp) =>
                 setOpportunities((prev) => [newOpp, ...prev])
               }
@@ -992,13 +1097,16 @@ export default function App() {
                   prev.map((o) => (o.id === oppId ? { ...o, status } : o))
                 )
               }
-              onChangeProviderPlan={(providerId: string, newPlan: PlanTier) =>
+              onChangeProviderPlan={(providerId: string, newPlan: PlanTier) => {
+                if (providerId === authUser.providerProfileId) {
+                  setAuthProviderPlanOverride(newPlan);
+                }
                 setProviders((prev) =>
                   prev.map((p) =>
                     p.id === providerId ? { ...p, plan: newPlan } : p
                   )
-                )
-              }
+                );
+              }}
               onToggleProviderAvailability={(providerId: string) =>
                 setProviders((prev) =>
                   prev.map((p) =>
@@ -1023,6 +1131,14 @@ export default function App() {
 
         {authUser && pathname.startsWith('/app/padrinho') && (
           <PadrinhoDashboardPage user={authUser} token={authToken} />
+        )}
+
+        {authUser && pathname === '/app/indicacoes' && (
+          <ReferralDashboardPanel
+            authToken={authToken}
+            userFullName={authUser.fullName}
+            onNavigateUrl={navigateUrl}
+          />
         )}
 
         {authUser && pathname.startsWith('/admin') && (
@@ -1083,7 +1199,7 @@ export default function App() {
                   onClick={() => navigateUrl('/planos')}
                   className="hover:text-brand-ink cursor-pointer"
                 >
-                  Planos e Piloto
+                  Planos
                 </button>
                 <button
                   type="button"
@@ -1103,7 +1219,7 @@ export default function App() {
             </div>
             <div className="pt-4 border-t border-brand-primary/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-brand-ink/60">
               <p>
-                Recontrate é uma identidade provisória de trabalho em ambiente de desenvolvimento/piloto (sem registro de marca concluído ou cobrança ativa).
+                Recontrate · Plataforma de indicação e recontratação de profissionais — você não paga comissão à plataforma; todo valor do serviço é negociado diretamente com o cliente, fora da plataforma.
               </p>
               <p>
                 Contato do projeto:{' '}

@@ -86,26 +86,6 @@ INSERT INTO plans (
     false,
     true,
     4
-  ),
-  (
-    'plan-padrinho',
-    'padrinho',
-    'Padrinho',
-    'Todos os recursos do Premium, selo Padrinho Verificado e ferramentas de indicação, acompanhamento de apadrinhados e painel de reputação.',
-    10990,
-    109900,
-    100,
-    9,
-    'Alta',
-    true,
-    true,
-    true,
-    NULL,
-    true,
-    'Padrinho Verificado',
-    false,
-    true,
-    5
   )
 ON CONFLICT (slug) DO UPDATE SET
   nome = EXCLUDED.nome,
@@ -125,3 +105,12 @@ ON CONFLICT (slug) DO UPDATE SET
   ativo = EXCLUDED.ativo,
   ordem_exibicao = EXCLUDED.ordem_exibicao,
   atualizado_em = NOW();
+
+DELETE FROM plans
+WHERE slug = 'padrinho'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM subscriptions s
+    JOIN plans p ON p.id = s.plan_id
+    WHERE p.slug = 'padrinho'
+  );

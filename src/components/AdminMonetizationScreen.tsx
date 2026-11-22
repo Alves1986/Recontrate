@@ -22,6 +22,7 @@ export const AdminMonetizationScreen: React.FC = () => {
   const [systemHealth, setSystemHealth] = useState<any>(null);
   const [promoAnalytics, setPromoAnalytics] = useState<any>(null);
   const [promoFeedback, setPromoFeedback] = useState('');
+  const [referralAnalytics, setReferralAnalytics] = useState<any>(null);
   const [taxonomyQueue, setTaxonomyQueue] = useState<any>({
     suggestions: [],
     customTags: [],
@@ -61,12 +62,31 @@ export const AdminMonetizationScreen: React.FC = () => {
     slotId: '',
   });
   const [googleFeedback, setGoogleFeedback] = useState('');
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
+  const [planEditForm, setPlanEditForm] = useState({
+    nome: '',
+    descricao: '',
+    precoMensalReais: '0.00',
+    precoAnualReais: '0.00',
+    limiteOportunidadesMensal: 5,
+    prioridadeMatching: 0,
+    prioridadeLabel: 'Baixa',
+    selo: '',
+    ativo: true,
+    exibeAnuncios: false,
+    permiteDestaque: false,
+    permiteRelatoriosAvancados: false,
+    permitePortfolioIlimitado: false,
+    suportePrioritario: false,
+  });
+  const [planSaveLoading, setPlanSaveLoading] = useState(false);
+  const [planSaveFeedback, setPlanSaveFeedback] = useState('');
 
   const loadAdminDashboard = useCallback(async () => {
     setLoading(true);
     try {
       const headers = { 'x-user-role': 'admin' };
-      const [mRes, sRes, aRes, pRes, provRes, healthRes, promoRes, taxRes, specsRes] = await Promise.all([
+      const [mRes, sRes, aRes, pRes, provRes, healthRes, promoRes, taxRes, specsRes, refRes] = await Promise.all([
         fetch('/api/admin/metrics', { headers }).then((r) => r.json()),
         fetch('/api/admin/subscriptions', { headers }).then((r) => r.json()),
         fetch('/api/admin/ads', { headers }).then((r) => r.json()),
@@ -86,12 +106,16 @@ export const AdminMonetizationScreen: React.FC = () => {
         fetch('/api/taxonomy/specialties')
           .then((r) => (r.ok ? r.json() : { ok: false }))
           .catch(() => ({ ok: false })),
+        fetch('/api/admin/referrals', { headers })
+          .then((r) => (r.ok ? r.json() : { ok: false }))
+          .catch(() => ({ ok: false })),
       ]);
       if (mRes.ok) setMetrics(mRes.metrics);
       if (sRes.ok) setAdminData(sRes);
       if (provRes?.ok) setProvidersRegistry(provRes.providers || []);
       if (healthRes?.ok) setSystemHealth(healthRes);
       if (promoRes?.ok) setPromoAnalytics(promoRes);
+      if (refRes?.ok) setReferralAnalytics(refRes);
       if (taxRes?.ok) {
         setTaxonomyQueue({
           suggestions: taxRes.suggestions || [],
@@ -123,6 +147,87 @@ export const AdminMonetizationScreen: React.FC = () => {
   useEffect(() => {
     loadAdminDashboard();
   }, [loadAdminDashboard]);
+
+  const handleStartEditPlan = (plan: any) => {
+    setEditingPlanId(plan.id);
+    setPlanSaveFeedback('');
+    setPlanEditForm({
+      nome: plan.nome || '',
+      descricao: plan.descricao || '',
+      precoMensalReais: ((plan.precoMensalCentavos ?? 0) / 100).toFixed(2),
+      precoAnualReais: ((plan.precoAnualCentavos ?? 0) / 100).toFixed(2),
+      limiteOportunidadesMensal: Number(plan.limiteOportunidadesMensal ?? 5),
+      prioridadeMatching: Number(plan.prioridadeMatching ?? 0),
+      prioridadeLabel: plan.prioridadeLabel || 'Baixa',
+      selo: plan.selo || '',
+      ativo: plan.ativo !== false,
+      exibeAnuncios: Boolean(plan.exibeAnuncios),
+      permiteDestaque: Boolean(plan.permiteDestaque),
+      permiteRelatoriosAvancados: Boolean(plan.permiteRelatoriosAvancados),
+      permitePortfolioIlimitado: Boolean(plan.permitePortfolioIlimitado),
+      suportePrioritario: Boolean(plan.suportePrioritario),
+    });
+  };
+
+  const handleSavePlanEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPlanId) return;
+    setPlanSaveLoading(true);
+    setPlanSaveFeedback('');
+    try {
+      const precoMensalCentavos = Math.max(
+        0,
+        Math.round(Number(planEditForm.precoMensalReais.replace(',', '.')) * 100)
+      );
+      const precoAnualCentavos = Math.max(
+        0,
+        Math.round(Number(planEditForm.precoAnualReais.replace(',', '.')) * 100)
+      );
+      const res = await fetch(`/api/admin/plans/${encodeURIComponent(editingPlanId)}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': 'admin',
+        },
+        body: JSON.stringify({
+          nome: planEditForm.nome.trim(),
+          descricao: planEditForm.descricao.trim(),
+          precoMensalCentavos,
+          precoAnualCentavos,
+          limiteOportunidadesMensal: Math.max(
+            1,
+            Number(planEditForm.limiteOportunidadesMensal) || 1
+          ),
+          prioridadeMatching: Math.min(
+            12,
+            Math.max(0, Number(planEditForm.prioridadeMatching) || 0)
+          ),
+          prioridadeLabel: planEditForm.prioridadeLabel,
+          selo: planEditForm.selo.trim() || null,
+          ativo: planEditForm.ativo,
+          exibeAnuncios: planEditForm.exibeAnuncios,
+          permiteDestaque: planEditForm.permiteDestaque,
+          permiteRelatoriosAvancados: planEditForm.permiteRelatoriosAvancados,
+          permitePortfolioIlimitado: planEditForm.permitePortfolioIlimitado,
+          suportePrioritario: planEditForm.suportePrioritario,
+        }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.ok) {
+        throw new Error(body.error || 'Erro ao atualizar plano.');
+      }
+      setPlanSaveFeedback(
+        `Plano "${body.plan?.nome || planEditForm.nome}" atualizado com sucesso no banco de dados!`
+      );
+      setEditingPlanId(null);
+      await loadAdminDashboard();
+    } catch (err) {
+      setPlanSaveFeedback(`Erro: ${(err as Error).message}`);
+    } finally {
+      setPlanSaveLoading(false);
+    }
+  };
 
   const handleSaveGoogleAdsConfig = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -352,7 +457,9 @@ export const AdminMonetizationScreen: React.FC = () => {
                 <th className="py-2.5 pr-4">Limite Oport./Mês</th>
                 <th className="py-2.5 pr-4">Bônus Matching</th>
                 <th className="py-2.5 pr-4">Anúncios no Painel</th>
+                <th className="py-2.5 pr-4">Status</th>
                 <th className="py-2.5 pr-4">Receita Mensal Ativa</th>
+                <th className="py-2.5 pr-2">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-brand-primary/10 font-mono">
@@ -374,14 +481,255 @@ export const AdminMonetizationScreen: React.FC = () => {
                   <td className="py-3 pr-4">
                     {p.exibeAnuncios ? 'Sim (Moderado)' : 'Não'}
                   </td>
+                  <td className="py-3 pr-4 font-sans">
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        p.ativo !== false
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      {p.ativo !== false ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </td>
                   <td className="py-3 pr-4 font-bold text-brand-link">
                     {formatBRLFromCents(metrics?.revenueByPlan?.[p.slug] || 0)}
+                  </td>
+                  <td className="py-3 pr-2 font-sans">
+                    <button
+                      type="button"
+                      onClick={() => handleStartEditPlan(p)}
+                      className="px-3 py-1.5 rounded-lg bg-brand-background hover:bg-brand-surface-hover text-brand-ink font-semibold text-[11px] cursor-pointer"
+                    >
+                      Editar
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+
+        {planSaveFeedback && (
+          <div
+            className={`p-3 rounded-xl text-xs font-semibold ${
+              planSaveFeedback.startsWith('Erro')
+                ? 'bg-red-50 text-red-800 border border-red-200'
+                : 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+            }`}
+          >
+            {planSaveFeedback}
+          </div>
+        )}
+
+        {editingPlanId && (
+          <form
+            onSubmit={handleSavePlanEdit}
+            className="p-5 rounded-2xl bg-brand-background/70 border border-brand-primary/15 space-y-4 text-xs"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="font-display font-bold text-sm text-brand-ink">
+                Editar Plano ({editingPlanId})
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingPlanId(null)}
+                className="text-brand-ink/70 hover:text-brand-ink font-semibold cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="space-y-1">
+                <label className="font-semibold text-brand-ink block">Nome</label>
+                <input
+                  type="text"
+                  required
+                  value={planEditForm.nome}
+                  onChange={(e) =>
+                    setPlanEditForm((prev) => ({ ...prev, nome: e.target.value }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border border-brand-primary/15 bg-white"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="font-semibold text-brand-ink block">
+                  Preço Mensal (R$)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  value={planEditForm.precoMensalReais}
+                  onChange={(e) =>
+                    setPlanEditForm((prev) => ({
+                      ...prev,
+                      precoMensalReais: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border border-brand-primary/15 bg-white font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="font-semibold text-brand-ink block">
+                  Preço Anual (R$)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  value={planEditForm.precoAnualReais}
+                  onChange={(e) =>
+                    setPlanEditForm((prev) => ({
+                      ...prev,
+                      precoAnualReais: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border border-brand-primary/15 bg-white font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="font-semibold text-brand-ink block">
+                  Limite Oport./Mês
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  required
+                  value={planEditForm.limiteOportunidadesMensal}
+                  onChange={(e) =>
+                    setPlanEditForm((prev) => ({
+                      ...prev,
+                      limiteOportunidadesMensal: Number(e.target.value),
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border border-brand-primary/15 bg-white font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="font-semibold text-brand-ink block">
+                  Bônus Matching (0–12)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="12"
+                  required
+                  value={planEditForm.prioridadeMatching}
+                  onChange={(e) =>
+                    setPlanEditForm((prev) => ({
+                      ...prev,
+                      prioridadeMatching: Number(e.target.value),
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border border-brand-primary/15 bg-white font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="font-semibold text-brand-ink block">
+                  Rótulo de Prioridade
+                </label>
+                <select
+                  value={planEditForm.prioridadeLabel}
+                  onChange={(e) =>
+                    setPlanEditForm((prev) => ({
+                      ...prev,
+                      prioridadeLabel: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 rounded-xl border border-brand-primary/15 bg-white"
+                >
+                  <option value="Baixa">Baixa</option>
+                  <option value="Leve">Leve</option>
+                  <option value="Média">Média</option>
+                  <option value="Alta">Alta</option>
+                </select>
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <label className="font-semibold text-brand-ink block">
+                  Selo Oficial do Plano
+                </label>
+                <input
+                  type="text"
+                  value={planEditForm.selo}
+                  onChange={(e) =>
+                    setPlanEditForm((prev) => ({ ...prev, selo: e.target.value }))
+                  }
+                  placeholder="Ex: Top Recontrate (opcional)"
+                  className="w-full px-3 py-2 rounded-xl border border-brand-primary/15 bg-white"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-semibold text-brand-ink block">
+                Descrição comercial do plano
+              </label>
+              <input
+                type="text"
+                required
+                value={planEditForm.descricao}
+                onChange={(e) =>
+                  setPlanEditForm((prev) => ({
+                    ...prev,
+                    descricao: e.target.value,
+                  }))
+                }
+                className="w-full px-3 py-2 rounded-xl border border-brand-primary/15 bg-white"
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-4 pt-1">
+              {(
+                [
+                  ['ativo', 'Plano Ativo'],
+                  ['exibeAnuncios', 'Exibe anúncios no painel'],
+                  ['permiteDestaque', 'Permite destaque'],
+                  ['permiteRelatoriosAvancados', 'Relatórios avançados'],
+                  ['permitePortfolioIlimitado', 'Portfólio ilimitado'],
+                  ['suportePrioritario', 'Suporte prioritário'],
+                ] as const
+              ).map(([field, label]) => (
+                <label
+                  key={field}
+                  className="inline-flex items-center gap-2 cursor-pointer text-brand-ink"
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(planEditForm[field])}
+                    onChange={(e) =>
+                      setPlanEditForm((prev) => ({
+                        ...prev,
+                        [field]: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingPlanId(null)}
+                className="px-4 py-2 rounded-xl bg-white border border-brand-primary/15 text-brand-ink font-semibold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={planSaveLoading}
+                className="px-5 py-2 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-semibold cursor-pointer disabled:opacity-60"
+              >
+                {planSaveLoading ? 'Salvando...' : 'Salvar alterações do plano'}
+              </button>
+            </div>
+          </form>
+        )}
       </section>
 
       {/* CRUD Administrativo de Anúncios + Relatório de Impressões, Cliques, CTR e Receita Estimada */}
@@ -922,7 +1270,7 @@ export const AdminMonetizationScreen: React.FC = () => {
         )}
       </section>
 
-      {/* 6. Campanha de Lançamento (50% off / 3 meses) · Conversão, Cancelamento & Renovação Pós-Promoção */}
+      {/* 6. Campanha de Lançamento (90 dias grátis / 3 meses) · Conversão, Cancelamento & Renovação Pós-Promoção */}
       {promoAnalytics?.campaign && (
         <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1250,6 +1598,102 @@ export const AdminMonetizationScreen: React.FC = () => {
               </div>
             ))}
           </div>
+        )}
+      </section>
+
+      {/* 7. PROGRAMA DE INDICAÇÃO DE PROFISSIONAIS (+15 DIAS GRÁTIS) */}
+      <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-brand-link">
+              Aquisição Orgânica · +15 Dias (Indicador) e +10 Dias (Indicado)
+            </p>
+            <h2 className="font-display font-bold text-lg text-brand-ink">
+              Métricas Globais de Indicação de Profissionais
+            </h2>
+          </div>
+          <span className="px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
+            Exclusivo para usuários cadastrados
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+          <div className="p-3.5 rounded-2xl bg-brand-background/70">
+            <p className="text-brand-ink/60 font-medium">Códigos Ativos</p>
+            <p className="font-mono font-bold text-lg text-brand-ink mt-1">
+              {referralAnalytics?.metrics?.totalCodesGenerated ?? 0}
+            </p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-brand-background/70">
+            <p className="text-brand-ink/60 font-medium">Cliques nos Links</p>
+            <p className="font-mono font-bold text-lg text-brand-ink mt-1">
+              {referralAnalytics?.metrics?.clicksCount ?? 0}
+            </p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200">
+            <p className="text-emerald-800 font-medium">Indicações Validadas</p>
+            <p className="font-mono font-bold text-lg text-emerald-700 mt-1">
+              {referralAnalytics?.metrics?.validatedReferrals ?? 0}
+            </p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-brand-background/70">
+            <p className="text-brand-ink/60 font-medium">Taxa de Conversão</p>
+            <p className="font-mono font-bold text-lg text-brand-primary mt-1">
+              {referralAnalytics?.metrics?.conversionRatePercent ?? 0}%
+            </p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-brand-background/70">
+            <p className="text-brand-ink/60 font-medium">Dias Grátis Concedidos</p>
+            <p className="font-mono font-bold text-lg text-brand-accent-strong mt-1">
+              +{referralAnalytics?.metrics?.totalFreeDaysEarned ?? 0} dias
+            </p>
+            <p className="text-[11px] text-brand-ink/65 mt-0.5">
+              +{referralAnalytics?.metrics?.totalReferredBonusDays ?? 0}d bônus indicados
+            </p>
+          </div>
+          <div className="p-3.5 rounded-2xl bg-brand-background/70">
+            <p className="text-brand-ink/60 font-medium">Dias já Aplicados</p>
+            <p className="font-mono font-bold text-lg text-brand-ink mt-1">
+              {referralAnalytics?.metrics?.appliedFreeDays ?? 0} dias
+            </p>
+          </div>
+        </div>
+
+        {(referralAnalytics?.topReferrers || []).length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-brand-primary/10 text-brand-ink/70">
+                  <th className="py-2 pr-4 font-semibold">Usuário Indicador</th>
+                  <th className="py-2 px-3 font-semibold">Código</th>
+                  <th className="py-2 px-3 font-semibold">Prestadores Validados</th>
+                  <th className="py-2 pl-3 font-semibold">Dias Grátis Ganhos</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-brand-primary/10">
+                {referralAnalytics.topReferrers.map((item: any) => (
+                  <tr key={item.userId}>
+                    <td className="py-2.5 pr-4 font-semibold text-brand-ink">
+                      {item.name}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono font-semibold text-brand-primary">
+                      {item.code}
+                    </td>
+                    <td className="py-2.5 px-3 font-mono">
+                      {item.validatedCount}
+                    </td>
+                    <td className="py-2.5 pl-3 font-mono font-bold text-emerald-700">
+                      +{item.totalDaysGranted} dias
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-xs text-brand-ink/65">
+            Ainda não há indicações registradas no programa. Assim que usuários cadastrados compartilharem seus códigos, o ranking e métricas aparecerão aqui.
+          </p>
         )}
       </section>
     </div>

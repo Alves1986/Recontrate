@@ -156,27 +156,6 @@ export const INITIAL_PLANS_SEED = [
     ativo: true,
     ordemExibicao: 4,
   },
-  {
-    id: 'plan-padrinho',
-    slug: 'padrinho',
-    nome: 'Padrinho',
-    descricao:
-      'Todos os recursos do Premium, selo Padrinho Verificado e ferramentas de indicação, acompanhamento de apadrinhados e painel de reputação.',
-    precoMensalCentavos: 10990,
-    precoAnualCentavos: 109900,
-    limiteOportunidadesMensal: 100,
-    prioridadeMatching: 9,
-    prioridadeLabel: 'Alta',
-    permiteDestaque: true,
-    permiteRelatoriosAvancados: true,
-    permitePortfolioIlimitado: true,
-    limiteFotosPortfolio: null as number | null,
-    suportePrioritario: true,
-    selo: 'Padrinho Verificado',
-    exibeAnuncios: false,
-    ativo: true,
-    ordemExibicao: 5,
-  },
 ];
 
 let schemaInitialized = false;
@@ -573,6 +552,37 @@ async function runEnsureSchemaAndSeed(): Promise<void> {
       }
     }
 
+    const { rows: mig7Check } = await client.query(
+      `SELECT 1 FROM information_schema.tables
+       WHERE table_schema = 'public'
+         AND table_name = 'referral_codes'`
+    );
+    if (mig7Check.length === 0) {
+      const migration7Path = path.resolve(
+        process.cwd(),
+        'migrations/007_provider_referrals.sql'
+      );
+      if (existsSync(migration7Path)) {
+        await client.query(readFileSync(migration7Path, 'utf-8'));
+      }
+    }
+
+    const { rows: mig8Check } = await client.query(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'provider_referrals'
+         AND column_name = 'referred_reward_days'`
+    );
+    if (mig8Check.length === 0) {
+      const migration8Path = path.resolve(
+        process.cwd(),
+        'migrations/008_referred_provider_bonus_days.sql'
+      );
+      if (existsSync(migration8Path)) {
+        await client.query(readFileSync(migration8Path, 'utf-8'));
+      }
+    }
+
     const expectedCategorySlugs = INITIAL_TAXONOMY_CATEGORIES.map((c) => c.slug);
     const expectedSpecialtySlugs = INITIAL_TAXONOMY_CATEGORIES.flatMap((c) =>
       c.specialties.map((s) => slugifyTaxonomyTerm(s.nome))
@@ -642,7 +652,18 @@ async function runEnsureSchemaAndSeed(): Promise<void> {
       );
     }
 
-    // Seed da Campanha de Lançamento (50% off nos 3 primeiros meses para novos prestadores)
+    await client.query(
+      `DELETE FROM plans
+       WHERE slug = 'padrinho'
+         AND NOT EXISTS (
+           SELECT 1
+           FROM subscriptions s
+           JOIN plans p ON p.id = s.plan_id
+           WHERE p.slug = 'padrinho'
+         )`
+    );
+
+    // Seed da Campanha de Lançamento (90 dias grátis nos 3 primeiros meses para novos prestadores)
     await client.query(
       `INSERT INTO promotional_campaigns (
         id, nome, slug, descricao, tipo, desconto_percentual, duracao_ciclos,
@@ -650,15 +671,15 @@ async function runEnsureSchemaAndSeed(): Promise<void> {
         data_inicio, data_fim, limite_total_resgates, limite_por_prestador, status
       ) VALUES (
         'camp-lancamento-50-off',
-        'Oferta de lançamento: 50% de desconto nos 3 primeiros meses',
+        'Promoção de lançamento: 90 dias grátis',
         'lancamento-50-off-3-meses',
-        'Válida apenas para a primeira assinatura mensal paga de novos prestadores nos planos Essencial, Profissional, Premium e Padrinho. A partir do 4º mês aplica-se o preço cheio.',
+        'Válida para a primeira assinatura mensal de novos prestadores nos planos Essencial, Profissional e Premium. Os 90 primeiros dias (3 primeiros ciclos mensais) são 100% gratuitos (R$ 0,00); a partir do 4º mês aplica-se o preço padrão do plano, com cancelamento livre sem multa.',
         'introducao_novos_prestadores',
-        50,
+        100,
         3,
-        '["essencial","profissional","premium","padrinho"]'::jsonb,
-        '{"essencial":2990,"profissional":5990,"premium":9990,"padrinho":10990}'::jsonb,
-        '{"essencial":1495,"profissional":2995,"premium":4995,"padrinho":5495}'::jsonb,
+        '["essencial","profissional","premium"]'::jsonb,
+        '{"essencial":2990,"profissional":5990,"premium":9990}'::jsonb,
+        '{"essencial":0,"profissional":0,"premium":0}'::jsonb,
         NOW() - INTERVAL '1 day',
         NOW() + INTERVAL '180 days',
         10000,
@@ -666,6 +687,11 @@ async function runEnsureSchemaAndSeed(): Promise<void> {
         'ativo'
       )
       ON CONFLICT (slug) DO UPDATE SET
+        nome = EXCLUDED.nome,
+        descricao = EXCLUDED.descricao,
+        desconto_percentual = EXCLUDED.desconto_percentual,
+        duracao_ciclos = EXCLUDED.duracao_ciclos,
+        planos_elegiveis_json = EXCLUDED.planos_elegiveis_json,
         preco_cheio_json = EXCLUDED.preco_cheio_json,
         preco_promocional_json = EXCLUDED.preco_promocional_json,
         atualizado_em = NOW()`
@@ -679,7 +705,7 @@ async function runEnsureSchemaAndSeed(): Promise<void> {
           'João Batista Silva',
           'Eletricista',
           'São Paulo, SP',
-          'padrinho',
+          'premium',
           '4.96',
           94,
           128,

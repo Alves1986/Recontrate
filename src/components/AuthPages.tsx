@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ArrowRight,
   Award,
+  CheckCircle2,
   KeyRound,
   Lock,
   Mail,
+  Search,
   ShieldCheck,
   User,
 } from 'lucide-react';
@@ -26,6 +28,24 @@ async function safeParseJson<T = any>(res: Response): Promise<T | null> {
 
 const PILOT_STORAGE_KEY = 'recontrate_pilot_users_v1';
 
+function isValidJwtToken(token?: string | null): boolean {
+  return Boolean(token && token.split('.').length === 3);
+}
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface SignupOfficialCategory {
+  id: string;
+  slug: string;
+  nome: string;
+  specialties: Array<{
+    id: string;
+    nome: string;
+    sinonimos?: string[];
+  }>;
+}
+
 interface StoredPilotAccount {
   user: AuthenticatedUserSession;
   password: string;
@@ -43,7 +63,7 @@ function readStoredPilotAccounts(): Record<string, StoredPilotAccount> {
 }
 
 function writeStoredPilotAccount(email: string, account: StoredPilotAccount) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || !isValidJwtToken(account.token)) return;
   try {
     const current = readStoredPilotAccounts();
     current[email.trim().toLowerCase()] = account;
@@ -77,11 +97,12 @@ export const LoginPage: React.FC<{
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       }).catch(() => null);
       const body = res ? await safeParseJson(res) : null;
-      if (res && res.ok && body?.ok) {
+      if (res && res.ok && body?.ok && isValidJwtToken(body.token)) {
         writeStoredPilotAccount(email, {
           user: body.user,
           password,
@@ -90,18 +111,11 @@ export const LoginPage: React.FC<{
         onAuthenticated(body.user, body.token, body.redirectTo);
         return;
       }
-      if (body?.error && res && res.status < 500 && res.status !== 404) {
-        setError(body.error);
-        return;
-      }
-      // Fallback to local pilot account if backend API is unavailable
-      const normalizedEmail = email.trim().toLowerCase();
-      const stored = readStoredPilotAccounts()[normalizedEmail];
-      if (stored && stored.password === password) {
-        const redirectTo =
-          stored.user.redirectTo ||
-          (stored.user.activeRole === 'prestador' ? '/app/prestador' : '/app');
-        onAuthenticated(stored.user, stored.token, redirectTo);
+      if (!res || res.status >= 500) {
+        setError(
+          body?.error ||
+            'Não foi possível conectar ao servidor para autenticar agora. Aguarde alguns segundos e tente novamente.'
+        );
         return;
       }
       setError(body?.error || 'E-mail ou senha inválidos.');
@@ -250,18 +264,169 @@ export const SignupPage: React.FC<{
   ) => void;
   onNavigateUrl: (path: string) => void;
 }> = ({ onAuthenticated, onNavigateUrl }) => {
-  const [role, setRole] = useState<'cliente' | 'prestador'>('cliente');
+  const initialParams =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search)
+      : null;
+  const initialRefParam = (initialParams?.get('ref') || '')
+    .trim()
+    .toUpperCase();
+  const initialRoleParam =
+    initialParams?.get('role') === 'prestador' ||
+    (Boolean(initialRefParam) && initialParams?.get('role') !== 'cliente')
+      ? 'prestador'
+      : 'cliente';
+  const selectedPlanParam = initialParams?.get('plan') || '';
+  const selectedCycleParam =
+    initialParams?.get('cycle') === 'anual' ? 'anual' : 'mensal';
+
+  const [role, setRole] = useState<'cliente' | 'prestador'>(initialRoleParam);
+  const [referralCode, setReferralCode] = useState(initialRefParam);
+  const [referralPreview, setReferralPreview] = useState<{
+    valid: boolean;
+    referrerFirstName?: string;
+    rewardDaysForReferrer?: number;
+    rewardDaysForReferred?: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const code = referralCode.trim().toUpperCase();
+    if (!code || code.length < 4) {
+      setReferralPreview(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      fetch(`/api/public/referrals/validate/${encodeURIComponent(code)}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => {
+          if (cancelled) return;
+          if (body?.ok && body.valid) {
+            setReferralPreview({
+              valid: true,
+              referrerFirstName: body.referrerFirstName,
+              rewardDaysForReferrer:
+                body.rewardDaysForReferrer ?? body.rewardDays ?? 15,
+              rewardDaysForReferred: body.rewardDaysForReferred ?? 10,
+            });
+          } else {
+            setReferralPreview({ valid: false });
+          }
+        })
+        .catch(() => null);
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [referralCode]);
   const [alsoEnableSecondRole, setAlsoEnableSecondRole] = useState(false);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
-  const [neighborhood, setNeighborhood] = useState('Pinheiros');
+  const [city, setCity] = useState('São Paulo, SP');
+  const [neighborhood, setNeighborhood] = useState('');
   const [category, setCategory] = useState('Elétrica');
+  const [bio, setBio] = useState('');
+  const [officialCategories, setOfficialCategories] = useState<
+    SignupOfficialCategory[]
+  >([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [selectedSpecialtyIds, setSelectedSpecialtyIds] = useState<string[]>([]);
+  const [principalSpecialtyId, setPrincipalSpecialtyId] = useState('');
+  const [specialtySearch, setSpecialtySearch] = useState('');
+  const [loadingTaxonomy, setLoadingTaxonomy] = useState(false);
   const [lgpdConsent, setLgpdConsent] = useState(false);
   const [websiteHoneypot, setWebsiteHoneypot] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const isProviderSignup = role === 'prestador' || alsoEnableSecondRole;
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingTaxonomy(true);
+    fetch('/api/taxonomy/categories', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (cancelled) return;
+        const cats: SignupOfficialCategory[] = Array.isArray(body?.categories)
+          ? body.categories
+          : [];
+        setOfficialCategories(cats);
+        if (cats.length > 0) {
+          setSelectedCategoryId((prev) =>
+            cats.some((c) => c.id === prev) ? prev : cats[0].id
+          );
+          setCategory((prev) => prev || cats[0].nome);
+        }
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (!cancelled) setLoadingTaxonomy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedCategoryObj =
+    officialCategories.find((c) => c.id === selectedCategoryId) ||
+    officialCategories[0] ||
+    null;
+
+  const filteredSpecialties = (selectedCategoryObj?.specialties || []).filter(
+    (spec) => {
+      const q = specialtySearch.trim().toLowerCase();
+      if (!q) return true;
+      if (spec.nome.toLowerCase().includes(q)) return true;
+      return (spec.sinonimos || []).some((syn) =>
+        syn.toLowerCase().includes(q)
+      );
+    }
+  );
+
+  const toggleSignupSpecialty = (specId: string) => {
+    setError('');
+    setSelectedSpecialtyIds((prev) => {
+      if (prev.includes(specId)) {
+        const next = prev.filter((id) => id !== specId);
+        if (principalSpecialtyId === specId) {
+          setPrincipalSpecialtyId(next[0] || '');
+        }
+        return next;
+      }
+      if (prev.length >= 5) {
+        setError('Você pode selecionar no máximo 5 especialidades oficiais.');
+        return prev;
+      }
+      if (!principalSpecialtyId) {
+        setPrincipalSpecialtyId(specId);
+      }
+      return [...prev, specId];
+    });
+  };
+
+  const persistPendingPlanSelection = () => {
+    if (
+      typeof window !== 'undefined' &&
+      selectedPlanParam &&
+      selectedPlanParam !== 'gratuito'
+    ) {
+      try {
+        window.sessionStorage.setItem(
+          'recontrate_pending_plan',
+          JSON.stringify({
+            plan: selectedPlanParam,
+            cycle: selectedCycleParam,
+          })
+        );
+      } catch {
+        // ignore storage errors
+      }
+    }
+  };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -271,15 +436,38 @@ export const SignupPage: React.FC<{
     }
     if (!lgpdConsent) {
       setError(
-        'Para continuar no pré-cadastro/piloto, marque a caixa de consentimento concordando com os avisos de uso e privacidade.'
+        'Para criar sua conta no Recontrate, marque a caixa de consentimento concordando com os Termos de Uso e Política de Privacidade.'
       );
       return;
     }
+    if (isProviderSignup) {
+      if (!UUID_REGEX.test(selectedCategoryId)) {
+        setError(
+          'Aguarde o carregamento das categorias oficiais para concluir seu cadastro de prestador.'
+        );
+        return;
+      }
+      if (selectedSpecialtyIds.length < 1) {
+        setError(
+          'Selecione entre 1 e 5 especialidades oficiais para concluir seu cadastro de prestador.'
+        );
+        return;
+      }
+    }
     setLoading(true);
+
+    const resolvedCategoryName = isProviderSignup
+      ? selectedCategoryObj?.nome || category
+      : category;
+    const sendUnifiedTaxonomy =
+      isProviderSignup &&
+      UUID_REGEX.test(selectedCategoryId) &&
+      selectedSpecialtyIds.length >= 1;
 
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           role,
@@ -288,13 +476,26 @@ export const SignupPage: React.FC<{
           email,
           password,
           phone,
+          city,
           neighborhood,
-          category,
+          category: resolvedCategoryName,
+          ...(sendUnifiedTaxonomy
+            ? {
+                categoryId: selectedCategoryId,
+                specialtyIds: selectedSpecialtyIds,
+                principalSpecialtyId:
+                  principalSpecialtyId || selectedSpecialtyIds[0],
+                bio: bio.trim() || undefined,
+              }
+            : {}),
+          referralCode: referralCode.trim()
+            ? referralCode.trim().toUpperCase()
+            : undefined,
           lgpdConsent,
         }),
       }).catch(() => null);
       const body = res ? await safeParseJson(res) : null;
-      if (res && res.ok && body?.ok) {
+      if (res && res.ok && body?.ok && isValidJwtToken(body.token)) {
         const activeUser: AuthenticatedUserSession = {
           ...body.user,
           status: 'ativo',
@@ -305,49 +506,28 @@ export const SignupPage: React.FC<{
           password,
           token: body.token,
         });
-        onAuthenticated(
-          activeUser,
-          body.token,
-          activeUser.redirectTo || '/app/onboarding'
-        );
+        let nextTarget =
+          activeUser.redirectTo ||
+          (activeUser.activeRole === 'prestador' ? '/app/prestador' : '/app');
+        if (!activeUser.onboardingCompleted) {
+          persistPendingPlanSelection();
+          nextTarget = '/app/onboarding';
+        } else if (
+          isProviderSignup &&
+          selectedPlanParam &&
+          selectedPlanParam !== 'gratuito'
+        ) {
+          nextTarget = `/planos?checkout=${encodeURIComponent(
+            selectedPlanParam
+          )}&cycle=${encodeURIComponent(selectedCycleParam)}`;
+        }
+        onAuthenticated(activeUser, body.token, nextTarget);
         return;
       }
-      if (body?.error && res && res.status < 500 && res.status !== 404) {
-        setError(body.error);
-        return;
-      }
-      // Static preview fallback when /api/auth/register returns 404 or network error
-      const roles: Array<'cliente' | 'prestador'> = [role];
-      if (alsoEnableSecondRole) {
-        const second = role === 'cliente' ? 'prestador' : 'cliente';
-        if (!roles.includes(second)) roles.push(second);
-      }
-      const fallbackId =
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `pilot-${Date.now()}`;
-      const fallbackUser: AuthenticatedUserSession = {
-        userId: fallbackId,
-        neonAuthUserId: null,
-        email: email.trim().toLowerCase(),
-        fullName: fullName.trim(),
-        roles,
-        activeRole: role,
-        status: 'ativo',
-        emailVerified: true,
-        onboardingCompleted: false,
-        providerProfileId: roles.includes('prestador')
-          ? `prov-${fallbackId.slice(0, 8)}`
-          : null,
-        redirectTo: '/app/onboarding',
-      };
-      const fallbackToken = `pilot-token-${fallbackId}`;
-      writeStoredPilotAccount(email, {
-        user: fallbackUser,
-        password,
-        token: fallbackToken,
-      });
-      onAuthenticated(fallbackUser, fallbackToken, '/app/onboarding');
+      setError(
+        body?.error ||
+          'Não foi possível conectar ao servidor para criar sua conta agora. Aguarde alguns segundos e tente novamente.'
+      );
     } catch (err) {
       setError(
         (err as Error).message || 'Não foi possível concluir o cadastro agora.'
@@ -358,18 +538,52 @@ export const SignupPage: React.FC<{
   };
 
   return (
-    <div className="max-w-xl mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-6 my-6">
+    <div
+      className={`${
+        isProviderSignup ? 'max-w-2xl' : 'max-w-xl'
+      } mx-auto bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-6 my-6`}
+    >
       <div className="space-y-3">
         <BrandLogo variant="dark" size="sm" />
         <div className="space-y-1">
           <p className="text-xs font-semibold text-brand-link">
-            Cadastro Real · Cliente e/ou Prestador
+            Cadastro Único · Cliente e/ou Prestador
           </p>
           <h1 className="font-display font-bold text-2xl text-brand-ink">
             Criar conta no Recontrate
           </h1>
+          <p className="text-xs text-brand-ink/70">
+            Preencha tudo em uma única etapa — você vai direto para o painel sem precisar repetir dados.
+          </p>
         </div>
       </div>
+
+      {selectedPlanParam && (
+        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs">
+          <strong>Plano selecionado:</strong>{' '}
+          <span className="uppercase font-bold">{selectedPlanParam}</span> (
+          {selectedCycleParam}). Conclua seu cadastro de prestador e especialidades para finalizar sua assinatura.
+        </div>
+      )}
+
+      {referralPreview?.valid && (
+        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs space-y-1">
+          <p className="font-bold">
+            Indicado por{' '}
+            {referralPreview.referrerFirstName || 'um usuário Recontrate'}
+          </p>
+          <p>
+            Código{' '}
+            <span className="font-mono font-bold">
+              {referralCode.trim().toUpperCase()}
+            </span>{' '}
+            validado: ao concluir seu cadastro profissional, você ganha +
+            {referralPreview.rewardDaysForReferred ?? 10} dias grátis extras na sua
+            assinatura (acumuláveis com os 90 dias grátis de lançamento) e quem
+            indicou ganha +{referralPreview.rewardDaysForReferrer ?? 15} dias grátis.
+          </p>
+        </div>
+      )}
 
 
       {/* Role Selector */}
@@ -476,21 +690,36 @@ export const SignupPage: React.FC<{
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
-            <label className="font-semibold text-brand-ink">
-              Bairro principal
-            </label>
+            <label className="font-semibold text-brand-ink">Cidade *</label>
             <input
               type="text"
               required
-              value={neighborhood}
-              onChange={(e) => setNeighborhood(e.target.value)}
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="São Paulo, SP"
               className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 text-sm"
             />
           </div>
 
           <div className="space-y-1">
             <label className="font-semibold text-brand-ink">
-              Especialidade {role === 'cliente' ? 'favorita' : 'de atuação'}
+              Bairro principal *
+            </label>
+            <input
+              type="text"
+              required
+              value={neighborhood}
+              onChange={(e) => setNeighborhood(e.target.value)}
+              placeholder="Ex.: Pinheiros"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 text-sm"
+            />
+          </div>
+        </div>
+
+        {!isProviderSignup && (
+          <div className="space-y-1">
+            <label className="font-semibold text-brand-ink">
+              Especialidade favorita
             </label>
             <select
               value={category}
@@ -504,7 +733,142 @@ export const SignupPage: React.FC<{
               ))}
             </select>
           </div>
-        </div>
+        )}
+
+        {isProviderSignup && (
+          <div className="rounded-2xl bg-brand-background/55 border border-brand-primary/10 p-4 space-y-3.5">
+            <div>
+              <p className="text-[11px] font-semibold text-brand-accent-strong">
+                Perfil Profissional · Etapa Única
+              </p>
+              <p className="text-[11px] text-brand-ink/70">
+                Defina sua categoria, 1 a 5 especialidades oficiais e resumo para já liberar seu painel pronto.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="font-semibold text-brand-ink">
+                  1. Categoria Principal Oficial *
+                </label>
+                <select
+                  value={selectedCategoryId}
+                  onChange={(e) => {
+                    const nextId = e.target.value;
+                    setSelectedCategoryId(nextId);
+                    setSelectedSpecialtyIds([]);
+                    setPrincipalSpecialtyId('');
+                    setSpecialtySearch('');
+                    const matched = officialCategories.find(
+                      (c) => c.id === nextId
+                    );
+                    if (matched) setCategory(matched.nome);
+                  }}
+                  className="w-full px-3 py-2.5 rounded-xl border border-brand-primary/15 bg-white text-xs font-medium"
+                >
+                  {officialCategories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-brand-ink">
+                  2. Filtrar Especialidade (com sinônimos)
+                </label>
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-brand-primary/15 bg-white">
+                  <Search className="w-3.5 h-3.5 text-brand-ink/50 shrink-0" />
+                  <input
+                    type="text"
+                    value={specialtySearch}
+                    onChange={(e) => setSpecialtySearch(e.target.value)}
+                    placeholder="Ex.: chuveiro, porcelanato, split..."
+                    className="w-full focus:outline-none text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="font-semibold text-brand-ink">
+                3. Especialidades Oficiais ({selectedSpecialtyIds.length}/5 selecionadas) *
+              </p>
+              {loadingTaxonomy && officialCategories.length === 0 ? (
+                <p className="text-[11px] text-brand-ink/60">
+                  Carregando especialidades oficiais...
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {filteredSpecialties.map((spec) => {
+                    const isSelected = selectedSpecialtyIds.includes(spec.id);
+                    const isPrincipal =
+                      (principalSpecialtyId || selectedSpecialtyIds[0]) ===
+                      spec.id;
+                    return (
+                      <button
+                        key={spec.id}
+                        type="button"
+                        onClick={() => toggleSignupSpecialty(spec.id)}
+                        className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                          isSelected
+                            ? 'bg-brand-primary text-white border-brand-primary'
+                            : 'bg-white text-brand-ink border-brand-primary/15 hover:bg-brand-surface-hover'
+                        }`}
+                      >
+                        {isSelected && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-brand-accent-strong" />
+                        )}
+                        <span>{spec.nome}</span>
+                        {isSelected && isPrincipal && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-brand-accent-strong text-white">
+                            Principal
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-semibold text-brand-ink">
+                Resumo profissional (opcional — Vitrine Pública)
+              </label>
+              <textarea
+                rows={2}
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                placeholder="Ex.: Eletricista residencial com 8 anos de experiência, atendimento pontual e garantia no serviço."
+                className="w-full px-3 py-2 rounded-xl border border-brand-primary/15 bg-white text-xs"
+              />
+            </div>
+          </div>
+        )}
+
+        {(role === 'prestador' || alsoEnableSecondRole) && (
+          <div className="space-y-1">
+            <label
+              htmlFor="signup-referral-code"
+              className="font-semibold text-brand-ink block"
+            >
+              Código de indicação (opcional)
+            </label>
+            <input
+              id="signup-referral-code"
+              type="text"
+              value={referralCode}
+              onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+              placeholder="Ex: REC-JOAO4F"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 bg-white font-mono text-xs uppercase"
+            />
+            <p className="text-[11px] text-brand-ink/65">
+              Tem código de indicação? Informe aqui para você ganhar <strong>+10 dias grátis extras</strong> na sua assinatura e liberar +15 dias grátis para quem indicou após concluir seu cadastro profissional.
+            </p>
+          </div>
+        )}
 
         <label className="flex items-start gap-2.5 pt-1 cursor-pointer">
           <input
@@ -538,7 +902,7 @@ export const SignupPage: React.FC<{
             className="mt-0.5"
           />
           <span className="text-brand-ink/80 leading-relaxed">
-            Autorizo o uso dos dados mínimos informados acima para acesso ao ambiente de piloto do Recontrate, ciente dos{' '}
+            Autorizo o uso dos dados informados acima para operação da minha conta no Recontrate, ciente dos{' '}
             <button
               type="button"
               onClick={() => onNavigateUrl('/termos')}
@@ -552,7 +916,7 @@ export const SignupPage: React.FC<{
               onClick={() => onNavigateUrl('/privacidade')}
               className="underline font-semibold text-brand-link cursor-pointer"
             >
-              Política de Privacidade LGPD (em revisão)
+              Política de Privacidade e LGPD
             </button>
             .
           </span>
@@ -563,7 +927,7 @@ export const SignupPage: React.FC<{
           disabled={loading}
           className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs transition-colors cursor-pointer disabled:opacity-60"
         >
-          {loading ? 'Registrando participação...' : 'Participar do piloto / Criar conta'}
+          {loading ? 'Criando sua conta...' : 'Criar conta grátis'}
         </button>
       </form>
 
@@ -744,14 +1108,27 @@ export const OnboardingPage: React.FC<{
   const isProviderOnboarding = Boolean(
     user.roles.includes('prestador') && user.providerProfileId
   );
-  const [neighborhood, setNeighborhood] = useState('Pinheiros');
-  const [city, setCity] = useState('São Paulo, SP');
+  const [neighborhood, setNeighborhood] = useState(user.neighborhood || '');
+  const [city, setCity] = useState(user.city || 'São Paulo, SP');
   const [bio, setBio] = useState(
-    'Profissional autônomo dedicado a atendimentos pontuais e seguros.'
+    user.bio ||
+      'Profissional autônomo dedicado a atendimentos pontuais e seguros.'
   );
   const [officialSpecialtiesCount, setOfficialSpecialtiesCount] = useState(0);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (user.neighborhood) {
+      setNeighborhood((prev) => prev || user.neighborhood!);
+    }
+    if (user.city) {
+      setCity((prev) => prev || user.city!);
+    }
+    if (user.bio) {
+      setBio(user.bio);
+    }
+  }, [user.neighborhood, user.city, user.bio]);
 
   const handleFinish = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -765,12 +1142,14 @@ export const OnboardingPage: React.FC<{
 
     setLoading(true);
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(isValidJwtToken(token) ? { Authorization: `Bearer ${token}` } : {}),
+      };
       const res = await fetch('/api/auth/onboarding', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include',
+        headers,
         body: JSON.stringify({
           city,
           neighborhood,
@@ -778,19 +1157,37 @@ export const OnboardingPage: React.FC<{
           enforceOfficialSpecialties: isProviderOnboarding,
         }),
       }).catch(() => null);
+      const consumePendingPlanRedirect = (defaultRedirect: string) => {
+        if (typeof window !== 'undefined' && isProviderOnboarding) {
+          try {
+            const rawPending = window.sessionStorage.getItem(
+              'recontrate_pending_plan'
+            );
+            if (rawPending) {
+              window.sessionStorage.removeItem('recontrate_pending_plan');
+              const parsed = JSON.parse(rawPending);
+              if (parsed?.plan && parsed.plan !== 'gratuito') {
+                return `/planos?checkout=${encodeURIComponent(
+                  parsed.plan
+                )}&cycle=${encodeURIComponent(parsed.cycle || 'mensal')}`;
+              }
+            }
+          } catch {
+            // ignore storage errors
+          }
+        }
+        return defaultRedirect;
+      };
+
       const body = res ? await safeParseJson(res) : null;
       if (res && res.ok && body?.ok) {
-        onComplete(body.redirectTo || '/app');
+        onComplete(consumePendingPlanRedirect(body.redirectTo || '/app'));
         return;
       }
-      if (body?.error) {
-        setError(body.error);
-        return;
-      }
-      // Fallback for static preview mode
-      const fallbackRedirect =
-        user.activeRole === 'prestador' ? '/app/prestador' : '/app';
-      onComplete(fallbackRedirect);
+      setError(
+        body?.error ||
+          'Não foi possível concluir o onboarding agora. Verifique sua sessão e tente novamente.'
+      );
     } catch (err) {
       setError((err as Error).message || 'Não foi possível concluir o onboarding.');
     } finally {
@@ -897,6 +1294,7 @@ export const OnboardingPage: React.FC<{
         <ProviderSpecialtiesManager
           providerProfileId={user.providerProfileId}
           authToken={token}
+          initialCategoryName={user.category || undefined}
           onOfficialSpecialtiesChange={setOfficialSpecialtiesCount}
         />
       )}

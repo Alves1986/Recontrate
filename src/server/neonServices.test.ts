@@ -27,16 +27,16 @@ test.after(async () => {
   await pool.end();
 });
 
-test('1. Lakebase Postgres: migrates via direct URL and queries 5 Confiare plans via pooled URL', async () => {
+test('1. Lakebase Postgres: migrates via direct URL and queries 4 Recontrate plans via pooled URL', async () => {
   const res = await fetch(`${baseUrl}/api/neon/postgres`);
   assert.equal(res.status, 200);
   const body = (await res.json()) as any;
   console.log('[E2E Postgres]', JSON.stringify(body));
   assert.equal(body.ok, true);
-  assert.equal(body.plansCount, 5);
+  assert.equal(body.plansCount, 4);
   assert.deepEqual(
     body.plans.map((p: any) => p.slug),
-    ['gratuito', 'essencial', 'profissional', 'premium', 'padrinho']
+    ['gratuito', 'essencial', 'profissional', 'premium']
   );
 });
 

@@ -34,8 +34,6 @@ function slugToPlanTier(slug: string): PlanTier {
       return 'Profissional';
     case 'premium':
       return 'Premium';
-    case 'padrinho':
-      return 'Padrinho';
     default:
       return 'Gratuito';
   }

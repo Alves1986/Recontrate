@@ -92,7 +92,6 @@ export const PLAN_PRIORITY_BONUS: Record<PlanTier, number> = {
   Essencial: 2,
   Profissional: 5,
   Premium: 8,
-  Padrinho: 9,
 };
 
 export const PLAN_MONTHLY_OPPORTUNITY_LIMITS: Record<PlanTier, number> = {
@@ -100,7 +99,6 @@ export const PLAN_MONTHLY_OPPORTUNITY_LIMITS: Record<PlanTier, number> = {
   Essencial: 15,
   Profissional: 40,
   Premium: 100,
-  Padrinho: 100,
 };
 
 export interface MatchingPriorityContext {
@@ -129,10 +127,10 @@ export interface MatchingPriorityBreakdown {
  *   1. Compatibilidade com a solicitação e área/distância de atendimento (0–40 pts)
  *   2. Disponibilidade (0–20 pts)
  *   3. Reputação e taxa de resposta via Nota Composta (0–35 pts)
- *   4. Bônus moderado e configurável do plano (0–9 pts)
+ *   4. Bônus moderado e configurável do plano (0–8 pts)
  *   5. Penalidades por histórico de cancelamentos / baixa taxa de comparecimento
  * - Como Compatibilidade + Disponibilidade + Reputação somam até 95 pontos e o bônus
- *   máximo de plano é de apenas 9 pontos, um plano pago jamais substitui compatibilidade,
+ *   máximo de plano é de apenas 8 pontos, um plano pago jamais substitui compatibilidade,
  *   disponibilidade ou reputação nem monopoliza a fila.
  */
 export function getMatchingPriority(

@@ -78,7 +78,7 @@ export const DEMO_SANDBOX_PROVIDERS: ProviderProfile[] = [
     isTopRegion: true,
     isMentor: true,
     menteesCount: 2,
-    plan: 'Padrinho',
+    plan: 'Premium',
     ratingAvg: 4.96,
     reviewsCount: 94,
     completedJobs: 128,

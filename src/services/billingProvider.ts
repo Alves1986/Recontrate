@@ -119,6 +119,7 @@ export interface RefundInvoiceResult {
 }
 
 export interface BillingProvider {
+  isLiveGatewayConfigured?(): boolean;
   createCustomer(input: CreateCustomerInput): Promise<CreateCustomerResult>;
   createSubscription(
     input: CreateSubscriptionInput
@@ -228,6 +229,10 @@ export class AsaasBillingAdapter implements BillingProvider {
     this.allowLocalFallback = options?.allowLocalFallback ?? true;
   }
 
+  isLiveGatewayConfigured(): boolean {
+    return Boolean(this.apiKey);
+  }
+
   private centsToAsaasDecimal(cents: number): number {
     if (!Number.isInteger(cents) || cents < 0) {
       throw new Error(`Invalid monetary value in cents: ${cents}`);
@@ -296,6 +301,16 @@ export class AsaasBillingAdapter implements BillingProvider {
   async createSubscription(
     input: CreateSubscriptionInput
   ): Promise<CreateSubscriptionResult> {
+    if (input.amountCents === 0) {
+      return {
+        gatewaySubscriptionId: `sub_free_${input.planSlug}_${Date.now()}`,
+        gatewayInvoiceId: `pay_free_${Date.now()}`,
+        checkoutUrl: '',
+        status: 'ativa',
+        nextDueDate: input.nextDueDate,
+      };
+    }
+
     const asaasCycle = input.cycle === 'anual' ? 'YEARLY' : 'MONTHLY';
     const billingType = mapMethodToAsaasBillingType(input.paymentMethod);
 
@@ -310,21 +325,49 @@ export class AsaasBillingAdapter implements BillingProvider {
         value: this.centsToAsaasDecimal(input.amountCents),
         nextDueDate: input.nextDueDate,
         cycle: asaasCycle,
-        description: `Assinatura Confiare - Plano ${input.planName} (${input.cycle})`,
+        description: `Assinatura Recontrate - Plano ${input.planName} (${input.cycle})`,
         externalReference: input.externalReference,
       }),
     });
 
     const gatewaySubscriptionId =
       apiRes?.id || `sub_asaas_${input.planSlug}_${Date.now()}`;
-    const gatewayInvoiceId = `pay_asaas_${Date.now()}`;
+
+    let firstPayment:
+      | {
+          id: string;
+          invoiceUrl?: string;
+          bankSlipUrl?: string;
+          dueDate?: string;
+        }
+      | undefined;
+
+    if (apiRes?.id) {
+      const paymentsRes = await this.asaasRequest<{
+        data?: Array<{
+          id: string;
+          invoiceUrl?: string;
+          bankSlipUrl?: string;
+          dueDate?: string;
+        }>;
+      }>(`/subscriptions/${apiRes.id}/payments?limit=1`, {
+        method: 'GET',
+      });
+      firstPayment = paymentsRes?.data?.[0];
+    }
+
+    const gatewayInvoiceId = firstPayment?.id || `pay_asaas_${Date.now()}`;
 
     return {
       gatewaySubscriptionId,
       gatewayInvoiceId,
-      checkoutUrl: `https://www.asaas.com/i/${gatewayInvoiceId.replace(/^pay_asaas_/, '')}`,
-      status: input.amountCents === 0 ? 'ativa' : 'pendente',
-      nextDueDate: apiRes?.nextDueDate || input.nextDueDate,
+      checkoutUrl:
+        firstPayment?.invoiceUrl ||
+        firstPayment?.bankSlipUrl ||
+        `https://www.asaas.com/i/${gatewayInvoiceId.replace(/^pay_asaas_/, '')}`,
+      status: 'pendente',
+      nextDueDate:
+        firstPayment?.dueDate || apiRes?.nextDueDate || input.nextDueDate,
     };
   }
 
@@ -387,7 +430,7 @@ export class AsaasBillingAdapter implements BillingProvider {
         billingType,
         value: this.centsToAsaasDecimal(input.amountCents),
         dueDate: input.dueDate,
-        description: `Confiare - Plano ${input.planName} (${input.cycle})`,
+        description: `Recontrate - Plano ${input.planName} (${input.cycle})`,
         externalReference: input.subscriptionId,
       }),
     });

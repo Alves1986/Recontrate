@@ -7,11 +7,11 @@ test.after(async () => {
   await pool.end();
 });
 
-test('Plans seed: all 5 Confiare plans use integer centavos, exact opportunity limits, and only Gratuito displays ads', async () => {
+test('Plans seed: all 4 Recontrate plans use integer centavos, exact opportunity limits, and only Gratuito displays ads', async () => {
   await ensureSchemaAndSeed();
 
   const dbPlans = await db.select().from(plans).orderBy(plans.ordemExibicao);
-  assert.equal(dbPlans.length, 5);
+  assert.equal(dbPlans.length, 4);
 
   const bySlug = Object.fromEntries(dbPlans.map((p) => [p.slug, p]));
 
@@ -48,15 +48,6 @@ test('Plans seed: all 5 Confiare plans use integer centavos, exact opportunity l
   assert.equal(bySlug.premium.permiteDestaque, true);
   assert.equal(bySlug.premium.permiteRelatoriosAvancados, true);
   assert.equal(bySlug.premium.exibeAnuncios, false);
-
-  // 5. Padrinho: R$ 109,90/mês (10990) | R$ 1.099/ano (109900) | 100 oportunidades | prioridade 9
-  assert.equal(bySlug.padrinho.precoMensalCentavos, 10990);
-  assert.equal(bySlug.padrinho.precoAnualCentavos, 109900);
-  assert.equal(bySlug.padrinho.limiteOportunidadesMensal, 100);
-  assert.equal(bySlug.padrinho.prioridadeMatching, 9);
-  assert.equal(bySlug.padrinho.permiteDestaque, true);
-  assert.equal(bySlug.padrinho.permiteRelatoriosAvancados, true);
-  assert.equal(bySlug.padrinho.exibeAnuncios, false);
 
   // Ensure all monetary values are strictly integers
   for (const plan of INITIAL_PLANS_SEED) {

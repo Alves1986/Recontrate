@@ -22,10 +22,12 @@ import {
   requireRole,
   securityHeadersMiddleware,
 } from './authMiddleware';
+import { ProviderReferralService } from '../services/providerReferralService';
 
 const authService = new AuthService();
 const marketplaceService = new MarketplaceDataService();
 const taxonomyService = new SpecialtiesTaxonomyService();
+const referralService = new ProviderReferralService();
 
 // Basic rate limiter for auth endpoints
 const authRateMap = new Map<string, { count: number; resetAt: number }>();
@@ -61,7 +63,19 @@ const RegisterSchema = z.object({
   role: z.enum(['cliente', 'prestador']),
   alsoEnableSecondRole: z.boolean().optional(),
   category: z.string().optional(),
+  bio: z.string().max(600).optional(),
+  categoryId: z.string().uuid().optional(),
+  specialtyIds: z.array(z.string().uuid()).min(1).max(5).optional(),
+  principalSpecialtyId: z.string().uuid().optional(),
   lgpdConsent: z.boolean(),
+  referralCode: z.string().trim().max(32).optional(),
+});
+
+const DirectReferralInviteSchema = z.object({
+  referredName: z.string().trim().min(2),
+  referredPhone: z.string().trim().min(8),
+  referredEmail: z.string().email().optional().or(z.literal('')),
+  referredCategory: z.string().optional(),
 });
 
 const LoginSchema = z.object({
@@ -488,10 +502,14 @@ export function createPhase1Router(): express.Router {
     res.json({ ok: true, redirectTo: '/entrar' });
   });
 
-  router.get('/auth/me', requireAuth(authService), (req, res) => {
+  router.get('/auth/me', requireAuth(authService), async (req, res) => {
+    const token = await authService
+      .mintSessionToken(req.authSession!)
+      .catch(() => undefined);
     res.json({
       ok: true,
       user: req.authSession,
+      token,
     });
   });
 
@@ -1329,6 +1347,89 @@ export function createPhase1Router(): express.Router {
           activeRole: req.body?.activeRole,
         });
         res.json({ ok: true, user: updated });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  // =========================================================================
+  // 4. PROGRAMA DE INDICAÇÃO DE PROFISSIONAIS (+15 DIAS GRÁTIS)
+  // =========================================================================
+  router.get('/public/referrals/validate/:code', async (req, res) => {
+    try {
+      const result = await referralService.validateAndTrackCodeVisit(
+        String(req.params.code)
+      );
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.get(
+    '/app/referrals/dashboard',
+    requireAuth(authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        const dashboard = await referralService.getReferralDashboardForUser(
+          session.userId,
+          session.providerProfileId
+        );
+        res.json({ ok: true, ...dashboard });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post(
+    '/app/referrals/invite',
+    requireAuth(authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        const parsed = DirectReferralInviteSchema.parse(req.body || {});
+        const result = await referralService.createDirectInvite({
+          referrerUserId: session.userId,
+          referrerProviderProfileId: session.providerProfileId,
+          referredName: parsed.referredName,
+          referredPhone: parsed.referredPhone,
+          referredEmail: parsed.referredEmail || undefined,
+          referredCategory: parsed.referredCategory || undefined,
+        });
+
+        await authService
+          .logAudit({
+            actorUserId: session.userId,
+            actorRole: session.activeRole,
+            action: 'provider_referral_invite_created',
+            targetType: 'provider_referral',
+            targetId: result.invite.id,
+            ipAddress: req.ip,
+          })
+          .catch(() => null);
+
+        res.status(201).json({ ok: true, ...result });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post(
+    '/app/referrals/apply-days',
+    requireAuth(authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        const result =
+          await referralService.applyAvailableDaysToReferrerSubscription(
+            session.userId,
+            req.body?.subscriptionId ? String(req.body.subscriptionId) : undefined
+          );
+        res.json({ ok: true, ...result });
       } catch (err) {
         res.status(400).json({ ok: false, error: (err as Error).message });
       }

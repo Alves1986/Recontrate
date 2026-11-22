@@ -11,7 +11,7 @@ import {
 
 export const plans = pgTable('plans', {
   id: text('id').primaryKey(),
-  slug: text('slug').notNull().unique(), // gratuito | essencial | profissional | premium | padrinho
+  slug: text('slug').notNull().unique(), // gratuito | essencial | profissional | premium
   nome: text('nome').notNull(),
   descricao: text('descricao').notNull(),
   precoMensalCentavos: integer('preco_mensal_centavos').notNull(),
@@ -280,7 +280,45 @@ export const promotionEligibilityChecks = pgTable(
   }
 );
 
+export const referralCodes = pgTable('referral_codes', {
+  id: text('id').primaryKey(),
+  userId: uuid('user_id').notNull().unique(),
+  providerProfileId: text('provider_profile_id'),
+  code: text('code').notNull().unique(),
+  clicksCount: integer('clicks_count').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const providerReferrals = pgTable('provider_referrals', {
+  id: text('id').primaryKey(),
+  referralCodeId: text('referral_code_id').notNull(),
+  referrerUserId: uuid('referrer_user_id').notNull(),
+  referrerProviderProfileId: text('referrer_provider_profile_id'),
+  referredUserId: uuid('referred_user_id').unique(),
+  referredProviderProfileId: text('referred_provider_profile_id'),
+  referredName: text('referred_name').notNull().default(''),
+  referredEmail: text('referred_email').notNull().default(''),
+  referredPhone: text('referred_phone').notNull().default(''),
+  referredCategory: text('referred_category'),
+  status: text('status').notNull().default('convite_enviado'),
+  rewardDays: integer('reward_days').notNull().default(15),
+  rewardStatus: text('reward_status').notNull().default('pendente'),
+  appliedSubscriptionId: text('applied_subscription_id'),
+  appliedAt: timestamp('applied_at', { withTimezone: true }),
+  referredRewardDays: integer('referred_reward_days').notNull().default(10),
+  referredRewardStatus: text('referred_reward_status')
+    .notNull()
+    .default('pendente'),
+  referredAppliedSubscriptionId: text('referred_applied_subscription_id'),
+  referredAppliedAt: timestamp('referred_applied_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  validatedAt: timestamp('validated_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type PlanRow = typeof plans.$inferSelect;
+export type ReferralCodeRow = typeof referralCodes.$inferSelect;
+export type ProviderReferralRow = typeof providerReferrals.$inferSelect;
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 export type SubscriptionEventRow = typeof subscriptionEvents.$inferSelect;
 export type InvoiceRow = typeof invoices.$inferSelect;

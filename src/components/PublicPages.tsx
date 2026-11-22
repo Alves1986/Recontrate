@@ -220,7 +220,7 @@ export const PublicLandingPage: React.FC<{
           <div className="text-sm text-white/90">
             <p className="font-display font-semibold">Autonomia do prestador</p>
             <p className="text-xs text-white/75">
-              Sem comissão sobre o serviço e sem cobrança por lead individual. Negociação direta entre as partes.
+              Você não paga comissão à plataforma nem taxa por lead. Todo valor e pagamento do serviço são negociados diretamente com o cliente, fora da plataforma.
             </p>
           </div>
         </div>
@@ -273,12 +273,12 @@ export const PublicLandingPage: React.FC<{
               Construa reputação verificável e facilite a recontratação pelos seus clientes.
             </h2>
             <p className="text-xs sm:text-sm text-brand-ink/75 leading-relaxed">
-              Organize seu perfil público com até 5 especialidades oficiais, bairros de atuação e portfólio de serviços realizados. O modelo foi desenhado para operar por assinatura mensal transparente — sem comissão sobre o serviço e sem venda de leads avulsos — sem prometer quantidade fixa de pedidos.
+              Organize seu perfil público com até 5 especialidades oficiais, bairros de atuação e portfólio de serviços realizados. O modelo foi desenhado para operar por assinatura mensal transparente — sem comissão paga à plataforma e sem venda de leads avulsos — todo valor do serviço é negociado diretamente com o cliente, fora da plataforma.
             </p>
             <ul className="space-y-2 text-xs text-brand-ink/85 pt-1">
               <li className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-brand-accent-strong shrink-0 mt-0.5" />
-                <span>Zero comissão sobre o valor do serviço combinado com o cliente.</span>
+                <span>Você não paga comissão ao Recontrate: 100% do valor negociado e pago pelo cliente fica com você, diretamente fora da plataforma.</span>
               </li>
               <li className="flex items-start gap-2">
                 <CheckCircle2 className="w-4 h-4 text-brand-accent-strong shrink-0 mt-0.5" />
@@ -709,25 +709,26 @@ export const PublicLandingPage: React.FC<{
                 type="submit"
                 className="w-full min-h-[42px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold cursor-pointer"
               >
-                Quero participar do piloto na minha região
+                Enviar interesse e receber novidades
               </button>
             </form>
           </div>
         </div>
       </section>
 
-      {/* 6. RESUMO DE PLANOS (PROPOSTA PRÉ-LANÇAMENTO) E OFERTA DE PILOTO */}
+      {/* 6. RESUMO DE PLANOS COMERCIAIS E PROMOÇÃO DE 90 DIAS GRÁTIS */}
       <section className="bg-brand-primary text-white rounded-3xl p-6 sm:p-10 space-y-6">
         <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
           <div className="space-y-2 max-w-3xl">
             <p className="text-xs font-semibold text-brand-accent-contrast">
-              Proposta Pré-Lançamento para Profissionais · Preços de Teste
+              Planos Comerciais para Profissionais · Promoção de Lançamento: 90 dias grátis
             </p>
             <h2 className="font-display font-bold text-2xl sm:text-3xl">
-              Assinatura transparente, sem comissão e sem cobrança por lead
+              Assinatura previsível, sem comissão à plataforma e negociação 100% direta
             </h2>
             <p className="text-xs sm:text-sm text-white/80 leading-relaxed">
-              Valores abaixo são propostas de pré-lançamento em fase de validação. O checkout financeiro está desativado neste preview: nossa turma inicial participa do <strong>Piloto Controlado (60 a 90 dias gratuitos, sem cartão e sem conversão automática)</strong>.
+              Comece grátis e evolua conforme sua demanda cresce. Novos assinantes mensais recebem{' '}
+              <strong>90 dias grátis nos planos pagos (R$ 0,00 nos 3 primeiros meses)</strong> ou 2 meses grátis no plano anual, com cobrança recorrente via Asaas em Pix, Cartão ou Boleto.
             </p>
           </div>
           <button
@@ -735,7 +736,7 @@ export const PublicLandingPage: React.FC<{
             onClick={() => onNavigateUrl('/planos')}
             className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-xs sm:text-sm shrink-0 cursor-pointer"
           >
-            Ver tabela completa de planos e piloto →
+            Ver todos os planos e ativar 90 dias grátis →
           </button>
         </div>
 
@@ -743,30 +744,34 @@ export const PublicLandingPage: React.FC<{
           <div className="bg-white/10 rounded-2xl p-5 space-y-2 border border-white/10">
             <p className="font-display font-bold text-base">Gratuito — R$ 0/mês</p>
             <p className="text-white/80">
-              Perfil básico, contato direto por WhatsApp e limite explícito de até 5 oportunidades/mês com anúncios moderados no painel.
+              Perfil básico, contato direto por WhatsApp e até 5 oportunidades/mês com anúncios moderados no painel.
             </p>
           </div>
           <div className="bg-white/10 rounded-2xl p-5 space-y-2 border border-white/10">
             <p className="font-display font-bold text-base">Essencial — R$ 29,90/mês</p>
+            <p className="text-brand-accent-contrast font-mono font-semibold">
+              90 dias grátis (R$ 0,00 nos 3 primeiros meses)
+            </p>
             <p className="text-white/80">
-              Perfil completo, portfólio com até 10 fotos, até 15 oportunidades/mês, relatório mensal básico e painel sem anúncios.
+              Perfil completo, portfólio até 10 fotos, até 15 oportunidades/mês e painel sem anúncios.
             </p>
           </div>
           <div className="bg-white/15 rounded-2xl p-5 space-y-2 border border-brand-accent-contrast">
             <p className="font-display font-bold text-base">Profissional — R$ 59,90/mês</p>
+            <p className="text-brand-accent-contrast font-mono font-semibold">
+              90 dias grátis (R$ 0,00 nos 3 primeiros meses)
+            </p>
             <p className="text-white/85">
-              Plano principal sugerido: portfólio ilimitado, até 40 oportunidades/mês, estatísticas de resposta/conversão e selo Profissional Recontrate.
+              Mais escolhido: portfólio ilimitado, até 40 oportunidades/mês, destaque local e selo Profissional Recontrate.
             </p>
           </div>
-          <div className="bg-white/5 rounded-2xl p-5 space-y-2 border border-white/15">
-            <div className="flex items-center justify-between gap-2">
-              <p className="font-display font-bold text-base">Premium — R$ 99,90/mês</p>
-              <span className="px-2 py-0.5 rounded-full bg-white/15 text-[10px] font-semibold">
-                Em definição
-              </span>
-            </div>
-            <p className="text-white/75">
-              Mantido em definição até a validação de entregáveis premium mensuráveis (gestão avançada e relatórios dedicados).
+          <div className="bg-white/10 rounded-2xl p-5 space-y-2 border border-white/10">
+            <p className="font-display font-bold text-base">Premium — R$ 99,90/mês</p>
+            <p className="text-brand-accent-contrast font-mono font-semibold">
+              90 dias grátis (R$ 0,00 nos 3 primeiros meses)
+            </p>
+            <p className="text-white/80">
+              Até 100 oportunidades/mês, prioridade alta no matching, relatórios avançados, suporte prioritário e selo Top Recontrate.
             </p>
           </div>
         </div>
@@ -775,10 +780,10 @@ export const PublicLandingPage: React.FC<{
           <div className="flex items-center gap-2">
             <Award className="w-4 h-4 text-brand-accent-contrast shrink-0" />
             <span>
-              <strong>Programa Padrinho:</strong> tratado como programa separado de mentoria e indicação entre profissionais (não é um plano pago duplicado).
+              <strong>Sem surpresas:</strong> upgrade pro-rata imediato, downgrade agendado e 7 dias de tolerância em falhas de renovação.
             </span>
           </div>
-          <span>Ciclo mensal · Renovação clara · Cancelamento livre sem multa</span>
+          <span>Pix, Cartão ou Boleto (Asaas) · Cancelamento livre sem multa</span>
         </div>
       </section>
 
@@ -797,19 +802,19 @@ export const PublicLandingPage: React.FC<{
           <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
             <h3 className="font-bold text-sm text-brand-ink">1. Como funciona a cobrança?</h3>
             <p className="text-brand-ink/75 leading-relaxed">
-              Para clientes, o uso é gratuito. Para profissionais, a estrutura planejada é de assinatura mensal (ou anual opcional) com valores de teste pré-lançamento. Nesta etapa de preview e piloto (60 a 90 dias gratuitos), o checkout financeiro está desativado e não há conversão automática para cobrança.
+              Para clientes, o uso é 100% gratuito. Para prestadores, há o plano Gratuito e 3 planos pagos (Essencial, Profissional e Premium), com 90 dias grátis nos 3 primeiros meses para novos assinantes mensais ou 2 meses grátis no plano anual, processados via Asaas por Pix, Cartão ou Boleto.
             </p>
           </div>
           <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
-            <h3 className="font-bold text-sm text-brand-ink">2. Há comissão sobre o serviço ou cobrança por lead?</h3>
+            <h3 className="font-bold text-sm text-brand-ink">2. O prestador paga comissão para a plataforma ou taxa por lead?</h3>
             <p className="text-brand-ink/75 leading-relaxed">
-              Não. O Recontrate não cobra comissão sobre o valor do serviço nem vende pacotes de moedas ou leads avulsos. O orçamento e o pagamento do serviço são combinados diretamente entre cliente e profissional.
+              Não. O prestador não paga nenhuma comissão ao Recontrate sobre os serviços realizados nem compra leads avulsos. Todo orçamento, negociação e pagamento são combinados e feitos diretamente entre cliente e profissional, fora da plataforma — 100% do valor do serviço fica com o prestador.
             </p>
           </div>
           <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
-            <h3 className="font-bold text-sm text-brand-ink">3. Como cancelo minha assinatura ou participação?</h3>
+            <h3 className="font-bold text-sm text-brand-ink">3. Como cancelo minha assinatura ou mudo de plano?</h3>
             <p className="text-brand-ink/75 leading-relaxed">
-              Durante o piloto gratuito não há cobrança nem necessidade de cartão. Quando os planos pagos estiverem ativos, o cancelamento poderá ser feito a qualquer momento no painel, sem fidelidade ou multa, mantendo os recursos até o fim do ciclo já pago.
+              Você pode fazer upgrade com efeito imediato (pro-rata), agendar downgrade ou cancelar sua assinatura a qualquer momento no Painel do Prestador, sem fidelidade nem multa, mantendo os benefícios até o fim do ciclo já pago.
             </p>
           </div>
           <div className="p-4 rounded-2xl bg-brand-background/60 space-y-1.5">
@@ -845,60 +850,93 @@ export const ForProvidersPage: React.FC<{
         <div className="flex flex-wrap items-center gap-3">
           <BrandLogo variant="light" size="sm" decorative />
           <span className="inline-block px-3 py-1 rounded-full bg-white/10 text-xs font-semibold text-brand-accent-contrast">
-            Recontrate para Profissionais Autônomos · Piloto Controlado
+            Recontrate para Profissionais · 90 dias grátis no lançamento
           </span>
         </div>
         <h1 className="font-display font-bold text-3xl sm:text-4xl max-w-3xl leading-tight">
-          Mantenha seus clientes por perto, construa reputação e trabalhe sem comissão
+          Receba solicitações qualificadas, fidelize clientes e fique com 100% do seu serviço — sem pagar comissão à plataforma
         </h1>
         <p className="text-sm sm:text-base text-white/80 max-w-2xl leading-relaxed">
-          Organize seu perfil profissional com suas especialidades e bairros de atuação, facilite que clientes satisfeitos voltem a contratar você e indique substitutos de confiança quando sua agenda estiver cheia. O cadastro não garante volume fixo de pedidos nem colocação no topo de buscadores externos.
+          Organize seu perfil profissional com especialidades e bairros de atuação, facilite que clientes satisfeitos voltem a contratar você com 1 clique e negocie livremente: você não paga comissão ao Recontrate — todo orçamento e pagamento são combinados e feitos diretamente com o cliente, fora da plataforma.
         </p>
+        <div className="max-w-2xl rounded-2xl bg-white/10 border border-white/15 px-4 py-3 text-xs sm:text-sm text-white/95 leading-relaxed">
+          <strong>Sem comissão para a plataforma:</strong> o Recontrate não cobra porcentagem sobre seus serviços nem intermedia pagamentos. Todo valor negociado com o cliente é acertado e recebido diretamente por você, fora da plataforma.
+        </div>
         <div className="flex flex-wrap items-center gap-3 pt-2">
           <button
             type="button"
-            onClick={() => onNavigateUrl('/criar-conta')}
+            onClick={() => onNavigateUrl('/planos')}
             className="min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-sm cursor-pointer"
           >
-            Quero participar do piloto (Criar conta)
+            Ver planos e assinar
           </button>
           <button
             type="button"
-            onClick={() => onNavigateUrl('/planos')}
+            onClick={() => onNavigateUrl('/criar-conta?role=prestador')}
             className="min-h-[48px] px-6 py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-display font-semibold text-sm cursor-pointer"
           >
-            Consultar proposta de planos e piloto
+            Criar conta de prestador grátis
           </button>
         </div>
       </section>
 
       <section className="grid grid-cols-1 md:grid-cols-3 gap-5 text-xs">
         <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-2">
-          <p className="font-semibold text-brand-accent-strong">Piloto sem cartão</p>
+          <p className="font-semibold text-brand-accent-strong">Promoção de Lançamento</p>
           <h2 className="font-display font-bold text-base text-brand-ink">
-            60 a 90 dias gratuitos sem conversão automática
+            90 dias grátis nos planos pagos
           </h2>
           <p className="text-brand-ink/75 leading-relaxed">
-            A turma inicial participa sem informar cartão de crédito. Ao final do período de piloto, você escolhe conscientemente se deseja assinar um plano pago ou permanecer no plano Gratuito.
+            Comece no plano Gratuito (até 5 oportunidades/mês) ou experimente Essencial, Profissional ou Premium por 90 dias totalmente grátis (R$ 0,00 nos 3 primeiros meses) — ou aproveite 2 meses grátis no plano anual.
           </p>
         </div>
         <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-2">
           <p className="font-semibold text-brand-link">Autonomia financeira</p>
           <h2 className="font-display font-bold text-base text-brand-ink">
-            0% de comissão e R$ 0 por lead
+            Você não paga comissão à plataforma (R$ 0 por lead)
           </h2>
           <p className="text-brand-ink/75 leading-relaxed">
-            O valor do serviço é 100% seu, combinado diretamente com o cliente. A plataforma opera apenas com planos de assinatura claros e limites mensais conhecidos antes da adesão.
+            O valor do serviço é 100% seu. Todo orçamento, negociação e pagamento são feitos diretamente entre você e o cliente, fora da plataforma, sem nenhuma taxa ou porcentagem retida pelo Recontrate.
           </p>
         </div>
         <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-2">
-          <p className="font-semibold text-brand-link">Programa Padrinho</p>
+          <p className="font-semibold text-brand-link">Liberdade e reputação real</p>
           <h2 className="font-display font-bold text-base text-brand-ink">
-            Mentoria e indicação como programa separado
+            Cancelamento livre e nota meritocrática
           </h2>
           <p className="text-brand-ink/75 leading-relaxed">
-            Profissionais experientes podem atuar como Padrinhos para orientar e indicar apadrinhados na rede por mérito e elegibilidade — sem custo de plano duplicado.
+            Estrelas nunca podem ser compradas em nenhum plano. Você pode fazer upgrade imediato, agendar downgrade ou cancelar sem multa antes do fim dos 90 dias grátis.
           </p>
+        </div>
+      </section>
+
+      <section className="bg-emerald-50 border border-emerald-200 rounded-3xl p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
+        <div className="space-y-1.5 max-w-2xl">
+          <p className="font-semibold text-emerald-800">
+            Programa de Indicação Recontrate · Exclusivo para usuários cadastrados
+          </p>
+          <h2 className="font-display font-bold text-lg sm:text-xl text-brand-ink">
+            Indique Profissionais: +15 Dias para Você e +10 Dias para Quem Se Cadastra
+          </h2>
+          <p className="text-brand-ink/80 leading-relaxed">
+            Depois de criar sua conta e fazer login, gere seu link exclusivo e indique colegas prestadores de serviço. A cada profissional indicado que concluir o cadastro e onboarding, você ganha <strong>+15 dias grátis</strong> na assinatura e o profissional cadastrado com seu código também recebe <strong>+10 dias grátis extras</strong>.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => onNavigateUrl('/criar-conta?role=prestador')}
+            className="min-h-[42px] px-4 py-2.5 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white font-display font-semibold cursor-pointer"
+          >
+            Cadastrar para indicar
+          </button>
+          <button
+            type="button"
+            onClick={() => onNavigateUrl('/app/indicacoes')}
+            className="min-h-[42px] px-4 py-2.5 rounded-xl bg-white border border-emerald-300 text-emerald-900 hover:bg-emerald-100 font-display font-semibold cursor-pointer"
+          >
+            Ir para Painel de Indicações →
+          </button>
         </div>
       </section>
     </div>
@@ -911,39 +949,40 @@ export const TermsAndPrivacyPage: React.FC<{
   const isTerms = mode === 'termos';
   const projectContact =
     import.meta.env.VITE_PROJECT_CONTACT_EMAIL ||
-    'Canal oficial de contato em configuração (definido via VITE_PROJECT_CONTACT_EMAIL)';
+    'suporte@recontrate.com.br';
 
   return (
     <div className="max-w-4xl mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 space-y-6 mb-12">
-      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold">
-        <span>Aviso de Bloqueio Operacional · Documento em Revisão Pré-Lançamento</span>
+      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-primary/10 text-brand-primary text-xs font-semibold">
+        <span>Recontrate · Documentação Comercial e LGPD</span>
       </div>
       <h1 className="font-display font-bold text-2xl sm:text-3xl text-brand-ink">
-        {isTerms ? 'Termos de Uso (Versão Provisória de Piloto)' : 'Política de Privacidade e LGPD (Versão Provisória de Piloto)'}
+        {isTerms ? 'Termos de Uso e Assinaturas' : 'Política de Privacidade e LGPD'}
       </h1>
       <div className="space-y-4 text-xs sm:text-sm text-brand-ink/80 leading-relaxed">
         {isTerms ? (
           <>
             <p>
-              <strong>1. Estágio do produto e marca provisória:</strong> O sistema <strong>Recontrate</strong> encontra-se em ambiente de desenvolvimento e validação de piloto. O nome Recontrate é uma identidade provisória de trabalho. Nenhuma garantia de volume de clientes, disponibilidade nacional ou faturamento é oferecida.
+              <strong>1. Objeto da plataforma:</strong> O <strong>Recontrate</strong> conecta clientes que precisam de serviços locais a profissionais autônomos avaliados, permitindo busca compatível, histórico de atendimentos, recontratação direta e indicação de substitutos.
             </p>
             <p>
-              <strong>2. Ausência de intermediação financeira e checkout desativado:</strong> Nesta etapa de preview, nenhuma cobrança real é processada. Os preços exibidos na página de planos constituem proposta de teste pré-lançamento, e o acesso da turma inicial ocorre em regime de piloto controlado (60 a 90 dias gratuitos, sem conversão automática).
+              <strong>2. Assinaturas, cobrança e cancelamento:</strong> Os planos comerciais para prestadores (Gratuito, Essencial, Profissional e Premium) são cobrados de forma recorrente via Asaas por Pix, Cartão de Crédito ou Boleto, sem fidelidade nem multa, com promoção de 90 dias grátis nos 3 primeiros meses para novos assinantes mensais. Upgrades têm efeito imediato com cobrança proporcional (pro-rata); downgrades e cancelamentos mantêm o acesso até o fim do período vigente. Em falhas de renovação aplica-se tolerância de 7 dias antes do retorno ao plano Gratuito.
             </p>
             <p>
-              <strong>3. Relação direta entre cliente e prestador:</strong> Orçamentos, execução técnica, prazos e pagamentos pelo serviço residencial ocorrem diretamente entre cliente e profissional autônomo, sem comissão da plataforma.
+              <strong>3. Relação direta entre cliente e prestador:</strong> O prestador não paga comissão à plataforma. Todo orçamento, negociação de valor, execução técnica, prazo e pagamento pelo serviço prestado ocorrem diretamente entre cliente e profissional autônomo, fora da plataforma, sem intermediação financeira do Recontrate. Estrelas e avaliações nunca podem ser compradas.
             </p>
           </>
         ) : (
           <>
             <p>
-              <strong>1. Coleta mínima de dados no piloto:</strong> Enquanto a política definitiva passa por validação jurídica, os formulários de pré-cadastro e interesse coletam apenas o mínimo necessário (nome, e-mail, cidade/bairro e categoria de serviço), sem solicitar CPF, RG, endereço residencial completo ou dados de cartão.
+              <strong>1. Coleta necessária e finalidade:</strong> Coletamos apenas os dados cadastrais indispensáveis para autenticação, exibição do perfil profissional, match local e emissão segura de faturas de assinatura junto ao gateway Asaas (como CPF/CNPJ quando contratado plano pago).
             </p>
             <p>
-              <strong>2. Proteção de contato pessoal:</strong> O telefone ou e-mail pessoal do prestador não é exposto publicamente sem autorização e contexto de atendimento, e nenhum dado é enviado para e-mails de terceiros ou domínios externos não controlados pelo projeto.
+              <strong>2. Proteção de contato pessoal:</strong> O telefone completo ou e-mail do cliente e do prestador só é liberado no contexto autorizado de atendimento (solicitação aceita com consentimento LGPD explícito), respeitando sigilo e controle de acesso por linha no banco de dados.
             </p>
             <p>
-              <strong>3. Consentimento explícito e canal do projeto:</strong> Nenhum formulário marca o consentimento por padrão. Canal de atendimento configurável do projeto: <code className="font-mono">{projectContact}</code>.
+              <strong>3. Direitos do titular e canal de contato:</strong> Você pode solicitar revisão ou exclusão de seus dados a qualquer momento pelo canal oficial de atendimento:{' '}
+              <code className="font-mono">{projectContact}</code>.
             </p>
           </>
         )}

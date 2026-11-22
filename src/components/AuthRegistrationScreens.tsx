@@ -441,7 +441,7 @@ export const ProviderRegistrationScreen: React.FC<ProviderRegistrationScreenProp
             Cadastro de prestador
           </h1>
           <p className="text-sm text-brand-ink/75 mt-1">
-            Construa sua reputação pública, receba oportunidades compatíveis no WhatsApp e fidelize sua carteira de clientes sem comissão sobre o serviço.
+            Construa sua reputação pública, receba oportunidades compatíveis no WhatsApp e fique com 100% do valor dos seus serviços — você não paga comissão à plataforma e negocia diretamente com o cliente, fora dela.
           </p>
         </div>
         <button
@@ -708,10 +708,10 @@ export const ProviderRegistrationScreen: React.FC<ProviderRegistrationScreenProp
               Compromisso Justo com o Prestador
             </p>
             <h2 className="font-display font-bold text-lg">
-              Sem leilão de leads e 0% de comissão sobre o seu serviço
+              Sem leilão de leads e sem comissão paga à plataforma
             </h2>
             <p className="text-xs text-white/80 leading-relaxed">
-              Você define seu preço e negocia diretamente com o cliente. A assinatura mensal garante oportunidades compatíveis, vitrine SEO local e ferramentas de fidelização.
+              Você não paga nenhuma comissão ao Recontrate. Todo preço, orçamento e pagamento do serviço são negociados diretamente com o cliente, fora da plataforma. A assinatura mensal cobre apenas o acesso às oportunidades compatíveis, vitrine local e ferramentas de fidelização.
             </p>
             <div className="pt-3 border-t border-white/15 space-y-2 text-xs">
               <div className="flex items-center justify-between">

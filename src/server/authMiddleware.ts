@@ -28,11 +28,21 @@ export function securityHeadersMiddleware(
   next();
 }
 
-export function extractBearerOrCookieToken(req: express.Request): string | null {
+export function isCompactJwt(token?: string | null): boolean {
+  return Boolean(token && token.split('.').length === 3 && token.length > 20);
+}
+
+export function extractAuthTokenCandidates(req: express.Request): string[] {
+  const rawCandidates: string[] = [];
+
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
-    return authHeader.slice(7).trim();
+    const bearer = authHeader.slice(7).trim();
+    if (bearer && bearer !== 'undefined' && bearer !== 'null') {
+      rawCandidates.push(bearer);
+    }
   }
+
   const cookieHeader = req.headers.cookie;
   if (cookieHeader) {
     const match = cookieHeader
@@ -40,16 +50,25 @@ export function extractBearerOrCookieToken(req: express.Request): string | null 
       .map((c) => c.trim())
       .find((c) => c.startsWith('confiare_session='));
     if (match) {
-      return decodeURIComponent(match.split('=')[1] || '');
+      const cookieVal = decodeURIComponent(match.split('=')[1] || '').trim();
+      if (cookieVal && cookieVal !== 'undefined' && cookieVal !== 'null') {
+        rawCandidates.push(cookieVal);
+      }
     }
   }
-  return null;
+
+  const deduped = Array.from(new Set(rawCandidates));
+  return deduped.sort((a, b) => Number(isCompactJwt(b)) - Number(isCompactJwt(a)));
+}
+
+export function extractBearerOrCookieToken(req: express.Request): string | null {
+  return extractAuthTokenCandidates(req)[0] ?? null;
 }
 
 export function requireAuth(authService = new AuthService()): express.RequestHandler {
   return async (req, res, next) => {
-    const token = extractBearerOrCookieToken(req);
-    if (!token) {
+    const candidates = extractAuthTokenCandidates(req);
+    if (candidates.length === 0) {
       res.status(401).json({
         ok: false,
         error: 'Autenticação obrigatória para acessar esta rota.',
@@ -58,19 +77,30 @@ export function requireAuth(authService = new AuthService()): express.RequestHan
       return;
     }
 
-    try {
-      const session = await authService.verifySessionToken(token);
-      req.authSession = session;
-      next();
-    } catch (err) {
-      const msg = (err as Error).message || 'Sessão inválida';
-      const isSuspended = msg.toLowerCase().includes('suspensa');
-      res.status(isSuspended ? 403 : 401).json({
-        ok: false,
-        error: msg,
-        redirectTo: '/entrar',
-      });
+    let lastErr: Error | null = null;
+    for (const token of candidates) {
+      try {
+        const session = await authService.verifySessionToken(token);
+        req.authSession = session;
+        next();
+        return;
+      } catch (err) {
+        lastErr = err as Error;
+        if (lastErr.message?.toLowerCase().includes('suspensa')) {
+          break;
+        }
+      }
     }
+
+    const rawMsg = lastErr?.message || 'Sessão inválida';
+    const isSuspended = rawMsg.toLowerCase().includes('suspensa');
+    res.status(isSuspended ? 403 : 401).json({
+      ok: false,
+      error: isSuspended
+        ? rawMsg
+        : 'Sua sessão expirou ou é inválida. Faça login novamente para continuar.',
+      redirectTo: '/entrar',
+    });
   };
 }
 

@@ -33,19 +33,19 @@ test.after(async () => {
   await pool.end();
 });
 
-test('1. API GET /api/plans retorna os 5 planos com valores exatos em centavos, limites e metadados', async () => {
+test('1. API GET /api/plans retorna os 4 planos com valores exatos em centavos, limites e metadados', async () => {
   const res = await fetch(`${baseUrl}/api/plans`);
   assert.equal(res.status, 200);
   const body = (await res.json()) as any;
   assert.equal(body.ok, true);
-  assert.equal(body.plans.length, 5);
+  assert.equal(body.plans.length, 4);
 
   const bySlug = Object.fromEntries(body.plans.map((p: any) => [p.slug, p]));
 
-  // Ordem de exibição: Gratuito -> Essencial -> Profissional -> Premium -> Padrinho
+  // Ordem de exibição: Gratuito -> Essencial -> Profissional -> Premium
   assert.deepEqual(
     body.plans.map((p: any) => p.slug),
-    ['gratuito', 'essencial', 'profissional', 'premium', 'padrinho']
+    ['gratuito', 'essencial', 'profissional', 'premium']
   );
 
   // Gratuito
@@ -86,16 +86,6 @@ test('1. API GET /api/plans retorna os 5 planos com valores exatos em centavos, 
   assert.equal(bySlug.premium.exibeAnuncios, false);
   assert.equal(bySlug.premium.selo, 'Top Recontrate');
 
-  // Padrinho
-  assert.equal(bySlug.padrinho.precoMensalCentavos, 10990);
-  assert.equal(bySlug.padrinho.precoAnualCentavos, 109900);
-  assert.equal(bySlug.padrinho.limiteOportunidadesMensal, 100);
-  assert.equal(bySlug.padrinho.prioridadeLabel, 'Alta');
-  assert.equal(bySlug.padrinho.permiteRelatoriosAvancados, true);
-  assert.equal(bySlug.padrinho.suportePrioritario, true);
-  assert.equal(bySlug.padrinho.exibeAnuncios, false);
-  assert.equal(bySlug.padrinho.selo, 'Padrinho Verificado');
-
   for (const plan of body.plans) {
     assert.equal(Number.isInteger(plan.precoMensalCentavos), true);
     assert.equal(Number.isInteger(plan.precoAnualCentavos), true);
@@ -122,10 +112,4 @@ test('2. Cálculos do Toggle Mensal/Anual: equivalente mensal exato e economia d
   assert.equal(calculateAnnualSavingsCentavos(9990, 99900), 19980);
   assert.ok(formatCentavosBRL(8325).includes('83,25'));
   assert.ok(formatCentavosBRL(19980).includes('199,80'));
-
-  // Padrinho: R$ 109,90/mês | R$ 1.099,00/ano -> R$ 91,58/mês | economia R$ 219,80
-  assert.equal(calculateAnnualMonthlyEquivalentCentavos(109900), 9158);
-  assert.equal(calculateAnnualSavingsCentavos(10990, 109900), 21980);
-  assert.ok(formatCentavosBRL(9158).includes('91,58'));
-  assert.ok(formatCentavosBRL(21980).includes('219,80'));
 });

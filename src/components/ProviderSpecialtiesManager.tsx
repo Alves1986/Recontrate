@@ -57,8 +57,14 @@ async function safeParseJson<T = any>(res: Response | null): Promise<T | null> {
 export const ProviderSpecialtiesManager: React.FC<{
   providerProfileId: string;
   authToken?: string;
+  initialCategoryName?: string;
   onOfficialSpecialtiesChange?: (count: number) => void;
-}> = ({ providerProfileId, authToken, onOfficialSpecialtiesChange }) => {
+}> = ({
+  providerProfileId,
+  authToken,
+  initialCategoryName,
+  onOfficialSpecialtiesChange,
+}) => {
   const [categories, setCategories] = useState<OfficialCategory[]>(
     FALLBACK_OFFICIAL_CATEGORIES
   );
@@ -87,30 +93,66 @@ export const ProviderSpecialtiesManager: React.FC<{
     message: string;
   } | null>(null);
 
-  const authHeaders: HeadersInit = authToken
-    ? {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
+  const hasValidJwt = Boolean(authToken && authToken.split('.').length === 3);
+
+  const buildAuthHeaders = useCallback(
+    (includeJson = true): HeadersInit => ({
+      ...(includeJson ? { 'Content-Type': 'application/json' } : {}),
+      ...(hasValidJwt ? { Authorization: `Bearer ${authToken}` } : {}),
+    }),
+    [authToken, hasValidJwt]
+  );
+
+  const resolveCategoryId = useCallback(
+    (currentId: string, list: OfficialCategory[]): string => {
+      if (list.some((c) => c.id === currentId)) return currentId;
+      if (initialCategoryName) {
+        const targetSlug = slugifyTaxonomyTerm(initialCategoryName);
+        const byName = list.find(
+          (c) =>
+            c.slug === targetSlug ||
+            c.nome.toLowerCase() === initialCategoryName.trim().toLowerCase()
+        );
+        if (byName) return byName.id;
       }
-    : { 'Content-Type': 'application/json' };
+      const slugGuess = currentId.replace(/^cat-/, '');
+      const matched = list.find((c) => c.slug === slugGuess);
+      return matched?.id || list[0]?.id || '';
+    },
+    [initialCategoryName]
+  );
 
   const loadTaxonomy = useCallback(async () => {
     try {
-      const [catRes, ovRes] = await Promise.all([
-        fetch('/api/taxonomy/categories')
-          .then((r) => (r.ok ? safeParseJson(r) : null))
-          .catch(() => null),
+      const [catResRaw, ovResRaw] = await Promise.all([
+        fetch('/api/taxonomy/categories', { credentials: 'include' }).catch(
+          () => null
+        ),
         fetch(
           `/api/app/prestador/taxonomy?providerProfileId=${encodeURIComponent(
             providerProfileId
           )}`,
-          { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} }
-        )
-          .then((r) => (r.ok ? safeParseJson(r) : null))
-          .catch(() => null),
+          {
+            credentials: 'include',
+            headers: buildAuthHeaders(false),
+          }
+        ).catch(() => null),
       ]);
 
-      const resolvedCategories =
+      const catRes = catResRaw?.ok ? await safeParseJson(catResRaw) : null;
+      const ovBody = await safeParseJson(ovResRaw);
+      const ovRes = ovResRaw?.ok ? ovBody : null;
+
+      if (ovResRaw && ovResRaw.status === 401) {
+        setFeedback({
+          type: 'error',
+          message:
+            ovBody?.error ||
+            'Sua sessão expirou ou é inválida. Saia e faça login novamente para carregar e salvar suas especialidades.',
+        });
+      }
+
+      const resolvedCategories: OfficialCategory[] =
         catRes?.ok &&
         Array.isArray(catRes.categories) &&
         catRes.categories.length > 0
@@ -118,10 +160,15 @@ export const ProviderSpecialtiesManager: React.FC<{
           : FALLBACK_OFFICIAL_CATEGORIES;
 
       setCategories(resolvedCategories);
-      if (!selectedCategoryId && resolvedCategories[0]) {
-        setSelectedCategoryId(resolvedCategories[0].id);
-        setSuggestionCategoryId(resolvedCategories[0].id);
-      }
+
+      let nextCategoryId = '';
+      setSelectedCategoryId((prev) => {
+        nextCategoryId = resolveCategoryId(prev, resolvedCategories);
+        return nextCategoryId;
+      });
+      setSuggestionCategoryId((prev) =>
+        resolveCategoryId(prev || nextCategoryId, resolvedCategories)
+      );
 
       if (ovRes?.ok) {
         const specs = ovRes.officialSpecialties || [];
@@ -134,6 +181,10 @@ export const ProviderSpecialtiesManager: React.FC<{
             setSelectedCategoryId(specs[0].category_id);
             setSuggestionCategoryId(specs[0].category_id);
           }
+        } else {
+          setSelectedSpecialtyIds((prev) =>
+            prev.filter((id) => !id.startsWith('spec-'))
+          );
         }
         setSuggestions(ovRes.suggestions || []);
         setCustomTags(ovRes.customTags || []);
@@ -141,7 +192,12 @@ export const ProviderSpecialtiesManager: React.FC<{
     } catch {
       // Offline preview safe fallback
     }
-  }, [providerProfileId, authToken, selectedCategoryId, onOfficialSpecialtiesChange]);
+  }, [
+    providerProfileId,
+    buildAuthHeaders,
+    resolveCategoryId,
+    onOfficialSpecialtiesChange,
+  ]);
 
   useEffect(() => {
     loadTaxonomy();
@@ -150,19 +206,32 @@ export const ProviderSpecialtiesManager: React.FC<{
   // Autocomplete em especialidades oficiais
   useEffect(() => {
     if (!selectedCategoryId) return;
+    let cancelled = false;
+
+    const currentCat = categories.find((c) => c.id === selectedCategoryId);
+    if (!searchQuery.trim() && currentCat?.specialties) {
+      setAutocompleteResults(currentCat.specialties);
+    }
+
     const params = new URLSearchParams({ categoryId: selectedCategoryId });
     if (searchQuery.trim()) {
       params.set('q', searchQuery.trim());
     }
-    fetch(`/api/taxonomy/specialties?${params.toString()}`)
+    fetch(`/api/taxonomy/specialties?${params.toString()}`, {
+      credentials: 'include',
+    })
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
-        if (body?.ok) {
-          setAutocompleteResults(body.specialties || []);
+        if (!cancelled && body?.ok && Array.isArray(body.specialties)) {
+          setAutocompleteResults(body.specialties);
         }
       })
       .catch(() => null);
-  }, [selectedCategoryId, searchQuery]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCategoryId, searchQuery, categories]);
 
   // Busca semelhanças antes de permitir envio no modal
   useEffect(() => {
@@ -222,7 +291,8 @@ export const ProviderSpecialtiesManager: React.FC<{
     try {
       const res = await fetch('/api/app/prestador/specialties', {
         method: 'PUT',
-        headers: authHeaders,
+        credentials: 'include',
+        headers: buildAuthHeaders(true),
         body: JSON.stringify({
           categoryId: selectedCategoryId,
           specialtyIds: selectedSpecialtyIds,
@@ -230,8 +300,21 @@ export const ProviderSpecialtiesManager: React.FC<{
         }),
       }).catch(() => null);
       const body = await safeParseJson(res);
-      if (res && !res.ok && body?.error) {
-        throw new Error(body.error);
+      if (!res) {
+        throw new Error(
+          'Não foi possível conectar ao servidor para salvar suas especialidades.'
+        );
+      }
+      if (!res.ok || !body?.ok) {
+        if (res.status === 401) {
+          throw new Error(
+            body?.error ||
+              'Sua sessão expirou ou é inválida. Saia e faça login novamente para salvar suas especialidades.'
+          );
+        }
+        throw new Error(
+          body?.error || 'Não foi possível salvar suas especialidades.'
+        );
       }
       setFeedback({
         type: 'success',
@@ -239,9 +322,7 @@ export const ProviderSpecialtiesManager: React.FC<{
           'Categoria e especialidades oficiais atualizadas no seu perfil e matching!',
       });
       onOfficialSpecialtiesChange?.(selectedSpecialtyIds.length);
-      if (res && res.ok && body?.ok) {
-        loadTaxonomy();
-      }
+      loadTaxonomy();
     } catch (err) {
       setFeedback({ type: 'error', message: (err as Error).message });
     } finally {
@@ -256,16 +337,17 @@ export const ProviderSpecialtiesManager: React.FC<{
     try {
       const res = await fetch('/api/app/prestador/specialty-suggestions', {
         method: 'POST',
-        headers: authHeaders,
+        credentials: 'include',
+        headers: buildAuthHeaders(true),
         body: JSON.stringify({
           categoryId: suggestionCategoryId || selectedCategoryId,
           nomeSugerido: suggestionName,
           descricao: suggestionDesc,
         }),
       });
-      const body = await res.json();
-      if (!res.ok || !body.ok) {
-        throw new Error(body.error || 'Não foi possível enviar a sugestão.');
+      const body = await safeParseJson(res);
+      if (!res.ok || !body?.ok) {
+        throw new Error(body?.error || 'Não foi possível enviar a sugestão.');
       }
       setModalOpen(false);
       setSuggestionName('');
@@ -292,12 +374,13 @@ export const ProviderSpecialtiesManager: React.FC<{
     try {
       const res = await fetch('/api/app/prestador/custom-tags', {
         method: 'POST',
-        headers: authHeaders,
+        credentials: 'include',
+        headers: buildAuthHeaders(true),
         body: JSON.stringify({ tag: newTagInput.trim() }),
       });
-      const body = await res.json();
-      if (!res.ok || !body.ok) {
-        throw new Error(body.error || 'Não foi possível adicionar a tag.');
+      const body = await safeParseJson(res);
+      if (!res.ok || !body?.ok) {
+        throw new Error(body?.error || 'Não foi possível adicionar a tag.');
       }
       setNewTagInput('');
       setFeedback({
@@ -315,7 +398,8 @@ export const ProviderSpecialtiesManager: React.FC<{
   const handleRemoveTag = async (tagId: string) => {
     await fetch(`/api/app/prestador/custom-tags/${tagId}`, {
       method: 'DELETE',
-      headers: authHeaders,
+      credentials: 'include',
+      headers: buildAuthHeaders(false),
     }).catch(() => null);
     loadTaxonomy();
   };
@@ -368,7 +452,16 @@ export const ProviderSpecialtiesManager: React.FC<{
           </label>
           <select
             value={selectedCategoryId}
-            onChange={(e) => setSelectedCategoryId(e.target.value)}
+            onChange={(e) => {
+              const nextCatId = e.target.value;
+              setSelectedCategoryId(nextCatId);
+              setSearchQuery('');
+              setFeedback(null);
+              const nextCat = categories.find((c) => c.id === nextCatId);
+              if (nextCat?.specialties) {
+                setAutocompleteResults(nextCat.specialties);
+              }
+            }}
             className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 bg-white font-medium"
           >
             {categories.map((cat) => (

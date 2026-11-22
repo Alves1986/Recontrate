@@ -9,15 +9,13 @@ export type PlanTier =
   | 'Gratuito'
   | 'Essencial'
   | 'Profissional'
-  | 'Premium'
-  | 'Padrinho';
+  | 'Premium';
 
 export type PlanSlug =
   | 'gratuito'
   | 'essencial'
   | 'profissional'
-  | 'premium'
-  | 'padrinho';
+  | 'premium';
 
 export type ScreenId =
   | 'home'

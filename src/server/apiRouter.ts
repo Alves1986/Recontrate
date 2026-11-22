@@ -44,12 +44,14 @@ import {
   notifyUpcomingLaunchOfferEnd,
   updateLaunchOfferCampaign,
 } from '../services/launchOfferService';
+import { ProviderReferralService } from '../services/providerReferralService';
 
 const lifecycleService = new SubscriptionLifecycleService();
 const limitService = new OpportunityLimitService();
 const adAndMetricsService = new AdAndMetricsService();
 const authService = new AuthService();
 const monitoringService = new MonitoringAndBackupService();
+const referralService = new ProviderReferralService();
 
 // Simple in-memory rate limiter for checkout and webhook endpoints
 const rateLimitWindowMs = 60_000;
@@ -128,6 +130,22 @@ async function requireAdminInProd(
   await requireAdminRole(req, res, next);
 }
 
+async function attachOptionalSession(
+  req: express.Request,
+  _res: express.Response,
+  next: express.NextFunction
+) {
+  const token = extractBearerOrCookieToken(req);
+  if (token) {
+    try {
+      req.authSession = await authService.verifySessionToken(token);
+    } catch {
+      // Sessão opcional inválida ou expirada: prossegue sem bloquear fluxos públicos
+    }
+  }
+  next();
+}
+
 const MonitoringAlertSchema = z.object({
   source: z.string().min(2),
   message: z.string().min(3),
@@ -145,7 +163,6 @@ const CheckoutSchema = z.object({
     'essencial',
     'profissional',
     'premium',
-    'padrinho',
   ]),
   cycle: z.enum(['mensal', 'anual']).default('mensal'),
   paymentMethod: z.enum(['pix', 'cartao', 'boleto']).default('pix'),
@@ -159,7 +176,6 @@ const UpgradeSchema = z.object({
     'essencial',
     'profissional',
     'premium',
-    'padrinho',
   ]),
   targetCycle: z.enum(['mensal', 'anual']).optional(),
   paymentMethod: z.enum(['pix', 'cartao', 'boleto']).optional(),
@@ -252,97 +268,150 @@ export function createApiRouter(): express.Router {
   });
 
 
-  router.get('/providers/:providerId/subscription', async (req, res) => {
-    try {
-      const { providerId } = req.params;
-      // Anti-IDOR check if x-provider-id header is passed
-      const callerProviderId = req.headers['x-provider-id'];
-      const callerRole = req.headers['x-user-role'];
-      if (
-        callerProviderId &&
-        callerProviderId !== providerId &&
-        callerRole !== 'admin'
-      ) {
-        res.status(403).json({
-          ok: false,
-          error: 'Acesso negado (proteção contra IDOR).',
-        });
-        return;
-      }
-
-      const [summary, usage] = await Promise.all([
-        lifecycleService.getProviderSubscriptionSummary(providerId),
-        limitService.getUsageStatus(providerId),
-      ]);
-
-      res.json({
-        ok: true,
-        ...summary,
-        usage,
-      });
-    } catch {
-      res.json({
-        ok: true,
-        subscription: null,
-        plan: INITIAL_PLANS_SEED[0],
-        invoices: [],
-        events: [],
-        usage: {
-          allowed: true,
-          usedCount: 0,
-          monthlyLimit: 5,
-          remainingCount: 5,
-          planSlug: 'gratuito',
-        },
-      });
-    }
-  });
-
-  router.get('/promotions/launch-offer/eligibility', async (req, res) => {
-    try {
-      const providerProfileId = req.query.providerProfileId
-        ? String(req.query.providerProfileId)
-        : undefined;
-      const email = req.query.email ? String(req.query.email) : undefined;
-      const phone = req.query.phone ? String(req.query.phone) : undefined;
-      const cpfCnpj = req.query.cpfCnpj ? String(req.query.cpfCnpj) : undefined;
-      const planSlug = req.query.planSlug
-        ? String(req.query.planSlug)
-        : undefined;
-      const cycle = req.query.cycle ? String(req.query.cycle) : 'mensal';
-      const deviceFingerprint = req.query.deviceFingerprint
-        ? String(req.query.deviceFingerprint)
-        : undefined;
-
-      const eligibility = await checkLaunchOfferEligibility(
-        {
-          userId: req.authSession?.userId || null,
-          email,
-          phone,
-          cpfCnpj,
-          deviceFingerprint,
-          ipAddress: req.ip,
-        },
-        {
-          providerProfileId,
-          whatsapp: phone,
-          cpfCnpj,
-        },
-        {
-          planSlug,
-          cycle,
+  router.get(
+    '/providers/:providerId/subscription',
+    attachOptionalSession,
+    async (req, res) => {
+      try {
+        const providerId = String(req.params.providerId);
+        // Anti-IDOR check if x-provider-id header is passed
+        const callerProviderId = req.headers['x-provider-id'];
+        const callerRole = req.headers['x-user-role'];
+        if (
+          callerProviderId &&
+          callerProviderId !== providerId &&
+          callerRole !== 'admin'
+        ) {
+          res.status(403).json({
+            ok: false,
+            error: 'Acesso negado (proteção contra IDOR).',
+          });
+          return;
         }
-      );
 
-      res.json({ ok: true, ...eligibility });
-    } catch (err) {
-      res.status(500).json({ ok: false, error: (err as Error).message });
+        const [summary, usage] = await Promise.all([
+          lifecycleService.getProviderSubscriptionSummary(providerId),
+          limitService.getUsageStatus(providerId),
+        ]);
+
+        res.json({
+          ok: true,
+          ...summary,
+          usage,
+        });
+      } catch {
+        res.json({
+          ok: true,
+          subscription: null,
+          plan: INITIAL_PLANS_SEED[0],
+          scheduledPlan: null,
+          invoices: [],
+          inGracePeriod: false,
+          portalUrl: null,
+          activeLaunchOffer: null,
+          usage: {
+            used: 0,
+            limit: 5,
+            remaining: 5,
+            limitReached: false,
+            upgradeSuggested: false,
+            profileBlocked: false,
+            planSlug: 'gratuito',
+            planName: 'Gratuito',
+          },
+        });
+      }
     }
-  });
+  );
+
+  router.get(
+    '/providers/:providerId/billing-portal',
+    attachOptionalSession,
+    async (req, res) => {
+      try {
+        const providerId = String(req.params.providerId);
+        const callerProviderId = req.headers['x-provider-id'];
+        const callerRole = req.headers['x-user-role'];
+        if (
+          callerProviderId &&
+          callerProviderId !== providerId &&
+          callerRole !== 'admin'
+        ) {
+          res.status(403).json({
+            ok: false,
+            error: 'Acesso negado (proteção contra IDOR).',
+          });
+          return;
+        }
+        const summary =
+          await lifecycleService.getProviderSubscriptionSummary(providerId);
+        if (!summary.portalUrl) {
+          res.status(404).json({
+            ok: false,
+            error:
+              'Nenhuma assinatura paga ativa vinculada ao portal de cobrança Asaas.',
+          });
+          return;
+        }
+        res.json({ ok: true, portalUrl: summary.portalUrl });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.get(
+    '/promotions/launch-offer/eligibility',
+    attachOptionalSession,
+    async (req, res) => {
+      try {
+        const providerProfileId = req.query.providerProfileId
+          ? String(req.query.providerProfileId)
+          : req.authSession?.providerProfileId || undefined;
+        const email = req.query.email
+          ? String(req.query.email)
+          : req.authSession?.email || undefined;
+        const phone = req.query.phone ? String(req.query.phone) : undefined;
+        const cpfCnpj = req.query.cpfCnpj ? String(req.query.cpfCnpj) : undefined;
+        const planSlug = req.query.planSlug
+          ? String(req.query.planSlug)
+          : undefined;
+        const cycle = req.query.cycle ? String(req.query.cycle) : 'mensal';
+        const deviceFingerprint = req.query.deviceFingerprint
+          ? String(req.query.deviceFingerprint)
+          : undefined;
+
+        const eligibility = await checkLaunchOfferEligibility(
+          {
+            userId: req.authSession?.userId || null,
+            email,
+            phone,
+            cpfCnpj,
+            deviceFingerprint,
+            ipAddress: req.ip,
+          },
+          {
+            providerProfileId,
+            whatsapp: phone,
+            cpfCnpj,
+          },
+          {
+            planSlug,
+            cycle,
+          }
+        );
+
+        res.json({ ok: true, ...eligibility });
+      } catch (err) {
+        res.status(500).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
 
   router.post(
     '/subscriptions/checkout',
     rateLimit(30),
+    attachOptionalSession,
     async (req, res) => {
       try {
         const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
@@ -363,59 +432,71 @@ export function createApiRouter(): express.Router {
     }
   );
 
-  router.post('/subscriptions/:id/upgrade', async (req, res) => {
-    try {
-      const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
-      if (!payGuard.allowed) {
-        res.status(403).json({ ok: false, error: payGuard.reason });
-        return;
+  router.post(
+    '/subscriptions/:id/upgrade',
+    attachOptionalSession,
+    async (req, res) => {
+      try {
+        const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
+        if (!payGuard.allowed) {
+          res.status(403).json({ ok: false, error: payGuard.reason });
+          return;
+        }
+        const parsed = UpgradeSchema.parse(req.body);
+        const result = await lifecycleService.upgradeSubscription({
+          subscriptionId: String(req.params.id),
+          ...parsed,
+        });
+        res.json({ ok: true, ...result });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
       }
-      const parsed = UpgradeSchema.parse(req.body);
-      const result = await lifecycleService.upgradeSubscription({
-        subscriptionId: req.params.id,
-        ...parsed,
-      });
-      res.json({ ok: true, ...result });
-    } catch (err) {
-      res.status(400).json({ ok: false, error: (err as Error).message });
     }
-  });
+  );
 
-  router.post('/subscriptions/:id/downgrade', async (req, res) => {
-    try {
-      const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
-      if (!payGuard.allowed) {
-        res.status(403).json({ ok: false, error: payGuard.reason });
-        return;
+  router.post(
+    '/subscriptions/:id/downgrade',
+    attachOptionalSession,
+    async (req, res) => {
+      try {
+        const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
+        if (!payGuard.allowed) {
+          res.status(403).json({ ok: false, error: payGuard.reason });
+          return;
+        }
+        const parsed = DowngradeSchema.parse(req.body);
+        const result = await lifecycleService.scheduleDowngrade({
+          subscriptionId: String(req.params.id),
+          targetPlanSlug: parsed.targetPlanSlug,
+        });
+        res.json({ ok: true, ...result });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
       }
-      const parsed = DowngradeSchema.parse(req.body);
-      const result = await lifecycleService.scheduleDowngrade({
-        subscriptionId: req.params.id,
-        targetPlanSlug: parsed.targetPlanSlug,
-      });
-      res.json({ ok: true, ...result });
-    } catch (err) {
-      res.status(400).json({ ok: false, error: (err as Error).message });
     }
-  });
+  );
 
-  router.post('/subscriptions/:id/cancel', async (req, res) => {
-    try {
-      const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
-      if (!payGuard.allowed) {
-        res.status(403).json({ ok: false, error: payGuard.reason });
-        return;
+  router.post(
+    '/subscriptions/:id/cancel',
+    attachOptionalSession,
+    async (req, res) => {
+      try {
+        const payGuard = assertRealExternalActionAllowed('payment', req.headers as Record<string, string | string[] | undefined>);
+        if (!payGuard.allowed) {
+          res.status(403).json({ ok: false, error: payGuard.reason });
+          return;
+        }
+        const reason = req.body?.reason || 'Cancelamento solicitado no painel';
+        const updated = await lifecycleService.cancelSubscription(
+          String(req.params.id),
+          reason
+        );
+        res.json({ ok: true, subscription: updated });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
       }
-      const reason = req.body?.reason || 'Cancelamento solicitado no painel';
-      const updated = await lifecycleService.cancelSubscription(
-        req.params.id,
-        reason
-      );
-      res.json({ ok: true, subscription: updated });
-    } catch (err) {
-      res.status(400).json({ ok: false, error: (err as Error).message });
     }
-  });
+  );
 
   // 3. Opportunity Dispatch & Usage
   router.post('/opportunities/dispatch', async (req, res) => {
@@ -538,18 +619,60 @@ export function createApiRouter(): express.Router {
   router.patch('/admin/plans/:id', requireAdminRole, async (req, res) => {
     try {
       const UpdatePlanSchema = z.object({
+        nome: z.string().min(2).max(60).optional(),
+        descricao: z.string().min(5).max(300).optional(),
         precoMensalCentavos: z.number().int().min(0).optional(),
         precoAnualCentavos: z.number().int().min(0).optional(),
         limiteOportunidadesMensal: z.number().int().min(1).optional(),
         prioridadeMatching: z.number().int().min(0).max(12).optional(),
+        prioridadeLabel: z
+          .enum([
+            'Baixa',
+            'Leve',
+            'Média',
+            'Alta',
+            'baixa',
+            'leve',
+            'media',
+            'alta',
+          ])
+          .optional(),
+        permiteDestaque: z.boolean().optional(),
+        permiteRelatoriosAvancados: z.boolean().optional(),
+        permitePortfolioIlimitado: z.boolean().optional(),
+        limiteFotosPortfolio: z.number().int().min(1).nullable().optional(),
+        suportePrioritario: z.boolean().optional(),
+        selo: z.string().max(60).nullable().optional(),
+        exibeAnuncios: z.boolean().optional(),
         ativo: z.boolean().optional(),
       });
-      const data = UpdatePlanSchema.parse(req.body);
+      const parsed = UpdatePlanSchema.parse(req.body);
+      const priorityLabelMap: Record<string, string> = {
+        baixa: 'Baixa',
+        leve: 'Leve',
+        media: 'Média',
+        alta: 'Alta',
+      };
+      const normalizedData = {
+        ...parsed,
+        ...(parsed.prioridadeLabel
+          ? {
+              prioridadeLabel:
+                priorityLabelMap[parsed.prioridadeLabel.toLowerCase()] ||
+                parsed.prioridadeLabel,
+            }
+          : {}),
+        atualizadoEm: new Date(),
+      };
       const [updated] = await db
         .update(plans)
-        .set({ ...data, atualizadoEm: new Date() })
-        .where(eq(plans.id, req.params.id))
+        .set(normalizedData)
+        .where(eq(plans.id, String(req.params.id)))
         .returning();
+      if (!updated) {
+        res.status(404).json({ ok: false, error: 'Plano não encontrado.' });
+        return;
+      }
       res.json({ ok: true, plan: updated });
     } catch (err) {
       res.status(400).json({ ok: false, error: (err as Error).message });
@@ -663,6 +786,15 @@ export function createApiRouter(): express.Router {
       }
     }
   );
+
+  router.get('/admin/referrals', requireAdminRole, async (_req, res) => {
+    try {
+      const analytics = await referralService.getAdminReferralAnalytics();
+      res.json({ ok: true, ...analytics });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: (err as Error).message });
+    }
+  });
 
   // 5.5. Admin System Health, Backups & Error Alerts
   router.get('/admin/system-health', requireAdminRole, async (_req, res) => {

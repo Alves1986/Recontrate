@@ -121,7 +121,7 @@ export class OpportunityLimitService {
       limit,
       remaining,
       limitReached,
-      upgradeSuggested: limitReached && plan.slug !== 'premium' && plan.slug !== 'padrinho',
+      upgradeSuggested: limitReached && plan.slug !== 'premium',
       profileBlocked: false,
       periodoInicio: currentUsage.periodoInicio,
       periodoFim: currentUsage.periodoFim,
@@ -175,8 +175,7 @@ export class OpportunityLimitService {
       limitReached: newUsed >= currentStatus.limit,
       upgradeSuggested:
         newUsed >= currentStatus.limit &&
-        currentStatus.planSlug !== 'premium' &&
-        currentStatus.planSlug !== 'padrinho',
+        currentStatus.planSlug !== 'premium',
     };
 
     return {

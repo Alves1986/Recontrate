@@ -512,7 +512,7 @@ export const DemoShowcasePage: React.FC<{
                   João Batista (Demo)
                 </h2>
                 <p className="text-brand-ink/65">
-                  Plano Padrinho (Fictício) · Pinheiros
+                  Plano Premium (Fictício) · Pinheiros
                 </p>
               </div>
             </div>
@@ -606,9 +606,9 @@ export const DemoShowcasePage: React.FC<{
               </p>
             </div>
             <div className="bg-white rounded-2xl p-5 border border-brand-primary/10">
-              <p className="text-brand-ink/60">[DEMO] Oferta 50% OFF (3 meses)</p>
+              <p className="text-brand-ink/60">[DEMO] Promoção 90 Dias Grátis</p>
               <p className="font-display font-bold text-2xl text-brand-accent-strong mt-1">
-                R$ 14,95 – R$ 54,95
+                R$ 0,00 (3 primeiros meses)
               </p>
             </div>
             <div className="bg-white rounded-2xl p-5 border border-brand-primary/10">

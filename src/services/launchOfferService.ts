@@ -14,17 +14,15 @@ export const LAUNCH_OFFER_ELIGIBLE_PLANS = [
   'essencial',
   'profissional',
   'premium',
-  'padrinho',
 ] as const;
 
 export const LAUNCH_OFFER_PRICES_CENTAVOS: Record<
   string,
   { full: number; promo: number }
 > = {
-  essencial: { full: 2990, promo: 1495 },
-  profissional: { full: 5990, promo: 2995 },
-  premium: { full: 9990, promo: 4995 },
-  padrinho: { full: 10990, promo: 5495 },
+  essencial: { full: 2990, promo: 0 },
+  profissional: { full: 5990, promo: 0 },
+  premium: { full: 9990, promo: 0 },
 };
 
 export interface LaunchOfferUserInput {
@@ -115,7 +113,7 @@ async function logEligibilityCheck(params: {
 
 /**
  * Função central de elegibilidade para a campanha:
- * "Oferta de lançamento: 50% de desconto nos 3 primeiros meses."
+ * "Promoção de lançamento: 90 dias grátis (3 primeiros meses)."
  *
  * Verifica se o prestador é novo, nunca teve assinatura paga, não reutilizou
  * e-mail/telefone/CPF-CNPJ/dispositivo de outra conta, se a campanha está ativa
@@ -141,41 +139,37 @@ export async function checkLaunchOfferEligibility(
       eligible: false,
       resultado: 'inelegivel',
       reason: 'A campanha encerrou.',
-      discountPercent: 50,
+      discountPercent: 100,
       durationCycles: 3,
       eligiblePlans: [...LAUNCH_OFFER_ELIGIBLE_PLANS],
       fullPricesCentavos: {
         essencial: 2990,
         profissional: 5990,
         premium: 9990,
-        padrinho: 10990,
       },
       promoPricesCentavos: {
-        essencial: 1495,
-        profissional: 2995,
-        premium: 4995,
-        padrinho: 5495,
+        essencial: 0,
+        profissional: 0,
+        premium: 0,
       },
     };
   }
 
   const camp = campRows[0];
   const eligiblePlans: string[] = Array.isArray(camp.planos_elegiveis_json)
-    ? camp.planos_elegiveis_json
+    ? camp.planos_elegiveis_json.filter((slug: string) => slug !== 'padrinho')
     : [...LAUNCH_OFFER_ELIGIBLE_PLANS];
   const fullPrices: Record<string, number> =
     camp.preco_cheio_json || {
       essencial: 2990,
       profissional: 5990,
       premium: 9990,
-      padrinho: 10990,
     };
   const promoPrices: Record<string, number> =
     camp.preco_promocional_json || {
-      essencial: 1495,
-      profissional: 2995,
-      premium: 4995,
-      padrinho: 5495,
+      essencial: 0,
+      profissional: 0,
+      premium: 0,
     };
 
   const emailNorm = normalizeEmail(user.email);
@@ -207,7 +201,7 @@ export async function checkLaunchOfferEligibility(
       reason,
       campaignId: camp.id,
       campaignName: camp.nome,
-      discountPercent: Number(camp.desconto_percentual || 50),
+      discountPercent: Number(camp.desconto_percentual ?? 100),
       durationCycles: Number(camp.duracao_ciclos || 3),
       eligiblePlans,
       fullPricesCentavos: fullPrices,
@@ -338,7 +332,8 @@ export async function checkLaunchOfferEligibility(
       fingerprint,
       ipHash,
       resultado: 'elegivel',
-      motivo: 'Elegível para Oferta de Lançamento (50% off nos 3 primeiros meses)',
+      motivo:
+        'Elegível para Promoção de Lançamento (90 dias grátis nos 3 primeiros meses)',
     });
 
     return {
@@ -346,7 +341,7 @@ export async function checkLaunchOfferEligibility(
       resultado: 'elegivel',
       campaignId: camp.id,
       campaignName: camp.nome,
-      discountPercent: Number(camp.desconto_percentual || 50),
+      discountPercent: Number(camp.desconto_percentual ?? 100),
       durationCycles: Number(camp.duracao_ciclos || 3),
       eligiblePlans,
       fullPricesCentavos: fullPrices,
@@ -430,8 +425,8 @@ export async function forfeitLaunchOfferOnCancel(
 
 /**
  * Avança o ciclo promocional a cada renovação mensal.
- * Nos ciclos 1, 2 e 3 mantém o preço promocional (50% off).
- * A partir do 4º ciclo mensal, marca o resgate como 'concluido' e retorna ao preço cheio.
+ * Nos ciclos 1, 2 e 3 (90 dias grátis) mantém o preço promocional (R$ 0,00).
+ * A partir do 4º ciclo mensal, marca o resgate como 'concluido' e retorna ao preço padrão.
  */
 export async function advancePromotionalCycleOrReturnFullPrice(
   subscriptionId: string,
@@ -550,7 +545,7 @@ async function sendEndingNoticeForRedemption(
 
   await emailService.sendEmail({
     to: recipientEmail,
-    subject: `Recontrate: Sua oferta de 50% no plano ${row.plan_name} está terminando`,
+    subject: `Recontrate: Seus 90 dias grátis no plano ${row.plan_name} estão terminando`,
     template: 'aviso_aprovacao_cadastro',
     userId: row.user_id || undefined,
     variables: {

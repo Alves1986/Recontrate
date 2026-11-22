@@ -3,6 +3,10 @@ import { SignJWT, jwtVerify } from 'jose';
 import { ensureSchemaAndSeed, neonEnv, pool } from '../db/index';
 import { verifyNeonAuthJwt } from '../server/neonServices';
 import type { AppRole } from '../db/rls';
+import { ProviderReferralService } from './providerReferralService';
+import { SpecialtiesTaxonomyService } from './specialtiesService';
+
+const referralService = new ProviderReferralService();
 
 export type UserRole = 'cliente' | 'prestador' | 'padrinho' | 'admin';
 export type AccountStatus = 'pendente_confirmacao' | 'ativo' | 'suspenso';
@@ -12,6 +16,11 @@ export interface AuthenticatedUserSession {
   neonAuthUserId: string | null;
   email: string;
   fullName: string;
+  phone?: string | null;
+  city?: string | null;
+  neighborhood?: string | null;
+  category?: string | null;
+  bio?: string | null;
   roles: UserRole[];
   activeRole: UserRole;
   status: AccountStatus;
@@ -161,6 +170,10 @@ export class AuthService {
   }
 
   async verifySessionToken(token: string): Promise<AuthenticatedUserSession> {
+    if (!token || token.split('.').length !== 3) {
+      throw new Error('Sessão expirada ou inválida. Faça login novamente.');
+    }
+
     let userId: string | undefined;
     let neonAuthSub: string | undefined;
     let jwtPayload: Record<string, unknown> | undefined;
@@ -173,9 +186,13 @@ export class AuthService {
       userId = payload.sub;
       jwtPayload = payload as Record<string, unknown>;
     } catch {
-      const verifiedNeon = await verifyNeonAuthJwt(token);
-      neonAuthSub = verifiedNeon.sub;
-      neonPayload = verifiedNeon as Record<string, unknown>;
+      try {
+        const verifiedNeon = await verifyNeonAuthJwt(token);
+        neonAuthSub = verifiedNeon.sub;
+        neonPayload = verifiedNeon as Record<string, unknown>;
+      } catch {
+        throw new Error('Sessão expirada ou inválida. Faça login novamente.');
+      }
     }
 
     if (userId && PILOT_USERS_BY_ID.has(userId)) {
@@ -185,7 +202,14 @@ export class AuthService {
     try {
       await ensureSchemaAndSeed();
       const { rows } = await pool.query(
-        `SELECT u.*, p.full_name, pp.id AS provider_profile_id
+        `SELECT u.*,
+                p.full_name,
+                p.phone,
+                p.city,
+                p.neighborhood,
+                pp.id AS provider_profile_id,
+                pp.category AS provider_category,
+                pp.bio AS provider_bio
          FROM users u
          LEFT JOIN profiles p ON p.user_id = u.id
          LEFT JOIN provider_profiles pp ON pp.user_id = u.id
@@ -218,6 +242,11 @@ export class AuthService {
           neonAuthUserId: user.neon_auth_user_id,
           email: user.email,
           fullName: user.full_name || user.email,
+          phone: user.phone || null,
+          city: user.city || null,
+          neighborhood: user.neighborhood || null,
+          category: user.provider_category || null,
+          bio: user.provider_bio || null,
           roles: (user.roles || ['cliente']) as UserRole[],
           activeRole,
           status: user.status as AccountStatus,
@@ -278,7 +307,12 @@ export class AuthService {
     role: 'cliente' | 'prestador';
     alsoEnableSecondRole?: boolean;
     category?: string;
+    bio?: string;
+    categoryId?: string;
+    specialtyIds?: string[];
+    principalSpecialtyId?: string;
     lgpdConsent: boolean;
+    referralCode?: string;
     ipAddress?: string;
   }) {
     if (!input.lgpdConsent) {
@@ -298,6 +332,18 @@ export class AuthService {
       ? ['cliente', 'prestador']
       : [input.role];
     const activeRole: UserRole = input.role;
+    const isProvider = roles.includes('prestador');
+    const hasOfficialSpecialties = Boolean(
+      input.categoryId &&
+        Array.isArray(input.specialtyIds) &&
+        input.specialtyIds.length >= 1 &&
+        input.specialtyIds.length <= 5
+    );
+    const autoCompleteOnboarding = !isProvider || hasOfficialSpecialties;
+    const cleanBio = sanitizeUserText(
+      input.bio?.trim() ||
+        'Profissional autônomo dedicado a atendimentos pontuais e seguros.'
+    );
 
     try {
       await ensureSchemaAndSeed();
@@ -372,9 +418,16 @@ export class AuthService {
         `INSERT INTO users (
           neon_auth_user_id, email, roles, active_role, status,
           email_verified, verification_token, onboarding_completed
-        ) VALUES ($1, $2, $3, $4, 'ativo', true, $5, false)
+        ) VALUES ($1, $2, $3, $4, 'ativo', true, $5, $6)
         RETURNING *`,
-        [neonAuthUserId, emailNormalized, roles, activeRole, verificationToken]
+        [
+          neonAuthUserId,
+          emailNormalized,
+          roles,
+          activeRole,
+          verificationToken,
+          autoCompleteOnboarding,
+        ]
       );
       const createdUser = userInsert.rows[0];
 
@@ -394,7 +447,8 @@ export class AuthService {
       }
 
       let providerProfileId: string | null = null;
-      if (roles.includes('prestador')) {
+      let resolvedCategoryName = input.category || 'Elétrica';
+      if (isProvider) {
         providerProfileId = `prov-${createdUser.id.slice(0, 8)}`;
         const slug = `${cleanName
           .toLowerCase()
@@ -406,20 +460,49 @@ export class AuthService {
         await pool.query(
           `INSERT INTO provider_profiles (
             id, user_id, slug, name, professional_name, category, city,
-            neighborhoods, plan_slug, whatsapp, verification_status, is_verified
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'gratuito', $9, 'pendente', false)`,
+            neighborhoods, bio, plan_slug, whatsapp, verification_status, is_verified
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'gratuito', $10, 'pendente', false)`,
           [
             providerProfileId,
             createdUser.id,
             slug,
             cleanName,
             cleanName,
-            input.category || 'Eletricista',
+            resolvedCategoryName,
             cleanCity,
             [cleanNeighborhood],
+            cleanBio,
             cleanPhone || '(11) 99000-0000',
           ]
         );
+
+        if (hasOfficialSpecialties) {
+          const taxonomyService = new SpecialtiesTaxonomyService();
+          const savedTax = await taxonomyService.setProviderOfficialSpecialties({
+            providerProfileId,
+            categoryId: input.categoryId!,
+            specialtyIds: input.specialtyIds!,
+            principalSpecialtyId: input.principalSpecialtyId,
+          });
+          resolvedCategoryName = savedTax.categoryName;
+        }
+
+        try {
+          await referralService.recordReferredProviderSignup({
+            referralCode: input.referralCode,
+            referredUserId: createdUser.id,
+            referredProviderProfileId: providerProfileId,
+            referredName: cleanName,
+            referredEmail: emailNormalized,
+            referredPhone: cleanPhone,
+            referredCategory: resolvedCategoryName,
+          });
+          if (autoCompleteOnboarding) {
+            await referralService.validateReferralAndGrantDays(createdUser.id);
+          }
+        } catch {
+          // Não bloquear o cadastro se o registro de indicação falhar
+        }
       }
 
       await this.logAudit({
@@ -437,13 +520,18 @@ export class AuthService {
         neonAuthUserId,
         email: emailNormalized,
         fullName: cleanName,
+        phone: cleanPhone,
+        city: cleanCity,
+        neighborhood: cleanNeighborhood,
+        category: isProvider ? resolvedCategoryName : input.category || null,
+        bio: isProvider ? cleanBio : null,
         roles,
         activeRole,
         status: 'ativo',
         emailVerified: true,
-        onboardingCompleted: false,
+        onboardingCompleted: autoCompleteOnboarding,
         providerProfileId,
-        redirectTo: getRedirectPathForRole(activeRole, false),
+        redirectTo: getRedirectPathForRole(activeRole, autoCompleteOnboarding),
       };
 
       const token = await this.mintSessionToken(session);
@@ -474,13 +562,18 @@ export class AuthService {
         neonAuthUserId: null,
         email: emailNormalized,
         fullName: cleanName,
+        phone: cleanPhone,
+        city: cleanCity,
+        neighborhood: cleanNeighborhood,
+        category: input.category || null,
+        bio: isProvider ? cleanBio : null,
         roles,
         activeRole,
         status: 'ativo',
         emailVerified: true,
-        onboardingCompleted: false,
+        onboardingCompleted: autoCompleteOnboarding,
         providerProfileId,
-        redirectTo: getRedirectPathForRole(activeRole, false),
+        redirectTo: getRedirectPathForRole(activeRole, autoCompleteOnboarding),
       };
 
       PILOT_USERS_BY_ID.set(fallbackUserId, session);
@@ -586,7 +679,14 @@ export class AuthService {
       await ensureSchemaAndSeed();
 
       const { rows } = await pool.query(
-        `SELECT u.*, p.full_name, pp.id AS provider_profile_id
+        `SELECT u.*,
+                p.full_name,
+                p.phone,
+                p.city,
+                p.neighborhood,
+                pp.id AS provider_profile_id,
+                pp.category AS provider_category,
+                pp.bio AS provider_bio
          FROM users u
          LEFT JOIN profiles p ON p.user_id = u.id
          LEFT JOIN provider_profiles pp ON pp.user_id = u.id
@@ -693,6 +793,11 @@ export class AuthService {
         neonAuthUserId: user.neon_auth_user_id,
         email: user.email,
         fullName: user.full_name || user.email,
+        phone: user.phone || null,
+        city: user.city || null,
+        neighborhood: user.neighborhood || null,
+        category: user.provider_category || null,
+        bio: user.provider_bio || null,
         roles: (user.roles || ['cliente']) as UserRole[],
         activeRole,
         status: user.status as AccountStatus,
@@ -1010,6 +1115,12 @@ export class AuthService {
         targetType: 'user',
         targetId: params.userId,
       });
+
+      try {
+        await referralService.validateReferralAndGrantDays(params.userId);
+      } catch {
+        // Não bloquear a conclusão do onboarding se a validação de indicação falhar
+      }
 
       return {
         ok: true,

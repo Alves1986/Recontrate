@@ -25,7 +25,7 @@ const mockProviderA: ProviderProfile = {
   isTopRegion: true,
   isMentor: true,
   menteesCount: 2,
-  plan: 'Padrinho',
+  plan: 'Premium',
   ratingAvg: 4.95,
   reviewsCount: 84,
   completedJobs: 112,
