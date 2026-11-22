@@ -247,6 +247,39 @@ test('2. Avaliação Pós-Atendimento Real: exige solicitação concluída, anon
   const completeBody = (await completeRes.json()) as any;
   assert.equal(completeBody.request.status, 'concluido');
 
+  // Mesmo com solicitação concluída, avaliação de profissional com oportunidade ainda 'pendente' deve ser bloqueada (400)
+  const pendingOppReviewRes = await fetch(
+    `${baseUrl}/api/app/cliente/reviews`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cliente.token}`,
+      },
+      body: JSON.stringify({
+        providerProfileId,
+        serviceRequestId,
+        neighborhood: 'Pinheiros',
+        serviceTitle: 'Substituição de Disjuntor Geral e DR',
+        qualidade: 5,
+        pontualidade: 5,
+        comunicacao: 5,
+        organizacao: 5,
+        wouldRecommend: true,
+        comment: 'Tentativa para oportunidade nunca aceita.',
+      }),
+    }
+  );
+  assert.equal(pendingOppReviewRes.status, 400);
+
+  // Marca oportunidade como aceita com contato liberado
+  await pool.query(
+    `UPDATE opportunities
+     SET status = 'aceita', contact_released = true, contact_released_at = NOW()
+     WHERE service_request_id = $1::uuid AND provider_profile_id = $2`,
+    [serviceRequestId, providerProfileId]
+  );
+
   const revRes = await fetch(`${baseUrl}/api/app/cliente/reviews`, {
     method: 'POST',
     headers: {

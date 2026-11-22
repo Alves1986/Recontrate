@@ -204,3 +204,44 @@ test('Inadimplência applies 7-day grace period and downgrades to Gratuito after
   assert.equal(providerAfter.reviewsCount, 94);
   assert.equal(providerAfter.planSlug, 'gratuito');
 });
+
+test('Upgrade from free/no-gateway subscription creates recurring gateway subscription before activating paid plan', async () => {
+  await ensureSchemaAndSeed();
+  const service = createTestService();
+
+  const now = new Date('2026-11-16T10:00:00Z');
+  const nextMonth = new Date('2026-12-16T10:00:00Z');
+  const freeSubId = `sub-free-upg-${Date.now()}`;
+
+  await pool.query(
+    `INSERT INTO subscriptions (
+      id, provider_profile_id, plan_id, status, ciclo, inicio, fim, proxima_cobranca
+    ) VALUES ($1, 'prov-joao', 'plan-gratuito', 'ativa', 'mensal', $2, $3, $3)`,
+    [freeSubId, now, nextMonth]
+  );
+
+  const upgraded = await service.upgradeSubscription({
+    subscriptionId: freeSubId,
+    targetPlanSlug: 'essencial',
+    targetCycle: 'mensal',
+    paymentMethod: 'pix',
+    cpfCnpj: '52998224725',
+    now,
+  });
+
+  assert.equal(upgraded.newPlan.slug, 'essencial');
+  assert.ok(upgraded.subscription.gatewayCustomerId);
+  assert.ok(
+    upgraded.subscription.gatewaySubscriptionId,
+    'Upgrade from free plan must create and persist recurring gatewaySubscriptionId'
+  );
+
+  const { rows } = await pool.query<{ gateway_subscription_id: string | null }>(
+    `SELECT gateway_subscription_id FROM subscriptions WHERE id = $1`,
+    [freeSubId]
+  );
+  assert.equal(
+    rows[0].gateway_subscription_id,
+    upgraded.subscription.gatewaySubscriptionId
+  );
+});

@@ -570,17 +570,20 @@ export class MarketplaceDataService {
        FROM opportunities
        WHERE service_request_id = $1::uuid
          AND provider_profile_id = $2
+         AND status = 'aceita'
+         AND contact_released = TRUE
        UNION ALL
        SELECT 1 AS linked
        FROM repeat_requests
        WHERE customer_user_id = $3::uuid
          AND provider_profile_id = $2
+         AND status = 'aceito'
        LIMIT 1`,
       [input.serviceRequestId, input.providerProfileId, input.customerUserId]
     );
     if (linkRows.length === 0) {
       throw new Error(
-        'Este profissional não está vinculado ao atendimento selecionado para avaliação.'
+        'Apenas profissionais que aceitaram a solicitação com contato liberado podem receber avaliação verificada.'
       );
     }
 

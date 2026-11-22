@@ -810,6 +810,12 @@ export class SubscriptionLifecycleService {
       now,
     });
 
+    // Renewal date remains stable on monthly->monthly upgrade; extends if switching to annual
+    const newFim =
+      currentCycle === 'mensal' && targetCycle === 'anual'
+        ? calculateCycleEndDate(now, 'anual')
+        : sub.fim;
+
     let resolvedGatewayCustomerId = sub.gatewayCustomerId;
     if (!resolvedGatewayCustomerId && (proRataCents > 0 || newPriceCents > 0)) {
       const [profile] = await db
@@ -839,6 +845,7 @@ export class SubscriptionLifecycleService {
       }
     }
 
+    let resolvedGatewaySubscriptionId = sub.gatewaySubscriptionId;
     if (sub.gatewaySubscriptionId) {
       await this.billing.updateSubscription(sub.gatewaySubscriptionId, {
         planSlug: targetPlan.slug,
@@ -846,13 +853,24 @@ export class SubscriptionLifecycleService {
         cycle: targetCycle,
         amountCents: newPriceCents,
       });
+    } else if (newPriceCents > 0) {
+      if (!resolvedGatewayCustomerId) {
+        throw new Error(
+          'Informe um CPF ou CNPJ válido para ativar a cobrança recorrente desta assinatura.'
+        );
+      }
+      const createdGwSub = await this.billing.createSubscription({
+        gatewayCustomerId: resolvedGatewayCustomerId,
+        planSlug: targetPlan.slug,
+        planName: targetPlan.nome,
+        cycle: targetCycle,
+        amountCents: newPriceCents,
+        paymentMethod: params.paymentMethod || 'pix',
+        nextDueDate: newFim.toISOString().slice(0, 10),
+        externalReference: sub.id,
+      });
+      resolvedGatewaySubscriptionId = createdGwSub.gatewaySubscriptionId;
     }
-
-    // Renewal date remains stable on monthly->monthly upgrade; extends if switching to annual
-    const newFim =
-      currentCycle === 'mensal' && targetCycle === 'anual'
-        ? calculateCycleEndDate(now, 'anual')
-        : sub.fim;
 
     const [updatedSub] = await db
       .update(subscriptions)
@@ -862,6 +880,7 @@ export class SubscriptionLifecycleService {
         ciclo: targetCycle,
         status: 'ativa',
         gatewayCustomerId: resolvedGatewayCustomerId,
+        gatewaySubscriptionId: resolvedGatewaySubscriptionId,
         fim: newFim,
         proximaCobranca: newFim,
         atualizadoEm: now,
