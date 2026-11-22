@@ -653,23 +653,7 @@ async function runEnsureSchemaAndSeed(): Promise<void> {
           permite_relatorios_avancados, permite_portfolio_ilimitado, limite_fotos_portfolio,
           suporte_prioritario, selo, exibe_anuncios, ativo, ordem_exibicao
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-        ON CONFLICT (slug) DO UPDATE SET
-          nome = EXCLUDED.nome,
-          descricao = EXCLUDED.descricao,
-          preco_mensal_centavos = EXCLUDED.preco_mensal_centavos,
-          preco_anual_centavos = EXCLUDED.preco_anual_centavos,
-          limite_oportunidades_mensal = EXCLUDED.limite_oportunidades_mensal,
-          prioridade_matching = EXCLUDED.prioridade_matching,
-          prioridade_label = EXCLUDED.prioridade_label,
-          permite_destaque = EXCLUDED.permite_destaque,
-          permite_relatorios_avancados = EXCLUDED.permite_relatorios_avancados,
-          permite_portfolio_ilimitado = EXCLUDED.permite_portfolio_ilimitado,
-          limite_fotos_portfolio = EXCLUDED.limite_fotos_portfolio,
-          suporte_prioritario = EXCLUDED.suporte_prioritario,
-          selo = EXCLUDED.selo,
-          exibe_anuncios = EXCLUDED.exibe_anuncios,
-          ordem_exibicao = EXCLUDED.ordem_exibicao,
-          atualizado_em = NOW()`,
+        ON CONFLICT (slug) DO NOTHING`,
         [
           p.id,
           p.slug,
@@ -733,15 +717,7 @@ async function runEnsureSchemaAndSeed(): Promise<void> {
         1,
         'ativo'
       )
-      ON CONFLICT (slug) DO UPDATE SET
-        nome = EXCLUDED.nome,
-        descricao = EXCLUDED.descricao,
-        desconto_percentual = EXCLUDED.desconto_percentual,
-        duracao_ciclos = EXCLUDED.duracao_ciclos,
-        planos_elegiveis_json = EXCLUDED.planos_elegiveis_json,
-        preco_cheio_json = EXCLUDED.preco_cheio_json,
-        preco_promocional_json = EXCLUDED.preco_promocional_json,
-        atualizado_em = NOW()`
+      ON CONFLICT (slug) DO NOTHING`
     );
 
     if (!isProductionEnvironment() && isDemoModeEnabled()) {

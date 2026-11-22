@@ -30,6 +30,7 @@ import { INITIAL_PROVIDER_NOTIFICATIONS } from '../data/seedData';
 import {
   calculateCompositeScore,
   createRealtimeNotification,
+  hasSufficientReputationHistory,
 } from '../utils/marketplaceRules';
 import {
   calculateAnnualMonthlyEquivalentCentavos,
@@ -65,9 +66,9 @@ interface ProviderDashboardScreenProps {
   onUpdateOpportunityStatus: (
     oppId: string,
     status: ProviderOpportunity['status']
-  ) => void;
+  ) => Promise<void> | void;
   onChangeProviderPlan: (providerId: string, newPlan: PlanTier) => void;
-  onToggleProviderAvailability: (providerId: string) => void;
+  onToggleProviderAvailability: (providerId: string) => Promise<void> | void;
   onNavigate: (screen: ScreenId, providerId?: string) => void;
 }
 
@@ -122,6 +123,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   const [sponsoredAd, setSponsoredAd] = useState<any | null>(null);
   const [sessionBannersShown, setSessionBannersShown] = useState(0);
   const [adClickConfirmed, setAdClickConfirmed] = useState(false);
+  const [oppActionError, setOppActionError] = useState<string | null>(null);
 
   const loadSubscriptionData = useCallback(async () => {
     const headers: Record<string, string> = authToken
@@ -496,7 +498,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
 
   const scoreBreakdown = calculateCompositeScore(activeProvider);
   const hasCompositeData =
-    activeProvider.reviewsCount > 0 &&
+    hasSufficientReputationHistory(activeProvider) &&
     activeProvider.ratingAvg > 0 &&
     activeProvider.responseTimeMinutes > 0 &&
     activeProvider.responseRatePercent > 0 &&
@@ -509,21 +511,49 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
     setTimeout(() => setCopiedQuoteTemplate(false), 3000);
   };
 
-  const handleAcceptOpportunityWithNotification = (opp: ProviderOpportunity) => {
-    onUpdateOpportunityStatus(opp.id, 'aceita');
-    const acceptanceNotif = createRealtimeNotification({
-      id: `notif-acc-${Date.now()}`,
-      type: 'aceite_orcamento',
-      title: 'Interesse confirmado e contato liberado para orçamento!',
-      message: `Contato de ${opp.clientNameFull} liberado para "${opp.title}".`,
-      clientName: opp.clientNameFull,
-      neighborhood: `${opp.neighborhood} (${opp.distanceKm} km)`,
-      urgencyOrScope: `Urgência: ${opp.urgency} · ${opp.preferredTime}`,
-      timestamp: 'Agora mesmo',
-      opportunityId: opp.id,
-      clientWhatsapp: opp.clientWhatsapp,
-    });
-    setRealtimeNotifications((prev) => [acceptanceNotif, ...prev]);
+  const handleAcceptOpportunityWithNotification = async (
+    opp: ProviderOpportunity
+  ) => {
+    setOppActionError(null);
+    try {
+      await onUpdateOpportunityStatus(opp.id, 'aceita');
+      const acceptanceNotif = createRealtimeNotification({
+        id: `notif-acc-${Date.now()}`,
+        type: 'aceite_orcamento',
+        title: 'Interesse confirmado e contato liberado para orçamento!',
+        message: `Contato de ${opp.clientNameFull || opp.clientNameMasked} liberado para "${opp.title}".`,
+        clientName: opp.clientNameFull || opp.clientNameMasked,
+        neighborhood: `${opp.neighborhood} (${opp.distanceKm} km)`,
+        urgencyOrScope: `Urgência: ${opp.urgency} · ${opp.preferredTime}`,
+        timestamp: 'Agora mesmo',
+        opportunityId: opp.id,
+        clientWhatsapp: opp.clientWhatsapp,
+      });
+      setRealtimeNotifications((prev) => [acceptanceNotif, ...prev]);
+    } catch (err) {
+      setOppActionError(
+        (err as Error).message ||
+          'Não foi possível aceitar a oportunidade no servidor.'
+      );
+    }
+  };
+
+  const handleDeclineOrSubstituteOpportunity = async (
+    opp: ProviderOpportunity,
+    status: ProviderOpportunity['status']
+  ) => {
+    setOppActionError(null);
+    try {
+      await onUpdateOpportunityStatus(opp.id, status);
+      if (status === 'substituto_indicado') {
+        onNavigate('indicacao-substituto', activeProvider.id);
+      }
+    } catch (err) {
+      setOppActionError(
+        (err as Error).message ||
+          'Não foi possível atualizar o status da oportunidade.'
+      );
+    }
   };
 
   return (
@@ -590,7 +620,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
           <div className="bg-white/10 rounded-2xl p-3.5 sm:p-4 min-w-0">
             <p className="text-xs font-sans text-white/75">Nota Composta</p>
             <p className="text-base sm:text-2xl font-bold text-white mt-1">
-              {hasCompositeData ? `★ ${scoreBreakdown.totalScore.toFixed(2)}` : 'Em formação'}
+              {hasCompositeData ? `★ ${scoreBreakdown.totalScore.toFixed(2)}` : 'Em avaliação inicial'}
             </p>
             <p className="text-[11px] font-sans text-white/70 mt-0.5">
               {activeProvider.reviewsCount > 0
@@ -689,6 +719,19 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       {/* TAB 1: OPORTUNIDADES */}
       {activeTab === 'oportunidades' && (
         <div className="space-y-4">
+          {oppActionError && (
+            <div
+              role="alert"
+              className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-xs font-medium"
+            >
+              {oppActionError}
+            </div>
+          )}
+          {opportunities.length === 0 && (
+            <div className="bg-white rounded-3xl p-6 border border-brand-primary/10 text-xs text-brand-ink/75">
+              Nenhuma oportunidade registrada nesta sessão ainda. Assim que um cliente compatível enviar uma solicitação na sua região, ela aparecerá aqui.
+            </div>
+          )}
           {opportunities.map((opp) => (
             <article
               key={opp.id}
@@ -776,17 +819,21 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => {
-                            onUpdateOpportunityStatus(opp.id, 'substituto_indicado');
-                            onNavigate('indicacao-substituto', activeProvider.id);
-                          }}
+                          onClick={() =>
+                            handleDeclineOrSubstituteOpportunity(
+                              opp,
+                              'substituto_indicado'
+                            )
+                          }
                           className="min-h-[40px] px-3 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary-hover text-white text-xs font-semibold transition-colors cursor-pointer"
                         >
                           Indicar substituto
                         </button>
                         <button
                           type="button"
-                          onClick={() => onUpdateOpportunityStatus(opp.id, 'recusada')}
+                          onClick={() =>
+                            handleDeclineOrSubstituteOpportunity(opp, 'recusada')
+                          }
                           className="min-h-[40px] px-3 py-2 rounded-xl bg-brand-background hover:bg-brand-surface-hover text-brand-ink text-xs font-semibold transition-colors cursor-pointer"
                         >
                           Recusar pedido

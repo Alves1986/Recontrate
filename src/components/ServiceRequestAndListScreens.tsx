@@ -18,7 +18,10 @@ import {
   ServiceRequest,
 } from '../types/confiare';
 import { CATEGORIES_LIST } from '../data/seedData';
-import { rankCompatibleProviders } from '../utils/marketplaceRules';
+import {
+  hasSufficientReputationHistory,
+  rankCompatibleProviders,
+} from '../utils/marketplaceRules';
 
 interface CreateServiceRequestScreenProps {
   initialCategory?: CategoryName;
@@ -26,7 +29,7 @@ interface CreateServiceRequestScreenProps {
   initialLocation?: string;
   providers: ProviderProfile[];
   requests: ServiceRequest[];
-  onCreateRequest: (req: ServiceRequest) => void;
+  onCreateRequest: (req: ServiceRequest) => Promise<void> | void;
   onNavigate: (screen: ScreenId, providerId?: string) => void;
 }
 
@@ -54,15 +57,16 @@ export const CreateServiceRequestScreen: React.FC<CreateServiceRequestScreenProp
     'Manhã (08h–12h)' | 'Tarde (13h–18h)' | 'Noite (18h–21h)' | 'Comercial'
   >('Tarde (13h–18h)');
   const [estimatedBudget, setEstimatedBudget] = useState('A combinar direto com o prestador');
-  const [preferredPreviousProviderId, setPreferredPreviousProviderId] = useState<string>('prov-joao');
+  const [preferredPreviousProviderId, setPreferredPreviousProviderId] = useState<string>('');
   const [photosCount, setPhotosCount] = useState(2);
-  const [lgpdContactConsent, setLgpdContactConsent] = useState(true);
+  const [lgpdContactConsent, setLgpdContactConsent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const trustedProviders = providers.filter((p) => p.previouslyHiredByCurrentUser);
   const selectedCategoryInfo = CATEGORIES_LIST.find((c) => c.name === category);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!problemTitle.trim() || !description.trim() || !neighborhood.trim()) {
       setError('Descreva o problema e informe o bairro para encontrarmos profissionais compatíveis.');
@@ -93,7 +97,17 @@ export const CreateServiceRequestScreen: React.FC<CreateServiceRequestScreenProp
       photosCount,
     };
 
-    onCreateRequest(newReq);
+    setSubmitting(true);
+    try {
+      await onCreateRequest(newReq);
+    } catch (err) {
+      setError(
+        (err as Error).message ||
+          'Não foi possível registrar sua solicitação no servidor. Tente novamente.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -351,9 +365,10 @@ export const CreateServiceRequestScreen: React.FC<CreateServiceRequestScreenProp
           <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
             <button
               type="submit"
-              className="min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold text-sm transition-colors inline-flex items-center gap-2 cursor-pointer"
+              disabled={submitting}
+              className="min-h-[48px] px-6 py-3 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover disabled:opacity-60 text-white font-display font-semibold text-sm transition-colors inline-flex items-center gap-2 cursor-pointer"
             >
-              <span>Encontrar profissionais compatíveis</span>
+              <span>{submitting ? 'Registrando...' : 'Encontrar profissionais compatíveis'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
             <span className="text-xs text-brand-ink/65">
@@ -541,7 +556,12 @@ export const CompatibleProvidersListScreen: React.FC<
                     </div>
                   </div>
 
-                  <p className="text-xs font-semibold text-brand-ink/70">Status de verificação ativo</p>
+                  <p className="text-xs font-semibold text-brand-link">
+                    ✓ Perfil verificado e aprovado ·{' '}
+                    {hasSufficientReputationHistory(provider)
+                      ? `Nota ★ ${provider.ratingAvg.toFixed(2)} (${provider.reviewsCount} avaliações · ${provider.completedJobs} atendimentos)`
+                      : 'Em avaliação inicial (histórico mínimo em formação)'}
+                  </p>
                   {(provider.city || provider.neighborhoods.length > 0) && (
                     <p className="text-xs text-brand-ink/70">
                       Localidade informada: {[provider.city, ...provider.neighborhoods].filter(Boolean).join(' · ')}

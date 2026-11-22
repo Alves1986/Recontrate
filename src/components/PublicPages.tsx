@@ -43,6 +43,7 @@ export const PublicLandingPage: React.FC<{
   const [interestCategory, setInterestCategory] = useState<string>('Eletricista');
   const [interestConsent, setInterestConsent] = useState(false);
   const [interestHoneypot, setInterestHoneypot] = useState('');
+  const [interestSubmitting, setInterestSubmitting] = useState(false);
   const [interestFeedback, setInterestFeedback] = useState<{
     type: 'success' | 'error';
     message: string;
@@ -62,7 +63,7 @@ export const PublicLandingPage: React.FC<{
     onStartSearch(problemInput, locationInput);
   };
 
-  const handleInterestSubmit = (e: React.FormEvent) => {
+  const handleInterestSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setInterestFeedback(null);
     if (interestHoneypot.trim() !== '') {
@@ -79,17 +80,53 @@ export const PublicLandingPage: React.FC<{
       setInterestFeedback({
         type: 'error',
         message:
-          'Marque a caixa de consentimento para autorizar o registro de interesse no piloto.',
+          'Marque a caixa de consentimento para autorizar o registro na lista de interesse.',
       });
       return;
     }
-    setInterestFeedback({
-      type: 'success',
-      message: `Interesse registrado localmente no ambiente de preview para ${interestCategory} em ${interestLocation}. Nenhum dado foi enviado para serviços externos.`,
-    });
-    setInterestEmail('');
-    setInterestLocation('');
-    setInterestConsent(false);
+
+    setInterestSubmitting(true);
+    try {
+      const res = await fetch('/api/public/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: interestEmail.trim(),
+          location: interestLocation.trim(),
+          category: interestCategory,
+          roleInterest: 'cliente',
+          lgpdConsent: interestConsent,
+          honeypot: interestHoneypot,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.ok) {
+        setInterestFeedback({
+          type: 'error',
+          message:
+            body?.error ||
+            'Não foi possível registrar seu interesse no momento. Tente novamente.',
+        });
+        return;
+      }
+
+      setInterestFeedback({
+        type: 'success',
+        message:
+          body.message ||
+          `Interesse registrado com sucesso para ${interestCategory} em ${interestLocation}.`,
+      });
+      setInterestEmail('');
+      setInterestLocation('');
+      setInterestConsent(false);
+    } catch {
+      setInterestFeedback({
+        type: 'error',
+        message: 'Erro de conexão ao salvar seu interesse. Tente novamente.',
+      });
+    } finally {
+      setInterestSubmitting(false);
+    }
   };
 
   return (
@@ -591,13 +628,13 @@ export const PublicLandingPage: React.FC<{
           <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-8 border border-brand-primary/10 space-y-4">
             <div className="space-y-1">
               <p className="text-xs font-semibold text-brand-accent-strong">
-                Lista de Interesse por Localidade · Piloto
+                Lista de Interesse por Localidade
               </p>
               <h3 className="font-display font-bold text-lg text-brand-ink">
                 Sua cidade ou bairro ainda não tem cobertura confirmada?
               </h3>
-              <p className="text-xs text-brand-ink/70 leading-relaxed">
-                Registre seu interesse com dados mínimos (sem CPF, RG ou endereço completo). Na fase de preview, este registro fica restrito ao ambiente de teste e não envia dados para terceiros.
+              <p className="text-xs text-brand-ink/75 leading-relaxed">
+                Registre seu interesse com dados mínimos (sem CPF, RG ou endereço completo). Seu pedido é gravado com consentimento explícito para avisarmos quando novos profissionais verificados entrarem na região.
               </p>
             </div>
 
@@ -693,13 +730,13 @@ export const PublicLandingPage: React.FC<{
                   className="mt-0.5"
                 />
                 <span className="text-brand-ink/80 leading-relaxed">
-                  Autorizo o registro mínimo para aviso sobre o piloto na minha localidade, ciente dos{' '}
+                  Autorizo o uso do meu e-mail e região informada para aviso sobre disponibilidade de atendimento na minha localidade, conforme os{' '}
                   <button
                     type="button"
                     onClick={() => onNavigateUrl('/privacidade')}
                     className="underline font-semibold text-brand-link cursor-pointer"
                   >
-                    avisos de privacidade em revisão
+                    Termos e Política de Privacidade (LGPD)
                   </button>
                   .
                 </span>
@@ -707,9 +744,10 @@ export const PublicLandingPage: React.FC<{
 
               <button
                 type="submit"
-                className="w-full min-h-[42px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover text-white font-display font-semibold cursor-pointer"
+                disabled={interestSubmitting}
+                className="w-full min-h-[42px] px-4 py-2.5 rounded-xl bg-brand-accent-strong hover:bg-brand-accent-hover disabled:opacity-60 text-white font-display font-semibold cursor-pointer"
               >
-                Enviar interesse e receber novidades
+                {interestSubmitting ? 'Registrando...' : 'Enviar interesse e receber novidades'}
               </button>
             </form>
           </div>

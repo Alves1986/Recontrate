@@ -136,6 +136,8 @@ export default function App() {
   >(null);
 
   const [providers, setProviders] = useState<ProviderProfile[]>([]);
+  const [ownProviderProfile, setOwnProviderProfile] =
+    useState<ProviderProfile | null>(null);
   const [selectedProviderId, setSelectedProviderId] = useState<string>('');
   const [authProviderPlanOverride, setAuthProviderPlanOverride] =
     useState<PlanTier | null>(null);
@@ -157,15 +159,25 @@ export default function App() {
   const [opportunities, setOpportunities] = useState<ProviderOpportunity[]>([]);
 
   const [clientProfile] = useState<ClientRegistration>({
-    name: 'Mariana Souza',
-    phone: '(11) 99204-6612',
-    email: 'mariana.souza@email.com.br',
-    neighborhood: 'Pinheiros',
-    city: 'São Paulo, SP',
+    name: authUser?.fullName || 'Cliente Recontrate',
+    phone: authUser?.phone || '',
+    email: authUser?.email || '',
+    neighborhood: authUser?.neighborhood || 'Pinheiros',
+    city: authUser?.city || 'São Paulo, SP',
     favoriteCategories: ['Eletricista', 'Encanador', 'Diarista'],
     preferredContact: 'WhatsApp',
-    lgpdConsent: true,
+    lgpdConsent: false,
   });
+
+  const buildAuthHeaders = useCallback(
+    (json = false): Record<string, string> => ({
+      ...(json ? { 'Content-Type': 'application/json' } : {}),
+      ...(authToken && authToken.split('.').length === 3
+        ? { Authorization: `Bearer ${authToken}` }
+        : {}),
+    }),
+    [authToken]
+  );
 
   const navigateUrl = useCallback((nextPath: string) => {
     const cleanPath = nextPath.split('?')[0] || '/';
@@ -298,6 +310,9 @@ export default function App() {
                   ? 'Essencial'
                   : 'Gratuito',
           ratingAvg: Number(p.rating_avg ?? 0),
+          publicScore: p.public_score ?? null,
+          hasSufficientReputation: Boolean(p.has_sufficient_reputation),
+          reputationLabel: p.reputation_label,
           reviewsCount: Number(p.reviews_count || 0),
           completedJobs: Number(p.completed_jobs || 0),
           responseTimeMinutes: Number(p.response_time_minutes ?? 0),
@@ -322,6 +337,135 @@ export default function App() {
       active = false;
     };
   }, []);
+
+  // Load authenticated user's real service requests, opportunities, and own provider profile
+  useEffect(() => {
+    if (!authChecked || !authUser || demoMode) return;
+    let active = true;
+    const headers = buildAuthHeaders(false);
+
+    if (
+      authUser.roles.includes('cliente') ||
+      authUser.activeRole === 'cliente' ||
+      authUser.activeRole === 'admin'
+    ) {
+      fetch('/api/app/cliente/requests', { credentials: 'include', headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => {
+          if (!active || !body?.ok || !Array.isArray(body.requests)) return;
+          setServiceRequests(
+            body.requests.map((r: any) => ({
+              id: r.id,
+              category: r.category_name as CategoryName,
+              problemTitle: r.problem_title,
+              description: r.description,
+              neighborhood: r.neighborhood,
+              city: r.city || 'São Paulo, SP',
+              urgency: r.urgency || 'Hoje',
+              preferredTime: r.preferred_time || 'Comercial',
+              estimatedBudget: r.estimated_budget || '',
+              lgpdContactConsent: Boolean(r.lgpd_contact_consent),
+              createdAt: r.created_at
+                ? new Date(r.created_at).toLocaleDateString('pt-BR')
+                : 'Recente',
+              status: r.status || 'oportunidades_enviadas',
+              photosCount: 0,
+            }))
+          );
+        })
+        .catch(() => null);
+    }
+
+    if (authUser.providerProfileId) {
+      fetch('/api/app/prestador/profile', { credentials: 'include', headers })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => {
+          if (!active || !body?.ok || !body.profile) return;
+          const p = body.profile;
+          const tier: PlanTier =
+            p.planSlug === 'premium'
+              ? 'Premium'
+              : p.planSlug === 'profissional'
+                ? 'Profissional'
+                : p.planSlug === 'essencial'
+                  ? 'Essencial'
+                  : 'Gratuito';
+          setOwnProviderProfile({
+            id: p.id,
+            name: p.name,
+            initials: String(p.name || 'PR')
+              .split(/\s+/)
+              .filter(Boolean)
+              .slice(0, 2)
+              .map((w: string) => w[0]?.toUpperCase() || '')
+              .join(''),
+            category: (p.category || 'Eletricista') as CategoryName,
+            specialties: [],
+            neighborhoods: Array.isArray(p.neighborhoods) ? p.neighborhoods : [],
+            city: p.city || '',
+            yearsExperience: Number(p.yearsExperience || 0),
+            bio: p.bio || '',
+            isVerified: Boolean(p.isVerified),
+            isTopRegion: Boolean(p.isTopRegion),
+            isMentor: Boolean(p.isMentor),
+            menteesCount: 0,
+            plan: tier,
+            ratingAvg: Number(p.ratingAvg ?? 0),
+            hasSufficientReputation: Boolean(p.hasSufficientReputation),
+            reviewsCount: Number(p.reviewsCount || 0),
+            completedJobs: Number(p.completedJobs || 0),
+            responseTimeMinutes: Number(p.responseTimeMinutes || 0),
+            responseRatePercent: Number(p.responseRatePercent || 0),
+            attendanceRatePercent: 100,
+            profileCompletenessPercent: Number(
+              p.profileCompletenessPercent || 0
+            ),
+            availableToday: Boolean(p.availableToday),
+            whatsapp: p.whatsapp || '',
+            trustedSubstitutesIds: [],
+            portfolio: [],
+            reviews: [],
+          });
+        })
+        .catch(() => null);
+
+      fetch('/api/app/prestador/opportunities', {
+        credentials: 'include',
+        headers,
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => {
+          if (!active || !body?.ok || !Array.isArray(body.opportunities)) return;
+          setOpportunities(
+            body.opportunities.map((o: any) => ({
+              id: o.id,
+              serviceRequestId: o.serviceRequestId,
+              customerUserId: o.customerUserId,
+              category: (o.category || 'Eletricista') as CategoryName,
+              title: o.title,
+              description: o.description,
+              neighborhood: o.neighborhood,
+              distanceKm: Number(o.distanceKm || 0),
+              urgency: o.urgency || 'Hoje',
+              preferredTime: o.preferredTime || 'Comercial',
+              clientNameMasked: o.clientNameMasked || 'Cliente Verificado',
+              clientNameFull:
+                o.clientNameFull || o.clientNameMasked || 'Cliente',
+              clientWhatsapp: o.clientWhatsapp || '',
+              origin: o.origin || 'Matching Local',
+              photosAttached: 0,
+              expiresInMinutes: 30,
+              status: o.status || 'pendente',
+            }))
+          );
+        })
+        .catch(() => null);
+    }
+
+    return () => {
+      active = false;
+    };
+  }, [authChecked, authUser, demoMode, buildAuthHeaders]);
 
   // Track mobile viewport / PWA standalone mode & install prompt
   useEffect(() => {
@@ -408,57 +552,80 @@ export default function App() {
   };
 
   const handleCreateServiceRequest = async (newReq: ServiceRequest) => {
-    setServiceRequests((prev) => [newReq, ...prev]);
+    if (demoMode) {
+      setServiceRequests((prev) => [newReq, ...prev]);
+      setActiveCategory(newReq.category);
+      setLocationQuery(newReq.neighborhood);
+      setSearchQuery('');
+      navigateUrl('/encontrar-profissional');
+      return;
+    }
+
+    if (!authUser) {
+      throw new Error('Faça login na sua conta antes de registrar uma solicitação.');
+    }
+
+    const res = await fetch('/api/app/cliente/requests', {
+      method: 'POST',
+      credentials: 'include',
+      headers: buildAuthHeaders(true),
+      body: JSON.stringify({
+        categoryName: newReq.category,
+        problemTitle: newReq.problemTitle,
+        description: newReq.description,
+        neighborhood: newReq.neighborhood,
+        city: newReq.city,
+        urgency: newReq.urgency,
+        preferredTime: newReq.preferredTime,
+        estimatedBudget: newReq.estimatedBudget,
+        lgpdContactConsent: newReq.lgpdContactConsent,
+        customerPhone: authUser.phone || clientProfile.phone,
+      }),
+    });
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body?.ok || !body.request) {
+      throw new Error(
+        body?.error || 'Não foi possível registrar sua solicitação no servidor.'
+      );
+    }
+
+    const persistedRequest: ServiceRequest = {
+      ...newReq,
+      id: body.request.id,
+      status: body.request.status || 'oportunidades_enviadas',
+      createdAt: 'Agora mesmo',
+    };
+    setServiceRequests((prev) => [persistedRequest, ...prev]);
     setActiveCategory(newReq.category);
     setLocationQuery(newReq.neighborhood);
     setSearchQuery('');
-
-    if (authUser) {
-      await fetch('/api/app/cliente/requests', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken && authToken.split('.').length === 3
-            ? { Authorization: `Bearer ${authToken}` }
-            : {}),
-        },
-        body: JSON.stringify({
-          categoryName: newReq.category,
-          problemTitle: newReq.problemTitle,
-          description: newReq.description,
-          neighborhood: newReq.neighborhood,
-          city: newReq.city,
-          urgency: newReq.urgency,
-          preferredTime: newReq.preferredTime,
-          estimatedBudget: newReq.estimatedBudget,
-          lgpdContactConsent: newReq.lgpdContactConsent,
-          customerPhone: clientProfile.phone,
-        }),
-      }).catch(() => null);
-    }
-
-    const newOpp: ProviderOpportunity = {
-      id: `opp-${Date.now()}`,
-      category: newReq.category,
-      title: newReq.problemTitle,
-      description: newReq.description,
-      neighborhood: newReq.neighborhood,
-      distanceKm: 1.2,
-      urgency: newReq.urgency,
-      preferredTime: newReq.preferredTime,
-      clientNameMasked: `${(authUser?.fullName || clientProfile.name).split(' ')[0]} (Cliente Verificado)`,
-      clientNameFull: authUser?.fullName || clientProfile.name,
-      clientWhatsapp: clientProfile.phone,
-      origin: newReq.preferredPreviousProviderId
-        ? 'Recontratação Direta'
-        : 'Matching Local',
-      photosAttached: newReq.photosCount,
-      expiresInMinutes: 30,
-      status: 'pendente',
-    };
-    setOpportunities((prev) => [newOpp, ...prev]);
     navigateUrl('/encontrar-profissional');
+  };
+
+  const handleCompleteServiceRequest = async (requestId: string) => {
+    if (demoMode) {
+      setServiceRequests((prev) =>
+        prev.map((r) => (r.id === requestId ? { ...r, status: 'concluido' } : r))
+      );
+      return;
+    }
+    const res = await fetch(
+      `/api/app/cliente/requests/${encodeURIComponent(requestId)}/complete`,
+      {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: buildAuthHeaders(false),
+      }
+    );
+    const body = await res.json().catch(() => null);
+    if (!res.ok || !body?.ok) {
+      throw new Error(
+        body?.error || 'Não foi possível concluir a solicitação no servidor.'
+      );
+    }
+    setServiceRequests((prev) =>
+      prev.map((r) => (r.id === requestId ? { ...r, status: 'concluido' } : r))
+    );
   };
 
   const handleLogout = async () => {
@@ -473,6 +640,10 @@ export default function App() {
     }
     setAuthUser(null);
     setAuthToken('');
+    setOwnProviderProfile(null);
+    setServiceRequests([]);
+    setOpportunities([]);
+    setRepeatRequests([]);
     navigateUrl('/entrar');
   };
 
@@ -481,12 +652,7 @@ export default function App() {
     const res = await fetch('/api/auth/switch-role', {
       method: 'POST',
       credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(authToken && authToken.split('.').length === 3
-          ? { Authorization: `Bearer ${authToken}` }
-          : {}),
-      },
+      headers: buildAuthHeaders(true),
       body: JSON.stringify({ targetRole, enableIfMissing: true }),
     }).catch(() => null);
     const text = res ? await res.text() : '';
@@ -508,10 +674,9 @@ export default function App() {
     ? pathname.replace('/profissionais/', '')
     : null;
   const authenticatedProviderProfile: ProviderProfile | undefined =
-    authUser &&
-    (authUser.providerProfileId || authUser.roles.includes('prestador'))
+    authUser && authUser.providerProfileId
       ? {
-          id: authUser.providerProfileId || `prov-${authUser.userId.slice(0, 8)}`,
+          id: authUser.providerProfileId,
           name: authUser.fullName,
           initials:
             authUser.fullName
@@ -519,11 +684,11 @@ export default function App() {
               .slice(0, 2)
               .map((w) => w[0]?.toUpperCase() || '')
               .join('') || 'PR',
-          category: (authUser.category || 'Elétrica') as CategoryName,
-          specialties: ['Atendimento residencial e comercial'],
-          neighborhoods: [authUser.neighborhood || locationQuery || 'Centro'],
+          category: (authUser.category || 'Eletricista') as CategoryName,
+          specialties: [],
+          neighborhoods: [authUser.neighborhood || locationQuery || 'Pinheiros'],
           city: authUser.city || 'São Paulo, SP',
-          yearsExperience: 1,
+          yearsExperience: 0,
           bio: authUser.bio || 'Perfil profissional ativo no Recontrate.',
           isVerified: false,
           isTopRegion: false,
@@ -531,12 +696,13 @@ export default function App() {
           menteesCount: 0,
           plan: authProviderPlanOverride || 'Gratuito',
           ratingAvg: 0,
+          hasSufficientReputation: false,
           reviewsCount: 0,
           completedJobs: 0,
-          responseTimeMinutes: 15,
-          responseRatePercent: 100,
-          attendanceRatePercent: 100,
-          profileCompletenessPercent: 85,
+          responseTimeMinutes: 0,
+          responseRatePercent: 0,
+          attendanceRatePercent: 0,
+          profileCompletenessPercent: 75,
           availableToday: true,
           whatsapp: authUser.phone || '',
           trustedSubstitutesIds: [],
@@ -548,14 +714,14 @@ export default function App() {
     providers.find(
       (p) => p.id === (slugFromProfileRoute || selectedProviderId)
     ) ||
-    providers[0] ||
-    authenticatedProviderProfile;
-  const dashboardProvider =
-    (authUser?.providerProfileId
-      ? providers.find((p) => p.id === authUser.providerProfileId)
-      : undefined) ||
-    authenticatedProviderProfile ||
     (demoMode ? providers[0] : undefined);
+  const dashboardProvider = demoMode
+    ? providers[0]
+    : authUser?.providerProfileId
+      ? ownProviderProfile ||
+        providers.find((p) => p.id === authUser.providerProfileId) ||
+        authenticatedProviderProfile
+      : undefined;
 
   const isDemoRoute = pathname === '/demo';
   const showDemoBanner = demoMode || isDemoRoute;
@@ -802,6 +968,9 @@ export default function App() {
             }
             onPlanUpdated={(newPlan) => {
               setAuthProviderPlanOverride(newPlan);
+              setOwnProviderProfile((prev) =>
+                prev ? { ...prev, plan: newPlan } : prev
+              );
               if (authUser?.providerProfileId) {
                 setProviders((prev) =>
                   prev.map((p) =>
@@ -970,17 +1139,15 @@ export default function App() {
             providers={providers}
             selectedProviderId={selectedProviderId}
             repeatRequests={repeatRequests}
-            onCreateRepeatRequest={(newRepeat) => {
-              setRepeatRequests((prev) => [newRepeat, ...prev]);
-              fetch('/api/app/cliente/repeat-requests', {
+            onCreateRepeatRequest={async (newRepeat) => {
+              if (demoMode) {
+                setRepeatRequests((prev) => [newRepeat, ...prev]);
+                return;
+              }
+              const res = await fetch('/api/app/cliente/repeat-requests', {
                 method: 'POST',
                 credentials: 'include',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...(authToken && authToken.split('.').length === 3
-                    ? { Authorization: `Bearer ${authToken}` }
-                    : {}),
-                },
+                headers: buildAuthHeaders(true),
                 body: JSON.stringify({
                   providerProfileId: newRepeat.providerId,
                   categoryName: newRepeat.category,
@@ -989,8 +1156,20 @@ export default function App() {
                   urgency: newRepeat.urgency,
                   notes: newRepeat.notes,
                   lgpdShareConsent: newRepeat.lgpdShareConsent,
+                  customerPhone: authUser.phone || clientProfile.phone,
                 }),
-              }).catch(() => null);
+              });
+              const body = await res.json().catch(() => null);
+              if (!res.ok || !body?.ok) {
+                throw new Error(
+                  body?.error ||
+                    'Não foi possível salvar o pedido de recontratação no servidor.'
+                );
+              }
+              setRepeatRequests((prev) => [
+                { ...newRepeat, id: body.repeatRequest?.id || newRepeat.id },
+                ...prev,
+              ]);
             }}
             onTriggerSubstituteFlow={() => navigateUrl('/app/cliente/substituto')}
             onNavigate={handleLegacyScreenNavigate}
@@ -1001,7 +1180,49 @@ export default function App() {
           <SubstituteReferralScreen
             providers={providers}
             currentReferral={substituteReferral}
-            onUpdateReferral={setSubstituteReferral}
+            onUpdateReferral={async (updated) => {
+              if (demoMode) {
+                setSubstituteReferral(updated);
+                return;
+              }
+              const targetCustomerUserId =
+                updated.customerUserId ||
+                opportunities.find((o) => o.customerUserId)?.customerUserId;
+              if (!targetCustomerUserId) {
+                throw new Error(
+                  'É necessário possuir uma oportunidade de cliente recebida para enviar indicação de substituto real.'
+                );
+              }
+              const res = await fetch(
+                '/api/app/prestador/substitute-referrals',
+                {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: buildAuthHeaders(true),
+                  body: JSON.stringify({
+                    customerUserId: targetCustomerUserId,
+                    substituteProviderIds: updated.substituteProviderIds,
+                    reasonCategory: updated.reasonCategory,
+                    customNote: updated.customNote,
+                    serviceContext: updated.serviceContext,
+                    neighborhood: updated.neighborhood,
+                    urgency: updated.urgency,
+                    clientConsentShared: true,
+                  }),
+                }
+              );
+              const body = await res.json().catch(() => null);
+              if (!res.ok || !body?.ok) {
+                throw new Error(
+                  body?.error ||
+                    'Não foi possível persistir a indicação de substituto no servidor.'
+                );
+              }
+              setSubstituteReferral({
+                ...updated,
+                id: body.referral?.id || updated.id,
+              });
+            }}
             onAcceptSubstitute={(id) => setSelectedProviderId(id)}
             onNavigate={handleLegacyScreenNavigate}
           />
@@ -1010,24 +1231,28 @@ export default function App() {
         {authUser && pathname === '/app/cliente/avaliar' && (
           <PostServiceReviewScreen
             providers={providers}
+            serviceRequests={serviceRequests}
             selectedProviderId={selectedProviderId}
-            onSubmitReview={(providerId, reviewData) => {
-              setProviders((prev) =>
-                prev.map((p) =>
-                  p.id === providerId ? applyNewReviewToProvider(p, reviewData) : p
-                )
-              );
-              fetch('/api/app/cliente/reviews', {
+            onCompleteServiceRequest={handleCompleteServiceRequest}
+            onSubmitReview={async (providerId, reviewData) => {
+              if (demoMode) {
+                setProviders((prev) =>
+                  prev.map((p) =>
+                    p.id === providerId
+                      ? applyNewReviewToProvider(p, reviewData)
+                      : p
+                  )
+                );
+                return;
+              }
+              const res = await fetch('/api/app/cliente/reviews', {
                 method: 'POST',
                 credentials: 'include',
-                headers: {
-                  'Content-Type': 'application/json',
-                  ...(authToken && authToken.split('.').length === 3
-                    ? { Authorization: `Bearer ${authToken}` }
-                    : {}),
-                },
+                headers: buildAuthHeaders(true),
                 body: JSON.stringify({
                   providerProfileId: providerId,
+                  serviceRequestId: reviewData.serviceRequestId,
+                  displayPublicName: Boolean(reviewData.displayPublicName),
                   neighborhood: reviewData.neighborhood,
                   serviceTitle: reviewData.serviceTitle,
                   qualidade: reviewData.qualidade,
@@ -1037,7 +1262,33 @@ export default function App() {
                   wouldRecommend: reviewData.wouldRecommend,
                   comment: reviewData.comment,
                 }),
-              }).catch(() => null);
+              });
+              const body = await res.json().catch(() => null);
+              if (!res.ok || !body?.ok) {
+                throw new Error(
+                  body?.error ||
+                    'Não foi possível publicar sua avaliação no servidor.'
+                );
+              }
+              const updatedProv = body.updatedProvider;
+              if (updatedProv) {
+                const newReviews = Number(updatedProv.reviews_count || 0);
+                const newJobs = Number(updatedProv.completed_jobs || 0);
+                setProviders((prev) =>
+                  prev.map((p) =>
+                    p.id === providerId
+                      ? {
+                          ...p,
+                          ratingAvg: Number(updatedProv.rating_avg || 0),
+                          reviewsCount: newReviews,
+                          completedJobs: newJobs,
+                          hasSufficientReputation:
+                            newReviews >= 3 && newJobs >= 3,
+                        }
+                      : p
+                  )
+                );
+              }
             }}
             onNavigate={handleLegacyScreenNavigate}
           />
@@ -1055,14 +1306,72 @@ export default function App() {
               onAddRealtimeOpportunity={(newOpp) =>
                 setOpportunities((prev) => [newOpp, ...prev])
               }
-              onUpdateOpportunityStatus={(oppId, status) =>
+              onUpdateOpportunityStatus={async (oppId, status) => {
+                if (demoMode) {
+                  setOpportunities((prev) =>
+                    prev.map((o) => (o.id === oppId ? { ...o, status } : o))
+                  );
+                  return;
+                }
+                if (status === 'aceita') {
+                  const res = await fetch(
+                    `/api/app/prestador/opportunities/${encodeURIComponent(oppId)}/accept`,
+                    {
+                      method: 'POST',
+                      credentials: 'include',
+                      headers: buildAuthHeaders(false),
+                    }
+                  );
+                  const body = await res.json().catch(() => null);
+                  if (!res.ok || !body?.ok) {
+                    throw new Error(
+                      body?.error ||
+                        'Não foi possível confirmar interesse na oportunidade.'
+                    );
+                  }
+                  setOpportunities((prev) =>
+                    prev.map((o) =>
+                      o.id === oppId
+                        ? {
+                            ...o,
+                            status: 'aceita',
+                            clientNameFull:
+                              body.opportunity?.clientNameFull || o.clientNameFull,
+                            clientWhatsapp:
+                              body.opportunity?.clientWhatsapp || o.clientWhatsapp,
+                          }
+                        : o
+                    )
+                  );
+                  return;
+                }
+                if (status === 'recusada') {
+                  const res = await fetch(
+                    `/api/app/prestador/opportunities/${encodeURIComponent(oppId)}/decline`,
+                    {
+                      method: 'POST',
+                      credentials: 'include',
+                      headers: buildAuthHeaders(false),
+                    }
+                  );
+                  const body = await res.json().catch(() => null);
+                  if (!res.ok || !body?.ok) {
+                    throw new Error(
+                      body?.error ||
+                        'Não foi possível recusar a oportunidade no servidor.'
+                    );
+                  }
+                }
                 setOpportunities((prev) =>
                   prev.map((o) => (o.id === oppId ? { ...o, status } : o))
-                )
-              }
+                );
+              }}
               onChangeProviderPlan={(providerId: string, newPlan: PlanTier) => {
                 if (providerId === authUser.providerProfileId) {
                   setAuthProviderPlanOverride(newPlan);
+                  setOwnProviderProfile((prev) =>
+                    prev ? { ...prev, plan: newPlan } : prev
+                  );
                 }
                 setProviders((prev) =>
                   prev.map((p) =>
@@ -1070,15 +1379,41 @@ export default function App() {
                   )
                 );
               }}
-              onToggleProviderAvailability={(providerId: string) =>
+              onToggleProviderAvailability={async (providerId: string) => {
+                const target =
+                  (ownProviderProfile?.id === providerId
+                    ? ownProviderProfile
+                    : providers.find((p) => p.id === providerId)) ||
+                  dashboardProvider;
+                const nextAvailable = !target.availableToday;
+                if (!demoMode) {
+                  const res = await fetch('/api/app/prestador/profile', {
+                    method: 'PATCH',
+                    credentials: 'include',
+                    headers: buildAuthHeaders(true),
+                    body: JSON.stringify({ availableToday: nextAvailable }),
+                  });
+                  const body = await res.json().catch(() => null);
+                  if (!res.ok || !body?.ok) {
+                    throw new Error(
+                      body?.error ||
+                        'Não foi possível atualizar a disponibilidade no servidor.'
+                    );
+                  }
+                }
+                if (providerId === authUser.providerProfileId) {
+                  setOwnProviderProfile((prev) =>
+                    prev ? { ...prev, availableToday: nextAvailable } : prev
+                  );
+                }
                 setProviders((prev) =>
                   prev.map((p) =>
                     p.id === providerId
-                      ? { ...p, availableToday: !p.availableToday }
+                      ? { ...p, availableToday: nextAvailable }
                       : p
                   )
-                )
-              }
+                );
+              }}
               onNavigate={handleLegacyScreenNavigate}
             />
           ) : (

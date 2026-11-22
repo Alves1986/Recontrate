@@ -7,6 +7,36 @@ import {
   ReviewItem,
 } from '../types/confiare';
 
+export const MIN_REVIEWS_FOR_PUBLIC_SCORE = 3;
+export const MIN_JOBS_FOR_PUBLIC_SCORE = 3;
+
+export function hasSufficientReputationHistory(provider: {
+  reviewsCount?: number | null;
+  completedJobs?: number | null;
+}): boolean {
+  return (
+    Number(provider.reviewsCount || 0) >= MIN_REVIEWS_FOR_PUBLIC_SCORE &&
+    Number(provider.completedJobs || 0) >= MIN_JOBS_FOR_PUBLIC_SCORE
+  );
+}
+
+/**
+ * Anonimiza o nome exibido em avaliações públicas por padrão (ex.: "Gustavo Avaliador" -> "Gustavo A.").
+ */
+export function anonymizeCustomerDisplayName(fullName: string): string {
+  const parts = String(fullName || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]} ${parts[1][0].toUpperCase()}.`;
+  }
+  if (parts.length === 1) {
+    return `${parts[0][0].toUpperCase()}. (Cliente)`;
+  }
+  return 'Cliente verificado';
+}
+
 export interface CompositeScoreBreakdown {
   totalScore: number;
   reviewsComponent: number; // 40% weight
@@ -14,6 +44,47 @@ export interface CompositeScoreBreakdown {
   responseRateComponent: number; // 20% weight
   completedJobsComponent: number; // 10% weight
   verificationComponent: number; // 10% weight
+}
+
+export interface PublicReputationSummary {
+  hasSufficientHistory: boolean;
+  publicRating: number | null;
+  publicCompositeScore: number | null;
+  label: string;
+}
+
+export function getPublicReputationSummary(provider: {
+  ratingAvg?: number | null;
+  reviewsCount?: number | null;
+  completedJobs?: number | null;
+  responseTimeMinutes?: number | null;
+  responseRatePercent?: number | null;
+  isVerified?: boolean | null;
+  profileCompletenessPercent?: number | null;
+}): PublicReputationSummary {
+  const sufficient = hasSufficientReputationHistory(provider);
+  if (!sufficient) {
+    return {
+      hasSufficientHistory: false,
+      publicRating: null,
+      publicCompositeScore: null,
+      label: 'Em avaliação inicial',
+    };
+  }
+  const composite = calculateCompositeScore({
+    ratingAvg: Number(provider.ratingAvg || 5),
+    responseTimeMinutes: Number(provider.responseTimeMinutes || 30),
+    responseRatePercent: Number(provider.responseRatePercent || 100),
+    completedJobs: Number(provider.completedJobs || 0),
+    isVerified: Boolean(provider.isVerified),
+    profileCompletenessPercent: Number(provider.profileCompletenessPercent || 80),
+  });
+  return {
+    hasSufficientHistory: true,
+    publicRating: Math.round(Number(provider.ratingAvg || 0) * 100) / 100,
+    publicCompositeScore: composite.totalScore,
+    label: 'Reputação verificada',
+  };
 }
 
 /**

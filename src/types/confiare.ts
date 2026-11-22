@@ -76,6 +76,9 @@ export interface ProviderProfile {
   menteesCount?: number;
   plan: PlanTier;
   ratingAvg: number;
+  publicScore?: number | null;
+  hasSufficientReputation?: boolean;
+  reputationLabel?: string;
   reviewsCount: number;
   completedJobs: number;
   responseTimeMinutes: number;
@@ -125,6 +128,7 @@ export interface RepeatServiceRequest {
 export interface SubstituteReferral {
   id: string;
   originalProviderId: string;
+  customerUserId?: string;
   substituteProviderIds: string[];
   reasonCategory: 'Agenda cheia na data' | 'Em atendimento em outro bairro' | 'De folga / férias' | 'Especialidade específica';
   customNote: string;
@@ -137,6 +141,8 @@ export interface SubstituteReferral {
 
 export interface ProviderOpportunity {
   id: string;
+  serviceRequestId?: string;
+  customerUserId?: string;
   category: CategoryName;
   title: string;
   description: string;

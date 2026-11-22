@@ -1,6 +1,14 @@
+import crypto from 'node:crypto';
 import express from 'express';
 import { z } from 'zod';
 import { ensureSchemaAndSeed, neonEnv, pool } from '../db/index';
+import {
+  CURRENT_PRIVACY_VERSION,
+  CURRENT_TERMS_VERSION,
+} from '../config/legalIdentity';
+import {
+  hasSufficientReputationHistory,
+} from '../utils/marketplaceRules';
 import {
   assertRealExternalActionAllowed,
   getNodeEnvironment,
@@ -124,7 +132,8 @@ const CreateServiceRequestSchema = z.object({
 
 const SubmitReviewSchema = z.object({
   providerProfileId: z.string().min(2),
-  serviceRequestId: z.string().uuid().optional(),
+  serviceRequestId: z.string().uuid(),
+  displayPublicName: z.boolean().optional().default(false),
   neighborhood: z.string().default('Pinheiros'),
   serviceTitle: z.string().min(3),
   qualidade: z.number().int().min(1).max(5),
@@ -199,18 +208,8 @@ export function createPhase1Router(): express.Router {
     })
   );
 
-  const pilotProviderSpecialties = new Map<
-    string,
-    Array<{
-      specialty_id: string;
-      category_id: string;
-      nome: string;
-      especialidade_principal: boolean;
-    }>
-  >();
-
   // =========================================================================
-  // 1. PUBLIC ENDPOINTS (Anonymous visitors — Only public showcase & categories)
+  // 1. PUBLIC ENDPOINTS (Anonymous visitors — Only approved public showcase)
   // =========================================================================
   router.get('/public/runtime-config', (_req, res) => {
     res.json({
@@ -241,7 +240,7 @@ export function createPhase1Router(): express.Router {
         ? String(req.query.category)
         : undefined;
       const params: unknown[] = [];
-      let whereClause = `WHERE deleted_at IS NULL`;
+      let whereClause = `WHERE deleted_at IS NULL AND verification_status = 'aprovado'`;
       if (!isDemoModeEnabled()) {
         whereClause += ` AND id NOT IN ('prov-joao', 'prov-carlos', 'prov-ana')
           AND id NOT LIKE 'demo-%'
@@ -259,7 +258,7 @@ export function createPhase1Router(): express.Router {
         whereClause += ` AND category = $1`;
       }
 
-      // Public query omits private verification documents and raw WhatsApp before consent
+      // Public query omits private verification documents, raw WhatsApp, and immature scores (< 3 reviews/jobs)
       const { rows } = await pool.query(
         `SELECT id, COALESCE(slug, id) AS slug, name, category, city, neighborhoods,
                 years_experience, bio, plan_slug, rating_avg, reviews_count,
@@ -268,12 +267,80 @@ export function createPhase1Router(): express.Router {
                 is_verified, is_top_region, is_mentor, available_today
          FROM provider_profiles
          ${whereClause}
-         ORDER BY rating_avg DESC`,
+         ORDER BY (CASE WHEN reviews_count >= 3 AND completed_jobs >= 3 THEN rating_avg ELSE 0 END) DESC, created_at DESC`,
         params
       );
-      res.json({ ok: true, providers: rows });
+      const providers = rows.map((row: any) => {
+        const hasSufficient = hasSufficientReputationHistory({
+          reviewsCount: row.reviews_count,
+          completedJobs: row.completed_jobs,
+        });
+        return {
+          ...row,
+          has_sufficient_reputation: hasSufficient,
+          rating_avg: hasSufficient ? Number(row.rating_avg || 0) : null,
+          public_score: hasSufficient ? Number(row.rating_avg || 0) : null,
+          reputation_label: hasSufficient
+            ? 'Reputação verificada'
+            : 'Em avaliação inicial',
+        };
+      });
+      res.json({ ok: true, providers });
     } catch {
       res.json({ ok: true, providers: [] });
+    }
+  });
+
+  router.post('/public/waitlist', authRateLimit(20), async (req, res) => {
+    try {
+      await ensureSchemaAndSeed();
+      const schema = z.object({
+        email: z.string().trim().email('Informe um e-mail válido.'),
+        location: z.string().trim().min(2, 'Informe cidade ou bairro.').max(160),
+        category: z.string().trim().min(2, 'Informe a categoria de interesse.').max(120),
+        roleInterest: z.enum(['cliente', 'prestador']).default('cliente'),
+        lgpdConsent: z.literal(true, {
+          message:
+            'É necessário marcar o consentimento LGPD para registrar interesse.',
+        }),
+        honeypot: z.string().optional(),
+      });
+      const parsed = schema.parse(req.body || {});
+      if (parsed.honeypot && parsed.honeypot.trim().length > 0) {
+        res.json({ ok: true, accepted: true });
+        return;
+      }
+
+      const ipHash = crypto
+        .createHash('sha256')
+        .update(String(req.ip || 'unknown'))
+        .digest('hex');
+
+      const { rows } = await pool.query<{ id: string; created_at: Date }>(
+        `INSERT INTO waitlist_leads (
+          email, location, category, role_interest, lgpd_consent, lgpd_consent_at,
+          terms_version, privacy_version, ip_hash
+        ) VALUES ($1, $2, $3, $4, true, NOW(), $5, $6, $7)
+        RETURNING id, created_at`,
+        [
+          sanitizeUserText(parsed.email.toLowerCase()),
+          sanitizeUserText(parsed.location),
+          sanitizeUserText(parsed.category),
+          parsed.roleInterest,
+          CURRENT_TERMS_VERSION,
+          CURRENT_PRIVACY_VERSION,
+          ipHash,
+        ]
+      );
+
+      res.status(201).json({
+        ok: true,
+        leadId: rows[0].id,
+        createdAt: rows[0].created_at,
+        message: `Interesse registrado para ${parsed.category} em ${parsed.location}.`,
+      });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
     }
   });
 
@@ -361,9 +428,11 @@ export function createPhase1Router(): express.Router {
         `SELECT id, COALESCE(slug, id) AS slug, name, category, city, neighborhoods,
                 years_experience, bio, specialties, plan_slug, rating_avg, reviews_count,
                 completed_jobs, response_time_minutes, response_rate_percent,
-                is_verified, is_top_region, is_mentor, available_today
+                profile_completeness_percent, is_verified, is_top_region, is_mentor, available_today
          FROM provider_profiles
-         WHERE (slug = $1 OR id = $1) AND deleted_at IS NULL
+         WHERE (slug = $1 OR id = $1)
+           AND deleted_at IS NULL
+           AND verification_status = 'aprovado'
          LIMIT 1`,
         [slug]
       );
@@ -375,6 +444,10 @@ export function createPhase1Router(): express.Router {
       }
 
       const provider = rows[0];
+      const hasSufficient = hasSufficientReputationHistory({
+        reviewsCount: provider.reviews_count,
+        completedJobs: provider.completed_jobs,
+      });
       const [reviewRes, publicTaxonomy] = await Promise.all([
         pool.query(
           `SELECT id, client_name_display, neighborhood, service_title, rating, comment, created_at
@@ -391,6 +464,12 @@ export function createPhase1Router(): express.Router {
         ok: true,
         provider: {
           ...provider,
+          has_sufficient_reputation: hasSufficient,
+          rating_avg: hasSufficient ? Number(provider.rating_avg || 0) : null,
+          public_score: hasSufficient ? Number(provider.rating_avg || 0) : null,
+          reputation_label: hasSufficient
+            ? 'Reputação verificada'
+            : 'Em avaliação inicial',
           reviews: reviewRes.rows,
           officialSpecialties: publicTaxonomy.officialSpecialties,
           approvedTags: publicTaxonomy.approvedTags,
@@ -680,6 +759,34 @@ export function createPhase1Router(): express.Router {
     }
   );
 
+  router.patch(
+    '/app/cliente/requests/:id/complete',
+    requireRole(['cliente', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        const requestId = z.string().uuid().parse(req.params.id);
+        const updated = await marketplaceService.completeServiceRequest({
+          requestId,
+          customerUserId: session.userId,
+        });
+
+        await authService.logAudit({
+          actorUserId: session.userId,
+          actorRole: 'cliente',
+          action: 'service_request_completed',
+          targetType: 'service_request',
+          targetId: requestId,
+          ipAddress: req.ip,
+        });
+
+        res.json({ ok: true, request: updated });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
   router.post(
     '/app/cliente/reviews',
     requireRole(['cliente', 'admin'], authService),
@@ -694,6 +801,7 @@ export function createPhase1Router(): express.Router {
             customerName: session.fullName,
             providerProfileId: parsed.providerProfileId,
             serviceRequestId: parsed.serviceRequestId,
+            displayPublicName: parsed.displayPublicName,
             neighborhood: parsed.neighborhood,
             serviceTitle: parsed.serviceTitle,
             qualidade: parsed.qualidade,
@@ -710,13 +818,21 @@ export function createPhase1Router(): express.Router {
           action: 'review_submitted_reputation_updated',
           targetType: 'provider_profile',
           targetId: parsed.providerProfileId,
-          metadata: { rating: result.review.rating },
+          metadata: {
+            rating: result.review.rating,
+            serviceRequestId: parsed.serviceRequestId,
+          },
           ipAddress: req.ip,
         });
 
         res.status(201).json({ ok: true, ...result });
-      } catch (err) {
-        res.status(400).json({ ok: false, error: (err as Error).message });
+      } catch (err: any) {
+        const status = err?.code === 'DUPLICATE_REVIEW' ? 409 : 400;
+        res.status(status).json({
+          ok: false,
+          ...(err?.code ? { code: err.code } : {}),
+          error: (err as Error).message,
+        });
       }
     }
   );
@@ -805,6 +921,7 @@ export function createPhase1Router(): express.Router {
           return {
             id: opp.id,
             serviceRequestId: opp.service_request_id,
+            customerUserId: opp.customer_user_id,
             providerProfileId: opp.provider_profile_id,
             category: opp.category_name,
             title: opp.title,
@@ -896,6 +1013,218 @@ export function createPhase1Router(): express.Router {
         });
       } catch (err) {
         res.status(403).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post(
+    '/app/prestador/opportunities/:id/decline',
+    requireRole(['prestador', 'padrinho', 'admin'], authService),
+    async (req, res) => {
+      try {
+        const session = req.authSession!;
+        const oppId = req.params.id;
+        const updated = await withRlsContext(
+          {
+            userId: session.userId,
+            role: session.activeRole === 'admin' ? 'admin' : 'prestador',
+            providerProfileId: session.providerProfileId,
+          },
+          async (client) => {
+            const check = await client.query(
+              `SELECT id FROM opportunities WHERE id = $1::uuid`,
+              [oppId]
+            );
+            if (check.rows.length === 0) {
+              throw new Error(
+                'Oportunidade não encontrada ou pertence a outro prestador.'
+              );
+            }
+            const upd = await client.query(
+              `UPDATE opportunities
+               SET status = 'recusada',
+                   updated_at = NOW()
+               WHERE id = $1::uuid
+               RETURNING id, status`,
+              [oppId]
+            );
+            return upd.rows[0];
+          }
+        );
+
+        await authService.logAudit({
+          actorUserId: session.userId,
+          actorRole: session.activeRole,
+          action: 'opportunity_declined',
+          targetType: 'opportunity',
+          targetId: oppId,
+          ipAddress: req.ip,
+        });
+
+        res.json({ ok: true, opportunity: updated });
+      } catch (err) {
+        res.status(403).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.get(
+    '/app/prestador/profile',
+    requireRole(['prestador', 'padrinho', 'admin'], authService),
+    async (req, res) => {
+      try {
+        await ensureSchemaAndSeed();
+        const session = req.authSession!;
+        if (!session.providerProfileId) {
+          res
+            .status(404)
+            .json({ ok: false, error: 'Perfil de prestador não identificado.' });
+          return;
+        }
+        const { rows } = await pool.query(
+          `SELECT id, slug, name, category, bio, city, neighborhoods, years_experience,
+                  plan_slug, available_today, is_verified, is_top_region, is_mentor,
+                  verification_status, rating_avg, reviews_count, completed_jobs,
+                  response_time_minutes, response_rate_percent, profile_completeness_percent,
+                  whatsapp, radius_km
+           FROM provider_profiles
+           WHERE id = $1 AND deleted_at IS NULL
+           LIMIT 1`,
+          [session.providerProfileId]
+        );
+        if (rows.length === 0) {
+          res
+            .status(404)
+            .json({ ok: false, error: 'Perfil de prestador não encontrado.' });
+          return;
+        }
+        const row = rows[0];
+        const hasSufficient = hasSufficientReputationHistory({
+          reviewsCount: row.reviews_count,
+          completedJobs: row.completed_jobs,
+        });
+        res.json({
+          ok: true,
+          profile: {
+            id: row.id,
+            slug: row.slug,
+            name: row.name,
+            category: row.category,
+            bio: row.bio || '',
+            city: row.city || '',
+            neighborhoods: Array.isArray(row.neighborhoods) ? row.neighborhoods : [],
+            yearsExperience: Number(row.years_experience || 0),
+            planSlug: row.plan_slug || 'gratuito',
+            availableToday: Boolean(row.available_today),
+            isVerified: Boolean(row.is_verified),
+            isTopRegion: Boolean(row.is_top_region),
+            isMentor: Boolean(row.is_mentor),
+            verificationStatus: row.verification_status,
+            hasSufficientReputation: hasSufficient,
+            ratingAvg: hasSufficient ? Number(row.rating_avg || 0) : 0,
+            reviewsCount: Number(row.reviews_count || 0),
+            completedJobs: Number(row.completed_jobs || 0),
+            responseTimeMinutes: Number(row.response_time_minutes || 0),
+            responseRatePercent: Number(row.response_rate_percent || 0),
+            profileCompletenessPercent: Number(row.profile_completeness_percent || 0),
+            whatsapp: row.whatsapp || '',
+            radiusKm: Number(row.radius_km || 10),
+          },
+        });
+      } catch (err) {
+        res.status(500).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.patch(
+    '/app/prestador/profile',
+    requireRole(['prestador', 'padrinho', 'admin'], authService),
+    async (req, res) => {
+      try {
+        await ensureSchemaAndSeed();
+        const session = req.authSession!;
+        if (!session.providerProfileId) {
+          res
+            .status(404)
+            .json({ ok: false, error: 'Perfil de prestador não identificado.' });
+          return;
+        }
+        const schema = z.object({
+          availableToday: z.boolean().optional(),
+          bio: z.string().max(600).optional(),
+          neighborhoods: z.array(z.string().min(2)).max(20).optional(),
+          city: z.string().min(2).max(120).optional(),
+          whatsapp: z.string().min(8).max(30).optional(),
+        });
+        const parsed = schema.parse(req.body || {});
+        const sets: string[] = [];
+        const params: unknown[] = [session.providerProfileId];
+        if (typeof parsed.availableToday === 'boolean') {
+          params.push(parsed.availableToday);
+          sets.push(`available_today = $${params.length}`);
+        }
+        if (typeof parsed.bio === 'string') {
+          params.push(sanitizeUserText(parsed.bio));
+          sets.push(`bio = $${params.length}`);
+        }
+        if (Array.isArray(parsed.neighborhoods)) {
+          params.push(parsed.neighborhoods.map((n) => sanitizeUserText(n)));
+          sets.push(`neighborhoods = $${params.length}::text[]`);
+        }
+        if (typeof parsed.city === 'string') {
+          params.push(sanitizeUserText(parsed.city));
+          sets.push(`city = $${params.length}`);
+        }
+        if (typeof parsed.whatsapp === 'string') {
+          params.push(sanitizeUserText(parsed.whatsapp));
+          sets.push(`whatsapp = $${params.length}`);
+        }
+        if (sets.length === 0) {
+          res
+            .status(400)
+            .json({ ok: false, error: 'Nenhum campo válido informado para atualização.' });
+          return;
+        }
+        sets.push('updated_at = NOW()');
+        const { rows } = await pool.query(
+          `UPDATE provider_profiles
+           SET ${sets.join(', ')}
+           WHERE id = $1 AND deleted_at IS NULL
+           RETURNING id, available_today, bio, neighborhoods, city, whatsapp`,
+          params
+        );
+        if (rows.length === 0) {
+          res
+            .status(404)
+            .json({ ok: false, error: 'Perfil de prestador não encontrado.' });
+          return;
+        }
+
+        await authService.logAudit({
+          actorUserId: session.userId,
+          actorRole: session.activeRole,
+          action: 'provider_profile_updated',
+          targetType: 'provider_profile',
+          targetId: session.providerProfileId,
+          ipAddress: req.ip,
+        });
+
+        res.json({
+          ok: true,
+          profile: {
+            id: rows[0].id,
+            availableToday: Boolean(rows[0].available_today),
+            bio: rows[0].bio || '',
+            neighborhoods: Array.isArray(rows[0].neighborhoods)
+              ? rows[0].neighborhoods
+              : [],
+            city: rows[0].city || '',
+            whatsapp: rows[0].whatsapp || '',
+          },
+        });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
       }
     }
   );
@@ -1037,13 +1366,12 @@ export function createPhase1Router(): express.Router {
           providerProfileId
         );
         res.json({ ok: true, ...overview });
-      } catch {
-        res.json({
-          ok: true,
-          officialSpecialties:
-            pilotProviderSpecialties.get(providerProfileId) || [],
-          suggestions: [],
-          customTags: [],
+      } catch (err) {
+        res.status(500).json({
+          ok: false,
+          error:
+            (err as Error).message ||
+            'Não foi possível carregar as especialidades no servidor.',
         });
       }
     }
@@ -1067,31 +1395,13 @@ export function createPhase1Router(): express.Router {
       });
       try {
         const parsed = schema.parse(req.body || {});
-        try {
-          const saved = await taxonomyService.setProviderOfficialSpecialties({
-            providerProfileId,
-            categoryId: parsed.categoryId,
-            specialtyIds: parsed.specialtyIds,
-            principalSpecialtyId: parsed.principalSpecialtyId,
-          });
-          res.json({ ok: true, ...saved });
-        } catch {
-          const allSpecs = fallbackCategoriesWithSpecialties.flatMap(
-            (c) => c.specialties
-          );
-          const mapped = parsed.specialtyIds.map((spId, idx) => {
-            const found = allSpecs.find((s) => s.id === spId);
-            return {
-              specialty_id: spId,
-              category_id: parsed.categoryId,
-              nome: found?.nome || `Especialidade ${idx + 1}`,
-              especialidade_principal:
-                (parsed.principalSpecialtyId || parsed.specialtyIds[0]) === spId,
-            };
-          });
-          pilotProviderSpecialties.set(providerProfileId, mapped);
-          res.json({ ok: true, officialSpecialties: mapped });
-        }
+        const saved = await taxonomyService.setProviderOfficialSpecialties({
+          providerProfileId,
+          categoryId: parsed.categoryId,
+          specialtyIds: parsed.specialtyIds,
+          principalSpecialtyId: parsed.principalSpecialtyId,
+        });
+        res.json({ ok: true, ...saved });
       } catch (err) {
         res.status(400).json({ ok: false, error: (err as Error).message });
       }

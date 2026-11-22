@@ -67,4 +67,24 @@ test('Plans seed: all 4 Recontrate plans use integer centavos, exact opportunity
     assert.equal(Number.isInteger(plan.precoMensalCentavos), true);
     assert.equal(Number.isInteger(plan.precoAnualCentavos), true);
   }
+
+  // Ensure startup seed never overwrites commercial prices edited manually (ON CONFLICT DO NOTHING)
+  const originalPrice = bySlug.essencial.precoMensalCentavos;
+  try {
+    await db
+      .update(plans)
+      .set({ precoMensalCentavos: originalPrice + 100 })
+      .where(eq(plans.slug, 'essencial'));
+    await ensureSchemaAndSeed();
+    const [afterSeed] = await db
+      .select()
+      .from(plans)
+      .where(eq(plans.slug, 'essencial'));
+    assert.equal(afterSeed.precoMensalCentavos, originalPrice + 100);
+  } finally {
+    await db
+      .update(plans)
+      .set({ precoMensalCentavos: originalPrice })
+      .where(eq(plans.slug, 'essencial'));
+  }
 });
