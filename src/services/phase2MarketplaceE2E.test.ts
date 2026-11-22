@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import { createApp } from '../server/index';
 import { ensureSchemaAndSeed, pool } from '../db/index';
-import { calculateHaversineDistanceKm } from './essentialIntegrations';
+import {
+  calculateHaversineDistanceKm,
+  setEmailDeliveryObserverForTests,
+} from './essentialIntegrations';
 
 let server: Server;
 let baseUrl: string;
@@ -23,6 +26,7 @@ test.before(async () => {
 });
 
 test.after(async () => {
+  setEmailDeliveryObserverForTests(null);
   if (server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
@@ -37,34 +41,49 @@ async function registerAndOnboardUser(input: {
   neighborhood?: string;
   phone?: string;
 }) {
-  const regRes = await fetch(`${baseUrl}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: input.email,
-      password: 'Confiare#2026!Password',
-      fullName: input.fullName,
-      phone: input.phone || '(11) 99111-2233',
-      neighborhood: input.neighborhood || 'Pinheiros',
-      role: input.role,
-      category: input.category || 'Eletricista',
-      lgpdConsent: true,
-    }),
+  let capturedVfyToken = '';
+  setEmailDeliveryObserverForTests((d) => {
+    if (d.to === input.email && d.variables.verificationToken) {
+      capturedVfyToken = d.variables.verificationToken;
+    }
   });
-  assert.equal(regRes.status, 201);
-  const regBody = (await regRes.json()) as any;
+  let regBody: any;
+  try {
+    const regRes = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: input.email,
+        password: 'Confiare#2026!Password',
+        fullName: input.fullName,
+        phone: input.phone || '(11) 99111-2233',
+        neighborhood: input.neighborhood || 'Pinheiros',
+        role: input.role,
+        category: input.category || 'Eletricista',
+        lgpdConsent: true,
+      }),
+    });
+    assert.equal(regRes.status, 201);
+    regBody = (await regRes.json()) as any;
+    assert.equal(regBody.verificationToken, undefined);
+  } finally {
+    setEmailDeliveryObserverForTests(null);
+  }
 
-  await fetch(`${baseUrl}/api/auth/verify-email`, {
+  const vfyRes = await fetch(`${baseUrl}/api/auth/verify-email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ verificationToken: regBody.verificationToken }),
+    body: JSON.stringify({ verificationToken: capturedVfyToken }),
   });
+  assert.equal(vfyRes.status, 200);
+  const vfyBody = (await vfyRes.json()) as any;
+  const authToken = vfyBody.token as string;
 
   await fetch(`${baseUrl}/api/auth/onboarding`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${regBody.token}`,
+      Authorization: `Bearer ${authToken}`,
     },
     body: JSON.stringify({
       city: 'São Paulo, SP',
@@ -74,11 +93,11 @@ async function registerAndOnboardUser(input: {
   });
 
   const meRes = await fetch(`${baseUrl}/api/auth/me`, {
-    headers: { Authorization: `Bearer ${regBody.token}` },
+    headers: { Authorization: `Bearer ${authToken}` },
   });
   const meBody = (await meRes.json()) as any;
   return {
-    token: regBody.token as string,
+    token: authToken,
     user: meBody.user,
   };
 }

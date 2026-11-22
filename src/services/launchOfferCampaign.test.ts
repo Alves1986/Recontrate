@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import { createApp } from '../server/index';
 import { ensureSchemaAndSeed, pool } from '../db/index';
+import { setEmailDeliveryObserverForTests } from './essentialIntegrations';
 import {
   advancePromotionalCycleOrReturnFullPrice,
   checkLaunchOfferEligibility,
@@ -12,8 +13,28 @@ import {
 
 let server: Server;
 let baseUrl: string;
+let adminToken = '';
 const TEST_ASAAS_WEBHOOK_TOKEN =
   process.env.ASAAS_WEBHOOK_TOKEN || 'test_wh_secret_confiare_2026';
+
+function nextUniqueValidCpf(): string {
+  const baseNum = 100_000_000 + Math.floor(Math.random() * 899_999_999);
+  const base = String(baseNum);
+  if (/^(\d)\1{8}$/.test(base)) {
+    return nextUniqueValidCpf();
+  }
+  const calc = (digits: string, startWeight: number) => {
+    let sum = 0;
+    for (let i = 0; i < digits.length; i += 1) {
+      sum += Number(digits[i]) * (startWeight - i);
+    }
+    const rem = (sum * 10) % 11;
+    return rem >= 10 ? 0 : rem;
+  };
+  const d1 = calc(base, 10);
+  const d2 = calc(`${base}${d1}`, 11);
+  return `${base}${d1}${d2}`;
+}
 
 test.before(async () => {
   process.env.ASAAS_WEBHOOK_TOKEN = TEST_ASAAS_WEBHOOK_TOKEN;
@@ -28,9 +49,51 @@ test.before(async () => {
       resolve();
     });
   });
+
+  const email = `admin.launch.test.${Date.now()}@example.com`;
+  const password = 'Confiare#2026!Password';
+  let capturedVfy = '';
+  setEmailDeliveryObserverForTests((d) => {
+    if (d.to === email && d.variables.verificationToken) {
+      capturedVfy = d.variables.verificationToken;
+    }
+  });
+  let regBody: any;
+  try {
+    const regRes = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password,
+        fullName: 'Admin Launch Offer Test',
+        role: 'cliente',
+        lgpdConsent: true,
+      }),
+    });
+    regBody = (await regRes.json()) as any;
+    await fetch(`${baseUrl}/api/auth/verify-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verificationToken: capturedVfy }),
+    });
+  } finally {
+    setEmailDeliveryObserverForTests(null);
+  }
+  await pool.query(
+    `UPDATE users SET roles = ARRAY['admin']::TEXT[], active_role = 'admin', onboarding_completed = true WHERE id = $1::uuid`,
+    [regBody.user.userId]
+  );
+  const loginRes = await fetch(`${baseUrl}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  adminToken = ((await loginRes.json()) as any).token;
 });
 
 test.after(async () => {
+  setEmailDeliveryObserverForTests(null);
   if (server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
@@ -49,10 +112,9 @@ async function seedIsolatedProvider(id: string, phone: string) {
 
 test('1. Valores exatos da campanha em centavos e exclusão de Gratuito e Anual', async () => {
   assert.deepEqual(LAUNCH_OFFER_PRICES_CENTAVOS, {
-    essencial: { full: 2990, promo: 1495 },
-    profissional: { full: 5990, promo: 2995 },
-    premium: { full: 9990, promo: 4995 },
-    padrinho: { full: 10990, promo: 5495 },
+    essencial: { full: 2990, promo: 0 },
+    profissional: { full: 5990, promo: 0 },
+    premium: { full: 9990, promo: 0 },
   });
 
   const ts = Date.now();
@@ -79,29 +141,50 @@ test('1. Valores exatos da campanha em centavos e exclusão de Gratuito e Anual'
   );
 });
 
-test('2. Fluxo Completo: elegibilidade -> checkout Profissional 50% off (2995 centavos) -> webhook -> transição para preço cheio no 4º ciclo', async () => {
+test('2. Fluxo Completo: GET bloqueado (405) -> POST elegibilidade -> checkout 90 dias grátis -> transição preço cheio 4º ciclo', async () => {
   const ts = Date.now();
   const provId = `prov-launch-ok-${ts}`;
   const phone = `(11) 97222-${String(ts).slice(-4)}`;
   const email = `launch.ok.${ts}@example.com`;
-  const cpf = `1234567${String(ts).slice(-4)}`;
+  const cpf = nextUniqueValidCpf();
   await seedIsolatedProvider(provId, phone);
 
-  // 1. Consulta endpoint de elegibilidade
+  // 1a. GET com PII na query retorna 405
+  const getBlockedRes = await fetch(
+    `${baseUrl}/api/promotions/launch-offer/eligibility?email=${encodeURIComponent(email)}`
+  );
+  assert.equal(getBlockedRes.status, 405);
+
+  // 1b. Consulta endpoint POST de elegibilidade
   const eligRes = await fetch(
-    `${baseUrl}/api/promotions/launch-offer/eligibility?providerProfileId=${provId}&email=${encodeURIComponent(email)}&phone=${encodeURIComponent(phone)}&cpfCnpj=${cpf}&planSlug=profissional&cycle=mensal`
+    `${baseUrl}/api/promotions/launch-offer/eligibility`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        providerProfileId: provId,
+        email,
+        phone,
+        cpfCnpj: cpf,
+        planSlug: 'profissional',
+        cycle: 'mensal',
+      }),
+    }
   );
   assert.equal(eligRes.status, 200);
   const eligBody = (await eligRes.json()) as any;
   assert.equal(eligBody.eligible, true);
-  assert.equal(eligBody.selectedPlanPromoCentavos, 2995);
+  assert.equal(eligBody.selectedPlanPromoCentavos, 0);
   assert.equal(eligBody.selectedPlanFullCentavos, 5990);
   assert.equal(eligBody.durationCycles, 3);
 
-  // 2. Checkout mensal com oferta de lançamento
+  // 2. Checkout mensal com oferta de lançamento (90 dias grátis -> R$ 0,00)
   const checkoutRes = await fetch(`${baseUrl}/api/subscriptions/checkout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
     body: JSON.stringify({
       providerProfileId: provId,
       providerName: 'Novo Prestador Lançamento',
@@ -118,31 +201,10 @@ test('2. Fluxo Completo: elegibilidade -> checkout Profissional 50% off (2995 ce
   assert.equal(checkoutRes.status, 201);
   const checkoutBody = (await checkoutRes.json()) as any;
   assert.equal(checkoutBody.launchOfferApplied, true);
-  assert.equal(checkoutBody.invoice.valorCentavos, 2995);
+  assert.equal(checkoutBody.invoice.valorCentavos, 0);
   assert.equal(checkoutBody.launchOfferRedemption.ciclo_promocional_atual, 1);
 
-  // 3. Webhook confirma pagamento e ativa assinatura
-  const whRes = await fetch(`${baseUrl}/api/webhooks/billing`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'asaas-access-token': TEST_ASAAS_WEBHOOK_TOKEN,
-    },
-    body: JSON.stringify({
-      id: `evt_launch_${ts}`,
-      event: 'PAYMENT_CONFIRMED',
-      payment: {
-        id: checkoutBody.invoice.gatewayInvoiceId,
-        subscription: checkoutBody.subscription.gatewaySubscriptionId,
-        value: 29.95,
-        billingType: 'PIX',
-        externalReference: checkoutBody.subscription.id,
-      },
-    }),
-  });
-  assert.equal(whRes.status, 202);
-
-  // 4. Ciclos 2 e 3 mantêm promoção; ciclo 4 retorna ao preço cheio (5990)
+  // 3. Ciclos 2 e 3 mantêm promoção; ciclo 4 retorna ao preço cheio (5990)
   const c2 = await advancePromotionalCycleOrReturnFullPrice(
     checkoutBody.subscription.id
   );
@@ -163,19 +225,25 @@ test('2. Fluxo Completo: elegibilidade -> checkout Profissional 50% off (2995 ce
 });
 
 test('3. Antifraude Multi-Conta & Cancelamento durante a promoção impedem novo resgate', async () => {
-  const ts = Date.now();
+  const ts = `${Date.now()}-${Math.floor(100000 + Math.random() * 899999)}`;
+  const rand8a = String(10000000 + Math.floor(Math.random() * 89999999));
+  const rand8b = String(10000000 + Math.floor(Math.random() * 89999999));
   const provId1 = `prov-abuse-1-${ts}`;
   const provId2 = `prov-abuse-2-${ts}`;
-  const sharedPhone = `(11) 96333-${String(ts).slice(-4)}`;
-  const sharedCpf = `9876543${String(ts).slice(-4)}`;
+  const sharedPhone = `(11) 9${rand8a.slice(0, 4)}-${rand8a.slice(4)}`;
+  const otherPhone = `(11) 9${rand8b.slice(0, 4)}-${rand8b.slice(4)}`;
+  const sharedCpf = nextUniqueValidCpf();
   const sharedFp = `device-fp-${ts}`;
   await seedIsolatedProvider(provId1, sharedPhone);
-  await seedIsolatedProvider(provId2, `(11) 96444-${String(ts).slice(-4)}`);
+  await seedIsolatedProvider(provId2, otherPhone);
 
-  // 1. Primeira conta resgata no plano Essencial (R$ 14,95 = 1495 centavos)
+  // 1. Primeira conta resgata no plano Essencial (0 centavos por 90 dias)
   const firstCheckout = await fetch(`${baseUrl}/api/subscriptions/checkout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
     body: JSON.stringify({
       providerProfileId: provId1,
       providerName: 'Conta 1',
@@ -189,15 +257,15 @@ test('3. Antifraude Multi-Conta & Cancelamento durante a promoção impedem novo
       deviceFingerprint: sharedFp,
     }),
   });
-  assert.equal(firstCheckout.status, 201);
   const firstBody = (await firstCheckout.json()) as any;
-  assert.equal(firstBody.invoice.valorCentavos, 1495);
+  assert.equal(firstCheckout.status, 201, JSON.stringify(firstBody));
+  assert.equal(firstBody.invoice.valorCentavos, 0);
 
   // 2. Segunda conta com mesmo CPF/CNPJ ou dispositivo tenta pegar oferta novamente -> BLOQUEADA
   const secondElig = await checkLaunchOfferEligibility(
     {
       email: `conta2.${ts}@example.com`,
-      phone: `(11) 96444-${String(ts).slice(-4)}`,
+      phone: otherPhone,
       cpfCnpj: sharedCpf,
       deviceFingerprint: sharedFp,
     },
@@ -212,12 +280,15 @@ test('3. Antifraude Multi-Conta & Cancelamento durante a promoção impedem novo
     `${baseUrl}/api/subscriptions/checkout`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
       body: JSON.stringify({
         providerProfileId: provId2,
         providerName: 'Conta 2 Fraude',
         providerEmail: `conta2.${ts}@example.com`,
-        providerPhone: `(11) 96444-${String(ts).slice(-4)}`,
+        providerPhone: otherPhone,
         planSlug: 'premium',
         cycle: 'mensal',
         paymentMethod: 'pix',
@@ -234,7 +305,10 @@ test('3. Antifraude Multi-Conta & Cancelamento durante a promoção impedem novo
     `${baseUrl}/api/subscriptions/${firstBody.subscription.id}/cancel`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
       body: JSON.stringify({ reason: 'Desistência no mês 1' }),
     }
   );
@@ -266,16 +340,19 @@ test('4. Campanha fora da data de vigência retorna "A campanha encerrou."', asy
 });
 
 test('5. Eventos duplicados de webhook, falha de pagamento (7 dias), renovação até o 4º ciclo e reativação sem nova oferta', async () => {
-  const ts = Date.now();
+  const ts = `${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const provId = `prov-launch-wh-${ts}`;
-  const phone = `(11) 95555-${String(ts).slice(-4)}`;
+  const phone = `(11) 95555-${ts.slice(-4)}`;
   const email = `launch.wh.${ts}@example.com`;
   await seedIsolatedProvider(provId, phone);
 
-  // 1. Checkout com oferta de lançamento (Profissional R$ 29,95 = 2995 centavos)
+  // 1. Checkout com oferta de lançamento (90 dias grátis = 0 centavos no início)
   const checkoutRes = await fetch(`${baseUrl}/api/subscriptions/checkout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
     body: JSON.stringify({
       providerProfileId: provId,
       providerName: 'Prestador Webhook Lançamento',
@@ -285,20 +362,21 @@ test('5. Eventos duplicados de webhook, falha de pagamento (7 dias), renovação
       cycle: 'mensal',
       paymentMethod: 'pix',
       applyLaunchOffer: true,
+      cpfCnpj: nextUniqueValidCpf(),
     }),
   });
   assert.equal(checkoutRes.status, 201);
   const checkoutBody = (await checkoutRes.json()) as any;
   const subId = checkoutBody.subscription.id;
-  assert.equal(checkoutBody.invoice.valorCentavos, 2995);
+  assert.equal(checkoutBody.invoice.valorCentavos, 0);
 
   const firstPaidPayload = JSON.stringify({
     id: `evt_dup_check_${ts}`,
     event: 'PAYMENT_CONFIRMED',
     payment: {
-      id: checkoutBody.invoice.gatewayInvoiceId,
+      id: checkoutBody.invoice.gatewayInvoiceId || `pay_promo_0_${ts}`,
       subscription: checkoutBody.subscription.gatewaySubscriptionId,
-      value: 29.95,
+      value: 0,
       billingType: 'PIX',
       externalReference: subId,
     },
@@ -346,9 +424,9 @@ test('5. Eventos duplicados de webhook, falha de pagamento (7 dias), renovação
         id: `evt_ren_${cycleIdx}_${ts}`,
         event: 'PAYMENT_CONFIRMED',
         payment: {
-          id: checkoutBody.invoice.gatewayInvoiceId,
+          id: checkoutBody.invoice.gatewayInvoiceId || `pay_promo_${cycleIdx}_${ts}`,
           subscription: checkoutBody.subscription.gatewaySubscriptionId,
-          value: cycleIdx === 4 ? 59.9 : 29.95,
+          value: cycleIdx === 4 ? 59.9 : 0,
           billingType: 'PIX',
           externalReference: subId,
         },
@@ -375,7 +453,7 @@ test('5. Eventos duplicados de webhook, falha de pagamento (7 dias), renovação
       id: `evt_overdue_launch_${ts}`,
       event: 'PAYMENT_OVERDUE',
       payment: {
-        id: checkoutBody.invoice.gatewayInvoiceId,
+        id: checkoutBody.invoice.gatewayInvoiceId || `pay_promo_over_${ts}`,
         subscription: checkoutBody.subscription.gatewaySubscriptionId,
         value: 59.9,
         billingType: 'PIX',
@@ -386,7 +464,9 @@ test('5. Eventos duplicados de webhook, falha de pagamento (7 dias), renovação
   assert.equal(overdueRes.status, 202);
 
   const subAfterOverdue = (await (
-    await fetch(`${baseUrl}/api/providers/${provId}/subscription`)
+    await fetch(`${baseUrl}/api/providers/${provId}/subscription`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
   ).json()) as any;
   assert.equal(subAfterOverdue.subscription.status, 'inadimplente');
   assert.ok(subAfterOverdue.subscription.toleranciaAte);
@@ -394,7 +474,10 @@ test('5. Eventos duplicados de webhook, falha de pagamento (7 dias), renovação
   // 6. Cancelamento e reativação: reativar tentando usar oferta novamente é bloqueado; reativar no preço cheio funciona
   const cancelRes = await fetch(`${baseUrl}/api/subscriptions/${subId}/cancel`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
     body: JSON.stringify({ reason: 'Cancelamento para testar reativação' }),
   });
   assert.equal(cancelRes.status, 200);
@@ -403,7 +486,10 @@ test('5. Eventos duplicados de webhook, falha de pagamento (7 dias), renovação
     `${baseUrl}/api/subscriptions/checkout`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
       body: JSON.stringify({
         providerProfileId: provId,
         providerName: 'Prestador Webhook Lançamento',
@@ -413,6 +499,7 @@ test('5. Eventos duplicados de webhook, falha de pagamento (7 dias), renovação
         cycle: 'mensal',
         paymentMethod: 'pix',
         applyLaunchOffer: true,
+        cpfCnpj: nextUniqueValidCpf(),
       }),
     }
   );
@@ -422,7 +509,10 @@ test('5. Eventos duplicados de webhook, falha de pagamento (7 dias), renovação
     `${baseUrl}/api/subscriptions/checkout`,
     {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
       body: JSON.stringify({
         providerProfileId: provId,
         providerName: 'Prestador Webhook Lançamento',
@@ -432,6 +522,7 @@ test('5. Eventos duplicados de webhook, falha de pagamento (7 dias), renovação
         cycle: 'mensal',
         paymentMethod: 'pix',
         applyLaunchOffer: false,
+        cpfCnpj: nextUniqueValidCpf(),
       }),
     }
   );

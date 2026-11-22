@@ -13,7 +13,17 @@ function formatBRLFromCents(cents: number): string {
   });
 }
 
-export const AdminMonetizationScreen: React.FC = () => {
+export const AdminMonetizationScreen: React.FC<{ authToken?: string }> = ({
+  authToken,
+}) => {
+  const buildAdminHeaders = useCallback(
+    (withJson = false): Record<string, string> => ({
+      ...(withJson ? { 'Content-Type': 'application/json' } : {}),
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    }),
+    [authToken]
+  );
+
   const [metrics, setMetrics] = useState<any>(null);
   const [adminData, setAdminData] = useState<any>(null);
   const [adsReport, setAdsReport] = useState<any>(null);
@@ -85,28 +95,29 @@ export const AdminMonetizationScreen: React.FC = () => {
   const loadAdminDashboard = useCallback(async () => {
     setLoading(true);
     try {
-      const headers = { 'x-user-role': 'admin' };
+      const headers = buildAdminHeaders(false);
+      const reqInit: RequestInit = { credentials: 'include', headers };
       const [mRes, sRes, aRes, pRes, provRes, healthRes, promoRes, taxRes, specsRes, refRes] = await Promise.all([
-        fetch('/api/admin/metrics', { headers }).then((r) => r.json()),
-        fetch('/api/admin/subscriptions', { headers }).then((r) => r.json()),
-        fetch('/api/admin/ads', { headers }).then((r) => r.json()),
+        fetch('/api/admin/metrics', reqInit).then((r) => r.json()),
+        fetch('/api/admin/subscriptions', reqInit).then((r) => r.json()),
+        fetch('/api/admin/ads', reqInit).then((r) => r.json()),
         fetch('/api/plans').then((r) => r.json()),
-        fetch('/api/admin/providers', { headers })
+        fetch('/api/admin/providers', reqInit)
           .then((r) => (r.ok ? r.json() : { ok: false }))
           .catch(() => ({ ok: false })),
-        fetch('/api/admin/system-health', { headers })
+        fetch('/api/admin/system-health', reqInit)
           .then((r) => (r.ok ? r.json() : fetch('/api/health').then((h) => h.json())))
           .catch(() => ({ ok: false })),
-        fetch('/api/admin/promotions', { headers })
+        fetch('/api/admin/promotions', reqInit)
           .then((r) => (r.ok ? r.json() : { ok: false }))
           .catch(() => ({ ok: false })),
-        fetch('/api/admin/taxonomy/suggestions', { headers })
+        fetch('/api/admin/taxonomy/suggestions', reqInit)
           .then((r) => (r.ok ? r.json() : { ok: false }))
           .catch(() => ({ ok: false })),
         fetch('/api/taxonomy/specialties')
           .then((r) => (r.ok ? r.json() : { ok: false }))
           .catch(() => ({ ok: false })),
-        fetch('/api/admin/referrals', { headers })
+        fetch('/api/admin/referrals', reqInit)
           .then((r) => (r.ok ? r.json() : { ok: false }))
           .catch(() => ({ ok: false })),
       ]);
@@ -142,7 +153,7 @@ export const AdminMonetizationScreen: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [buildAdminHeaders]);
 
   useEffect(() => {
     loadAdminDashboard();
@@ -186,10 +197,7 @@ export const AdminMonetizationScreen: React.FC = () => {
       const res = await fetch(`/api/admin/plans/${encodeURIComponent(editingPlanId)}`, {
         method: 'PATCH',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': 'admin',
-        },
+        headers: buildAdminHeaders(true),
         body: JSON.stringify({
           nome: planEditForm.nome.trim(),
           descricao: planEditForm.descricao.trim(),
@@ -235,10 +243,8 @@ export const AdminMonetizationScreen: React.FC = () => {
     try {
       const res = await fetch('/api/admin/ads/google-config', {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': 'admin',
-        },
+        credentials: 'include',
+        headers: buildAdminHeaders(true),
         body: JSON.stringify(googleForm),
       });
       const body = await res.json();
@@ -259,10 +265,8 @@ export const AdminMonetizationScreen: React.FC = () => {
     try {
       const res = await fetch('/api/admin/ads', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': 'admin',
-        },
+        credentials: 'include',
+        headers: buildAdminHeaders(true),
         body: JSON.stringify({
           ...adForm,
           prioridade: Number(adForm.prioridade) || 5,
@@ -288,10 +292,8 @@ export const AdminMonetizationScreen: React.FC = () => {
     try {
       const res = await fetch(`/api/admin/ads/${ad.id}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-role': 'admin',
-        },
+        credentials: 'include',
+        headers: buildAdminHeaders(true),
         body: JSON.stringify({ status: nextStatus }),
       });
       if (res.ok) {
@@ -309,7 +311,8 @@ export const AdminMonetizationScreen: React.FC = () => {
     try {
       const res = await fetch(`/api/admin/ads/${ad.id}`, {
         method: 'DELETE',
-        headers: { 'x-user-role': 'admin' },
+        credentials: 'include',
+        headers: buildAdminHeaders(false),
       });
       if (res.ok) {
         setAdFeedback(`Anúncio "${ad.nome}" removido com sucesso.`);
@@ -1146,7 +1149,8 @@ export const AdminMonetizationScreen: React.FC = () => {
                   onClick={async () => {
                     await fetch(`/api/admin/providers/${prov.id}/verify`, {
                       method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      headers: buildAdminHeaders(true),
                       body: JSON.stringify({ decision: 'aprovado' }),
                     });
                     loadAdminDashboard();
@@ -1160,7 +1164,8 @@ export const AdminMonetizationScreen: React.FC = () => {
                   onClick={async () => {
                     await fetch(`/api/admin/providers/${prov.id}/verify`, {
                       method: 'PATCH',
-                      headers: { 'Content-Type': 'application/json' },
+                      credentials: 'include',
+                      headers: buildAdminHeaders(true),
                       body: JSON.stringify({ decision: 'rejeitado' }),
                     });
                     loadAdminDashboard();
@@ -1196,10 +1201,8 @@ export const AdminMonetizationScreen: React.FC = () => {
               try {
                 const res = await fetch('/api/admin/backups/snapshot', {
                   method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'x-user-role': 'admin',
-                  },
+                  credentials: 'include',
+                  headers: buildAdminHeaders(true),
                 });
                 const body = await res.json();
                 if (!res.ok || !body.ok) {
@@ -1304,10 +1307,8 @@ export const AdminMonetizationScreen: React.FC = () => {
                     `/api/admin/promotions/${promoAnalytics.campaign.id}`,
                     {
                       method: 'PATCH',
-                      headers: {
-                        'Content-Type': 'application/json',
-                        'x-user-role': 'admin',
-                      },
+                      credentials: 'include',
+                      headers: buildAdminHeaders(true),
                       body: JSON.stringify({ status: nextStatus }),
                     }
                   );
@@ -1331,10 +1332,8 @@ export const AdminMonetizationScreen: React.FC = () => {
                   setPromoFeedback('');
                   const res = await fetch('/api/admin/promotions/notify-ending', {
                     method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'x-user-role': 'admin',
-                    },
+                    credentials: 'include',
+                    headers: buildAdminHeaders(true),
                     body: JSON.stringify({ daysBeforeEnd: 7 }),
                   });
                   const body = await res.json();
@@ -1472,10 +1471,8 @@ export const AdminMonetizationScreen: React.FC = () => {
                           `/api/admin/taxonomy/suggestions/${sug.id}/moderate`,
                           {
                             method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                              'x-user-role': 'admin',
-                            },
+                            credentials: 'include',
+                            headers: buildAdminHeaders(true),
                             body: JSON.stringify({ decision: 'aprovar_nova' }),
                           }
                         );
@@ -1526,10 +1523,8 @@ export const AdminMonetizationScreen: React.FC = () => {
                           `/api/admin/taxonomy/suggestions/${sug.id}/moderate`,
                           {
                             method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                              'x-user-role': 'admin',
-                            },
+                            credentials: 'include',
+                            headers: buildAdminHeaders(true),
                             body: JSON.stringify({
                               decision: 'aprovar_sinonimo',
                               targetSpecialtyId: targetId,
@@ -1572,10 +1567,8 @@ export const AdminMonetizationScreen: React.FC = () => {
                           `/api/admin/taxonomy/suggestions/${sug.id}/moderate`,
                           {
                             method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json',
-                              'x-user-role': 'admin',
-                            },
+                            credentials: 'include',
+                            headers: buildAdminHeaders(true),
                             body: JSON.stringify({
                               decision: 'reprovar',
                               motivoRejeicao: reason,

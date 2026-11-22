@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { ensureSchemaAndSeed, neonEnv, pool } from '../db/index';
 import {
   assertRealExternalActionAllowed,
+  getNodeEnvironment,
   getRuntimeConfigSnapshot,
   isDemoModeEnabled,
+  isProductionEnvironment,
 } from '../config/environment';
 import { withRlsContext } from '../db/rls';
 import {
@@ -399,6 +401,11 @@ export function createPhase1Router(): express.Router {
     }
   });
 
+  const shouldUseSecureCookies = () =>
+    isProductionEnvironment() ||
+    getNodeEnvironment() === 'staging' ||
+    process.env.VERCEL_ENV === 'production';
+
   // =========================================================================
   // 2. AUTHENTICATION ENDPOINTS (Neon Auth + JWT + Role Redirects)
   // =========================================================================
@@ -413,18 +420,14 @@ export function createPhase1Router(): express.Router {
       const result = await authService.registerUser({
         ...parsed,
         ipAddress: req.ip,
-      });
-
-      res.cookie('confiare_session', result.token, {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: 24 * 60 * 60 * 1000,
+        userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
       });
 
       res.status(201).json({
         ok: true,
-        ...result,
+        requiresEmailVerification: result.requiresEmailVerification,
+        message: result.message,
+        user: result.user,
       });
     } catch (err) {
       res.status(400).json({ ok: false, error: (err as Error).message });
@@ -435,7 +438,29 @@ export function createPhase1Router(): express.Router {
     try {
       const token = z.string().min(6).parse(req.body?.verificationToken);
       const verified = await authService.verifyEmail(token);
-      res.json({ ok: true, user: verified });
+      res.cookie('confiare_session', verified.token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: shouldUseSecureCookies(),
+        path: '/',
+        maxAge: 24 * 60 * 60 * 1000,
+      });
+      res.json({
+        ok: true,
+        user: verified.user,
+        token: verified.token,
+        redirectTo: verified.redirectTo,
+      });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.post('/auth/resend-verification', authRateLimit(15), async (req, res) => {
+    try {
+      const { email } = ForgotPasswordSchema.parse(req.body);
+      const result = await authService.resendVerificationEmail(email);
+      res.json(result);
     } catch (err) {
       res.status(400).json({ ok: false, error: (err as Error).message });
     }
@@ -452,7 +477,8 @@ export function createPhase1Router(): express.Router {
       res.cookie('confiare_session', result.token, {
         httpOnly: true,
         sameSite: 'lax',
-        secure: process.env.NODE_ENV === 'production',
+        secure: shouldUseSecureCookies(),
+        path: '/',
         maxAge: 24 * 60 * 60 * 1000,
       });
 
@@ -462,6 +488,16 @@ export function createPhase1Router(): express.Router {
       });
     } catch (err) {
       const msg = (err as Error).message || 'Falha no login';
+      const code = (err as { code?: string })?.code;
+      if (code === 'EMAIL_NOT_VERIFIED') {
+        res.status(403).json({
+          ok: false,
+          code: 'EMAIL_NOT_VERIFIED',
+          error: msg,
+          redirectTo: '/verificar-email',
+        });
+        return;
+      }
       const isSuspended = msg.toLowerCase().includes('suspensa');
       res.status(isSuspended ? 403 : 401).json({ ok: false, error: msg });
     }
@@ -527,8 +563,9 @@ export function createPhase1Router(): express.Router {
           res.cookie('confiare_session', result.token, {
             httpOnly: true,
             sameSite: 'lax',
+            secure: shouldUseSecureCookies(),
             path: '/',
-            maxAge: 7 * 24 * 60 * 60 * 1000,
+            maxAge: 24 * 60 * 60 * 1000,
           });
         }
         res.json(result);
@@ -553,7 +590,8 @@ export function createPhase1Router(): express.Router {
         res.cookie('confiare_session', result.token, {
           httpOnly: true,
           sameSite: 'lax',
-          secure: process.env.NODE_ENV === 'production',
+          secure: shouldUseSecureCookies(),
+          path: '/',
           maxAge: 24 * 60 * 60 * 1000,
         });
 
@@ -981,11 +1019,13 @@ export function createPhase1Router(): express.Router {
     '/app/prestador/taxonomy',
     requireRole(['prestador', 'padrinho', 'admin'], authService),
     async (req, res) => {
+      const session = req.authSession!;
+      const isAdmin =
+        session.activeRole === 'admin' || session.roles.includes('admin');
       const providerProfileId =
-        req.authSession?.providerProfileId ||
-        (req.query.providerProfileId
+        isAdmin && req.query.providerProfileId
           ? String(req.query.providerProfileId)
-          : null);
+          : session.providerProfileId;
       if (!providerProfileId) {
         res
           .status(400)

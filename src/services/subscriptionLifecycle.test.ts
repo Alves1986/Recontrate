@@ -52,6 +52,7 @@ test('Subscription lifecycle: checkout -> webhook invoice_paid -> duplicate & ou
     planSlug: 'essencial',
     cycle: 'mensal',
     paymentMethod: 'pix',
+    cpfCnpj: '52998224725',
   });
 
   assert.equal(checkout.subscription.status, 'pendente');
@@ -123,6 +124,7 @@ test('Upgrade applies immediately with pro-rata and stable renewal date; Downgra
     planSlug: 'essencial',
     cycle: 'mensal',
     paymentMethod: 'pix',
+    cpfCnpj: '52998224725',
   });
   await service.activateSubscription(checkout.subscription.id);
 
@@ -166,6 +168,7 @@ test('Inadimplência applies 7-day grace period and downgrades to Gratuito after
     planSlug: 'premium',
     cycle: 'mensal',
     paymentMethod: 'cartao',
+    cpfCnpj: '52998224725',
   });
   await service.activateSubscription(checkout.subscription.id);
 

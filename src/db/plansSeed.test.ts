@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { eq } from 'drizzle-orm';
 import { db, ensureSchemaAndSeed, INITIAL_PLANS_SEED, pool } from './index';
 import { plans } from './schema';
 
@@ -10,8 +11,20 @@ test.after(async () => {
 test('Plans seed: all 4 Recontrate plans use integer centavos, exact opportunity limits, and only Gratuito displays ads', async () => {
   await ensureSchemaAndSeed();
 
-  const dbPlans = await db.select().from(plans).orderBy(plans.ordemExibicao);
+  const dbPlans = await db
+    .select()
+    .from(plans)
+    .where(eq(plans.ativo, true))
+    .orderBy(plans.ordemExibicao);
   assert.equal(dbPlans.length, 4);
+
+  const [legacyPadrinho] = await db
+    .select()
+    .from(plans)
+    .where(eq(plans.slug, 'padrinho'));
+  if (legacyPadrinho) {
+    assert.equal(legacyPadrinho.ativo, false);
+  }
 
   const bySlug = Object.fromEntries(dbPlans.map((p) => [p.slug, p]));
 

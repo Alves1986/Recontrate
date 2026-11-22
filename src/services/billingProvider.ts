@@ -1,4 +1,48 @@
 import crypto from 'node:crypto';
+import { getNodeEnvironment } from '../config/environment';
+
+export function isValidCpf(digits: string): boolean {
+  if (!/^\d{11}$/.test(digits) || /^(\d)\1{10}$/.test(digits)) {
+    return false;
+  }
+  let sum = 0;
+  for (let i = 0; i < 9; i += 1) {
+    sum += Number(digits[i]) * (10 - i);
+  }
+  let check1 = (sum * 10) % 11;
+  if (check1 === 10 || check1 === 11) check1 = 0;
+  if (check1 !== Number(digits[9])) return false;
+
+  sum = 0;
+  for (let i = 0; i < 10; i += 1) {
+    sum += Number(digits[i]) * (11 - i);
+  }
+  let check2 = (sum * 10) % 11;
+  if (check2 === 10 || check2 === 11) check2 = 0;
+  return check2 === Number(digits[10]);
+}
+
+export function isValidCnpj(digits: string): boolean {
+  if (!/^\d{14}$/.test(digits) || /^(\d)\1{13}$/.test(digits)) {
+    return false;
+  }
+  const calcDigit = (slice: string, weights: number[]) => {
+    const sum = weights.reduce((acc, w, idx) => acc + Number(slice[idx]) * w, 0);
+    const rem = sum % 11;
+    return rem < 2 ? 0 : 11 - rem;
+  };
+  const d1 = calcDigit(digits.slice(0, 12), [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  if (d1 !== Number(digits[12])) return false;
+  const d2 = calcDigit(digits.slice(0, 13), [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+  return d2 === Number(digits[13]);
+}
+
+export function isValidCpfOrCnpj(value?: string | null): boolean {
+  const digits = (value || '').replace(/\D/g, '');
+  if (digits.length === 11) return isValidCpf(digits);
+  if (digits.length === 14) return isValidCnpj(digits);
+  return false;
+}
 
 export type BillingCycle = 'mensal' | 'anual';
 export type PaymentMethod = 'pix' | 'cartao' | 'boleto';
@@ -216,6 +260,13 @@ export class AsaasBillingAdapter implements BillingProvider {
     webhookToken?: string;
     allowLocalFallback?: boolean;
   }) {
+    const nodeEnv = getNodeEnvironment();
+    const isSharedRuntime =
+      nodeEnv === 'production' ||
+      nodeEnv === 'staging' ||
+      process.env.VERCEL_ENV === 'production' ||
+      process.env.VERCEL_ENV === 'preview';
+
     this.apiUrl = (
       options?.apiUrl ||
       process.env.ASAAS_API_URL ||
@@ -223,14 +274,15 @@ export class AsaasBillingAdapter implements BillingProvider {
     ).replace(/\/$/, '');
     this.apiKey = options?.apiKey ?? process.env.ASAAS_API_KEY ?? '';
     this.webhookToken =
-      options?.webhookToken ??
-      process.env.ASAAS_WEBHOOK_TOKEN ??
-      'confiare_asaas_wh_secret_2026';
-    this.allowLocalFallback = options?.allowLocalFallback ?? true;
+      options?.webhookToken ?? process.env.ASAAS_WEBHOOK_TOKEN ?? '';
+    this.allowLocalFallback = isSharedRuntime
+      ? false
+      : (options?.allowLocalFallback ??
+        (process.env.NODE_ENV === 'test' || nodeEnv === 'development'));
   }
 
   isLiveGatewayConfigured(): boolean {
-    return Boolean(this.apiKey);
+    return Boolean(this.apiKey && !this.apiKey.startsWith('YOUR_'));
   }
 
   private centsToAsaasDecimal(cents: number): number {
@@ -249,8 +301,13 @@ export class AsaasBillingAdapter implements BillingProvider {
     path: string,
     init: RequestInit
   ): Promise<T | null> {
-    if (!this.apiKey) {
-      return null;
+    if (!this.apiKey || this.apiKey.startsWith('YOUR_')) {
+      if (this.allowLocalFallback) {
+        return null;
+      }
+      throw new Error(
+        'ASAAS_API_KEY não configurada para o ambiente atual. Operação de cobrança bloqueada (fail-closed).'
+      );
     }
     try {
       const res = await fetch(`${this.apiUrl}${path}`, {
@@ -280,16 +337,27 @@ export class AsaasBillingAdapter implements BillingProvider {
   async createCustomer(
     input: CreateCustomerInput
   ): Promise<CreateCustomerResult> {
+    const cleanCpfCnpj = (input.cpfCnpj || '').replace(/\D/g, '');
+    if (!isValidCpfOrCnpj(cleanCpfCnpj)) {
+      throw new Error(
+        'CPF ou CNPJ válido é obrigatório para cadastro de cobrança no Asaas.'
+      );
+    }
+
     const apiRes = await this.asaasRequest<{ id: string }>('/customers', {
       method: 'POST',
       body: JSON.stringify({
         name: input.name,
         email: input.email,
         mobilePhone: input.phone.replace(/\D/g, ''),
-        cpfCnpj: input.cpfCnpj?.replace(/\D/g, '') || '24971563792',
+        cpfCnpj: cleanCpfCnpj,
         externalReference: input.providerProfileId,
       }),
     });
+
+    if (!apiRes?.id && !this.allowLocalFallback) {
+      throw new Error('Falha ao criar cliente no gateway Asaas.');
+    }
 
     return {
       gatewayCustomerId:
@@ -462,6 +530,12 @@ export class AsaasBillingAdapter implements BillingProvider {
     const rawString = Buffer.isBuffer(rawBody)
       ? rawBody.toString('utf-8')
       : rawBody;
+
+    if (!this.webhookToken || this.webhookToken.startsWith('YOUR_')) {
+      throw new Error(
+        'Asaas webhook signature token not configured on server (ASAAS_WEBHOOK_TOKEN).'
+      );
+    }
 
     const headerTokenRaw =
       headers['asaas-access-token'] ||

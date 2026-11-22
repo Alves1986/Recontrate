@@ -124,18 +124,9 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   const [adClickConfirmed, setAdClickConfirmed] = useState(false);
 
   const loadSubscriptionData = useCallback(async () => {
-    const headers: Record<string, string> = {
-      'x-provider-id': activeProvider.id,
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-    };
-    const eligQuery = new URLSearchParams({
-      cycle: 'mensal',
-      providerProfileId: activeProvider.id,
-      ...(providerEmail ? { email: providerEmail } : {}),
-      ...(providerPhone || activeProvider.whatsapp
-        ? { phone: providerPhone || activeProvider.whatsapp }
-        : {}),
-    });
+    const headers: Record<string, string> = authToken
+      ? { Authorization: `Bearer ${authToken}` }
+      : {};
 
     const [pRes, sRes, eRes] = await Promise.all([
       fetch('/api/plans')
@@ -150,9 +141,21 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       )
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
-      fetch(`/api/promotions/launch-offer/eligibility?${eligQuery.toString()}`, {
+      fetch('/api/promotions/launch-offer/eligibility', {
+        method: 'POST',
         credentials: 'include',
-        headers,
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cycle: 'mensal',
+          providerProfileId: activeProvider.id,
+          ...(providerEmail ? { email: providerEmail } : {}),
+          ...(providerPhone || activeProvider.whatsapp
+            ? { phone: providerPhone || activeProvider.whatsapp }
+            : {}),
+        }),
       })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),

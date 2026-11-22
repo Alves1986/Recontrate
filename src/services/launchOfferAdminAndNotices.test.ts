@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { Server } from 'node:http';
 import { createApp } from '../server/index';
 import { ensureSchemaAndSeed, pool } from '../db/index';
+import { setEmailDeliveryObserverForTests } from './essentialIntegrations';
 
 let server: Server;
 let baseUrl: string;
@@ -25,6 +26,7 @@ test.before(async () => {
 });
 
 test.after(async () => {
+  setEmailDeliveryObserverForTests(null);
   if (server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
@@ -36,25 +38,36 @@ async function createAdminToken() {
   const email = `admin.promo.${ts}@example.com`;
   const password = 'Confiare#2026!Password';
 
-  const regRes = await fetch(`${baseUrl}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email,
-      password,
-      fullName: 'Admin Campanhas',
-      phone: '(11) 99123-0000',
-      neighborhood: 'Pinheiros',
-      role: 'cliente',
-      lgpdConsent: true,
-    }),
+  let vfyToken = '';
+  setEmailDeliveryObserverForTests((d) => {
+    if (d.to === email && d.variables.verificationToken) {
+      vfyToken = d.variables.verificationToken;
+    }
   });
-  const regBody = (await regRes.json()) as any;
-  await fetch(`${baseUrl}/api/auth/verify-email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ verificationToken: regBody.verificationToken }),
-  });
+  let regBody: any;
+  try {
+    const regRes = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password,
+        fullName: 'Admin Campanhas',
+        phone: '(11) 99123-0000',
+        neighborhood: 'Pinheiros',
+        role: 'cliente',
+        lgpdConsent: true,
+      }),
+    });
+    regBody = (await regRes.json()) as any;
+    await fetch(`${baseUrl}/api/auth/verify-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ verificationToken: vfyToken }),
+    });
+  } finally {
+    setEmailDeliveryObserverForTests(null);
+  }
   await pool.query(
     `UPDATE users SET roles = ARRAY['admin']::TEXT[], active_role = 'admin', onboarding_completed = true WHERE id = $1`,
     [regBody.user.userId]
@@ -67,11 +80,28 @@ async function createAdminToken() {
   return ((await loginRes.json()) as any).token as string;
 }
 
+let adminCpfSeq = Math.floor(Date.now() % 899_999_999) + 100_000_000;
+function nextUniqueValidCpf(): string {
+  adminCpfSeq = (adminCpfSeq + 1) % 899_999_999 || 100_000_000;
+  const base = String(adminCpfSeq).padStart(9, '0');
+  const calc = (digits: string, startWeight: number) => {
+    let sum = 0;
+    for (let i = 0; i < digits.length; i += 1) {
+      sum += Number(digits[i]) * (startWeight - i);
+    }
+    const rem = (sum * 10) % 11;
+    return rem >= 10 ? 0 : rem;
+  };
+  const d1 = calc(base, 10);
+  const d2 = calc(`${base}${d1}`, 11);
+  return `${base}${d1}${d2}`;
+}
+
 test('1. Avisos de término da oferta por E-mail e WhatsApp no 3º ciclo (com idempotência)', async () => {
   const adminToken = await createAdminToken();
-  const ts = Date.now();
+  const ts = `${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
   const provId = `prov-notice-${ts}`;
-  const phone = `(11) 94444-${String(ts).slice(-4)}`;
+  const phone = `(11) 94444-${ts.slice(-4)}`;
 
   await pool.query(
     `INSERT INTO provider_profiles (
@@ -81,10 +111,13 @@ test('1. Avisos de término da oferta por E-mail e WhatsApp no 3º ciclo (com id
     [provId, phone]
   );
 
-  // Cria checkout com oferta de lançamento
+  // Cria checkout com oferta de lançamento (admin autorizado)
   const checkoutRes = await fetch(`${baseUrl}/api/subscriptions/checkout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${adminToken}`,
+    },
     body: JSON.stringify({
       providerProfileId: provId,
       providerName: 'Prestador Aviso 3o Ciclo',
@@ -94,6 +127,7 @@ test('1. Avisos de término da oferta por E-mail e WhatsApp no 3º ciclo (com id
       cycle: 'mensal',
       paymentMethod: 'pix',
       applyLaunchOffer: true,
+      cpfCnpj: nextUniqueValidCpf(),
     }),
   });
   assert.equal(checkoutRes.status, 201);
@@ -161,9 +195,9 @@ test('1. Avisos de término da oferta por E-mail e WhatsApp no 3º ciclo (com id
 test('2. Painel Administrativo de Campanhas: proteção RBAC, relatórios de conversão/cancelamento/renovação e pausa/reativação', async () => {
   const adminToken = await createAdminToken();
 
-  // Visitante não autenticado bloqueado (403)
+  // Visitante não autenticado bloqueado (401)
   const unauthRes = await fetch(`${baseUrl}/api/admin/promotions`);
-  assert.equal(unauthRes.status, 403);
+  assert.equal(unauthRes.status, 401);
 
   // Admin obtém relatórios completos
   const reportRes = await fetch(`${baseUrl}/api/admin/promotions`, {
@@ -180,31 +214,38 @@ test('2. Painel Administrativo de Campanhas: proteção RBAC, relatórios de con
   assert.ok(Array.isArray(reportBody.redemptionsByPlan));
 
   // Admin pausa e reativa a campanha
-  const pauseRes = await fetch(
-    `${baseUrl}/api/admin/promotions/${reportBody.campaign.id}`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${adminToken}`,
-      },
-      body: JSON.stringify({ status: 'pausado' }),
-    }
-  );
-  assert.equal(pauseRes.status, 200);
-  assert.equal(((await pauseRes.json()) as any).campaign.status, 'pausado');
+  try {
+    const pauseRes = await fetch(
+      `${baseUrl}/api/admin/promotions/${reportBody.campaign.id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ status: 'pausado' }),
+      }
+    );
+    assert.equal(pauseRes.status, 200);
+    assert.equal(((await pauseRes.json()) as any).campaign.status, 'pausado');
 
-  const resumeRes = await fetch(
-    `${baseUrl}/api/admin/promotions/${reportBody.campaign.id}`,
-    {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${adminToken}`,
-      },
-      body: JSON.stringify({ status: 'ativo' }),
-    }
-  );
-  assert.equal(resumeRes.status, 200);
-  assert.equal(((await resumeRes.json()) as any).campaign.status, 'ativo');
+    const resumeRes = await fetch(
+      `${baseUrl}/api/admin/promotions/${reportBody.campaign.id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ status: 'ativo' }),
+      }
+    );
+    assert.equal(resumeRes.status, 200);
+    assert.equal(((await resumeRes.json()) as any).campaign.status, 'ativo');
+  } finally {
+    await pool.query(
+      `UPDATE promotional_campaigns SET status = 'ativo' WHERE id = $1`,
+      [reportBody.campaign.id]
+    );
+  }
 });

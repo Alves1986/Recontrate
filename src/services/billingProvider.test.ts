@@ -2,20 +2,39 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   AsaasBillingAdapter,
+  isValidCpfOrCnpj,
   mapAsaasEventToCanonical,
 } from './billingProvider';
 
-test('AsaasBillingAdapter implements all BillingProvider methods and enforces centavo integers', async () => {
+const VALID_TEST_CPF = '52998224725';
+
+test('AsaasBillingAdapter implements all BillingProvider methods and enforces centavo integers & valid CPF/CNPJ', async () => {
   const adapter = new AsaasBillingAdapter({
     apiKey: '', // deterministic local mode for unit testing
     webhookToken: 'test_secret_token_123',
+    allowLocalFallback: true,
   });
+
+  // Must reject missing or invalid CPF/CNPJ (no hardcoded fallback CPF)
+  assert.equal(isValidCpfOrCnpj(VALID_TEST_CPF), true);
+  assert.equal(isValidCpfOrCnpj('11111111111'), false);
+  await assert.rejects(
+    async () =>
+      adapter.createCustomer({
+        providerProfileId: 'prov-no-cpf',
+        name: 'Sem CPF',
+        email: 'semcpf@example.com',
+        phone: '(11) 99812-4401',
+      }),
+    /CPF ou CNPJ válido é obrigatório/
+  );
 
   const customer = await adapter.createCustomer({
     providerProfileId: 'prov-joao',
     name: 'João Batista Silva',
     email: 'joao@confiare.com.br',
     phone: '(11) 99812-4401',
+    cpfCnpj: VALID_TEST_CPF,
   });
   assert.ok(customer.gatewayCustomerId.startsWith('cus_asaas_'));
 
@@ -127,4 +146,35 @@ test('AsaasBillingAdapter.handleWebhook validates signature and maps canonical e
   assert.equal(mapAsaasEventToCanonical('PAYMENT_OVERDUE'), 'invoice_payment_failed');
   assert.equal(mapAsaasEventToCanonical('SUBSCRIPTION_CREATED'), 'subscription_created');
   assert.equal(mapAsaasEventToCanonical('SUBSCRIPTION_DELETED'), 'subscription_canceled');
+});
+
+test('AsaasBillingAdapter fails closed in production/staging when ASAAS_API_KEY or ASAAS_WEBHOOK_TOKEN is absent', async () => {
+  const prevEnv = process.env.NODE_ENV;
+  try {
+    process.env.NODE_ENV = 'production';
+    const prodAdapter = new AsaasBillingAdapter({
+      apiKey: '',
+      webhookToken: '',
+      allowLocalFallback: true, // ignored in production
+    });
+
+    await assert.rejects(
+      async () =>
+        prodAdapter.createCustomer({
+          providerProfileId: 'prov-prod-1',
+          name: 'Prestador Produção',
+          email: 'prod@example.com',
+          phone: '(11) 99812-4401',
+          cpfCnpj: VALID_TEST_CPF,
+        }),
+      /ASAAS_API_KEY não configurada|fail-closed/
+    );
+
+    await assert.rejects(
+      async () => prodAdapter.handleWebhook('{}', {}),
+      /webhook signature token not configured/
+    );
+  } finally {
+    process.env.NODE_ENV = prevEnv;
+  }
 });

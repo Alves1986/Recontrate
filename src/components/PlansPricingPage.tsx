@@ -778,27 +778,25 @@ export const PlansPricingPage: React.FC<{
   }, [providerContext?.phone, billingPhone]);
 
   const loadSubscriptionAndEligibility = useCallback(async () => {
-    const query = new URLSearchParams({ cycle: 'mensal' });
-    if (providerContext?.providerProfileId) {
-      query.set('providerProfileId', providerContext.providerProfileId);
-    }
-    if (providerContext?.email) {
-      query.set('email', providerContext.email);
-    }
-    if (providerContext?.phone) {
-      query.set('phone', providerContext.phone);
-    }
-
     const headers: Record<string, string> = {};
     if (authToken) headers.Authorization = `Bearer ${authToken}`;
-    if (providerContext?.providerProfileId) {
-      headers['x-provider-id'] = providerContext.providerProfileId;
-    }
 
     const [eligRes, subRes] = await Promise.all([
-      fetch(`/api/promotions/launch-offer/eligibility?${query.toString()}`, {
+      fetch('/api/promotions/launch-offer/eligibility', {
+        method: 'POST',
         credentials: 'include',
-        headers,
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cycle: 'mensal',
+          ...(providerContext?.providerProfileId
+            ? { providerProfileId: providerContext.providerProfileId }
+            : {}),
+          ...(providerContext?.email ? { email: providerContext.email } : {}),
+          ...(providerContext?.phone ? { phone: providerContext.phone } : {}),
+        }),
       })
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),

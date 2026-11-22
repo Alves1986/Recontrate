@@ -54,6 +54,7 @@ import {
   OnboardingPage,
   PadrinhoDashboardPage,
   SignupPage,
+  VerifyEmailPage,
 } from './components/AuthPages';
 import type {
   AuthenticatedUserSession,
@@ -183,7 +184,7 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  // Restore session on mount (cookie httpOnly via /api/auth/me or Neon Auth session)
+  // Restore session on mount strictly from authenticated backend cookie / Neon Auth (no localStorage credentials)
   useEffect(() => {
     let cancelled = false;
     const isValidJwtToken = (t?: string | null): boolean =>
@@ -191,32 +192,10 @@ export default function App() {
 
     if (typeof window !== 'undefined') {
       try {
-        const rawPilot = window.localStorage.getItem('recontrate_pilot_session');
-        if (rawPilot) {
-          const parsed = JSON.parse(rawPilot);
-          if (!isValidJwtToken(parsed?.token)) {
-            window.localStorage.removeItem('recontrate_pilot_session');
-          }
-        }
-        const rawUsers = window.localStorage.getItem('recontrate_pilot_users_v1');
-        if (rawUsers) {
-          const parsedUsers = JSON.parse(rawUsers) as Record<string, any>;
-          let changed = false;
-          for (const key of Object.keys(parsedUsers || {})) {
-            if (!isValidJwtToken(parsedUsers[key]?.token)) {
-              delete parsedUsers[key];
-              changed = true;
-            }
-          }
-          if (changed) {
-            window.localStorage.setItem(
-              'recontrate_pilot_users_v1',
-              JSON.stringify(parsedUsers)
-            );
-          }
-        }
-      } catch {
         window.localStorage.removeItem('recontrate_pilot_session');
+        window.localStorage.removeItem('recontrate_pilot_users_v1');
+      } catch {
+        // ignore storage errors
       }
     }
 
@@ -234,9 +213,6 @@ export default function App() {
             }
             return;
           }
-        }
-        if (res && res.status === 401 && typeof window !== 'undefined') {
-          window.localStorage.removeItem('recontrate_pilot_session');
         }
 
         // Check Neon Auth client session (e.g., after Google OAuth redirect)
@@ -261,18 +237,6 @@ export default function App() {
           }
         } catch {
           // ignore Neon Auth client errors when offline
-        }
-
-        // Fallback to locally stored real JWT session only if backend API is temporarily unavailable (5xx/offline)
-        if ((!res || res.status >= 500) && typeof window !== 'undefined') {
-          const rawPilot = window.localStorage.getItem('recontrate_pilot_session');
-          if (rawPilot) {
-            const parsed = JSON.parse(rawPilot);
-            if (!cancelled && parsed?.user && isValidJwtToken(parsed?.token)) {
-              setAuthUser(parsed.user);
-              setAuthToken(parsed.token);
-            }
-          }
         }
       } catch {
         // ignore session restore failures
@@ -505,6 +469,7 @@ export default function App() {
     await authClient.signOut().catch(() => null);
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem('recontrate_pilot_session');
+      window.localStorage.removeItem('recontrate_pilot_users_v1');
     }
     setAuthUser(null);
     setAuthToken('');
@@ -513,42 +478,29 @@ export default function App() {
 
   const handleSwitchRole = async (targetRole: UserRole) => {
     if (!authToken && !authUser) return;
-    try {
-      const res = await fetch('/api/auth/switch-role', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken && authToken.split('.').length === 3
-            ? { Authorization: `Bearer ${authToken}` }
-            : {}),
-        },
-        body: JSON.stringify({ targetRole, enableIfMissing: true }),
-      }).catch(() => null);
-      const text = res ? await res.text() : '';
-      const body = text ? JSON.parse(text) : null;
-      if (res && res.ok && body?.ok) {
-        setAuthUser(body.user);
-        setAuthToken(body.token);
-        navigateUrl(body.redirectTo);
-        return;
-      }
-    } catch {
-      // Fallback below
+    const res = await fetch('/api/auth/switch-role', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken && authToken.split('.').length === 3
+          ? { Authorization: `Bearer ${authToken}` }
+          : {}),
+      },
+      body: JSON.stringify({ targetRole, enableIfMissing: true }),
+    }).catch(() => null);
+    const text = res ? await res.text() : '';
+    const body = text ? JSON.parse(text) : null;
+    if (res && res.ok && body?.ok) {
+      setAuthUser(body.user);
+      setAuthToken(body.token);
+      navigateUrl(body.redirectTo);
+      return;
     }
-    if (authUser) {
-      const nextRoles = authUser.roles.includes(targetRole)
-        ? authUser.roles
-        : [...authUser.roles, targetRole];
-      const redirectTo =
-        targetRole === 'prestador' ? '/app/prestador' : '/app';
-      setAuthUser({
-        ...authUser,
-        roles: nextRoles,
-        activeRole: targetRole,
-        redirectTo,
-      });
-      navigateUrl(redirectTo);
+    if (typeof window !== 'undefined') {
+      window.alert(
+        body?.error || 'Não foi possível alternar o papel da conta no servidor.'
+      );
     }
   };
 
@@ -926,6 +878,17 @@ export default function App() {
           <ForgotAndResetPasswordPage onNavigateUrl={navigateUrl} />
         )}
 
+        {pathname === '/verificar-email' && (
+          <VerifyEmailPage
+            onAuthenticated={(user, token, redirectTo) => {
+              setAuthUser(user);
+              setAuthToken(token);
+              navigateUrl(redirectTo);
+            }}
+            onNavigateUrl={navigateUrl}
+          />
+        )}
+
         {pathname === '/termos' && <TermsAndPrivacyPage mode="termos" />}
         {pathname === '/privacidade' && (
           <TermsAndPrivacyPage mode="privacidade" />
@@ -1142,7 +1105,7 @@ export default function App() {
         )}
 
         {authUser && pathname.startsWith('/admin') && (
-          <AdminMonetizationScreen />
+          <AdminMonetizationScreen authToken={authToken} />
         )}
       </main>
 

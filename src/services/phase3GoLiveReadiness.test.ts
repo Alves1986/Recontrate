@@ -4,6 +4,7 @@ import type { Server } from 'node:http';
 import { createApp } from '../server/index';
 import { ensureSchemaAndSeed, neonEnv, pool } from '../db/index';
 import { assetsFiles } from '../server/neonServices';
+import { setEmailDeliveryObserverForTests } from './essentialIntegrations';
 
 let server: Server;
 let baseUrl: string;
@@ -23,6 +24,7 @@ test.before(async () => {
 });
 
 test.after(async () => {
+  setEmailDeliveryObserverForTests(null);
   if (server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
@@ -34,27 +36,42 @@ async function registerUserAndPromote(role: 'cliente' | 'admin') {
   const email = `f3.${role}.${ts}@example.com`;
   const password = 'Confiare#2026!Password';
 
-  const regRes = await fetch(`${baseUrl}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email,
-      password,
-      fullName: role === 'admin' ? 'Admin Fase 3' : 'Cliente Fase 3',
-      phone: '(11) 99123-9876',
-      neighborhood: 'Pinheiros',
-      role: 'cliente',
-      lgpdConsent: true,
-    }),
+  let capturedToken = '';
+  setEmailDeliveryObserverForTests((d) => {
+    if (d.to === email && d.variables.verificationToken) {
+      capturedToken = d.variables.verificationToken;
+    }
   });
-  assert.equal(regRes.status, 201);
-  const regBody = (await regRes.json()) as any;
 
-  await fetch(`${baseUrl}/api/auth/verify-email`, {
+  let regBody: any;
+  try {
+    const regRes = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        password,
+        fullName: role === 'admin' ? 'Admin Fase 3' : 'Cliente Fase 3',
+        phone: '(11) 99123-9876',
+        neighborhood: 'Pinheiros',
+        role: 'cliente',
+        lgpdConsent: true,
+      }),
+    });
+    assert.equal(regRes.status, 201);
+    regBody = (await regRes.json()) as any;
+    assert.equal(regBody.verificationToken, undefined);
+  } finally {
+    setEmailDeliveryObserverForTests(null);
+  }
+
+  const vfyRes = await fetch(`${baseUrl}/api/auth/verify-email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ verificationToken: regBody.verificationToken }),
+    body: JSON.stringify({ verificationToken: capturedToken }),
   });
+  assert.equal(vfyRes.status, 200);
+  const vfyBody = (await vfyRes.json()) as any;
 
   if (role === 'admin') {
     await pool.query(
@@ -71,7 +88,7 @@ async function registerUserAndPromote(role: 'cliente' | 'admin') {
     return { token: loginBody.token as string, user: loginBody.user };
   }
 
-  return { token: regBody.token as string, user: regBody.user };
+  return { token: vfyBody.token as string, user: vfyBody.user };
 }
 
 test('1. Healthcheck (/api/health): retorna disponibilidade, latência PostgreSQL e >= 12 tabelas com RLS ativo', async () => {
@@ -90,15 +107,15 @@ test('1. Healthcheck (/api/health): retorna disponibilidade, latência PostgreSQ
   assert.deepEqual(body.missingRlsTables, []);
 });
 
-test('2. Backups (/api/admin/backups/snapshot): bloqueia não-admin (403) e gera snapshot real no Neon Object Storage com auditoria', async () => {
+test('2. Backups (/api/admin/backups/snapshot): bloqueia não-admin (401/403) e gera snapshot real no Neon Object Storage com auditoria', async () => {
   const cliente = await registerUserAndPromote('cliente');
   const admin = await registerUserAndPromote('admin');
 
-  // Visitante anônimo bloqueado (403)
+  // Visitante anônimo bloqueado (401)
   const anonRes = await fetch(`${baseUrl}/api/admin/backups/snapshot`, {
     method: 'POST',
   });
-  assert.equal(anonRes.status, 403);
+  assert.equal(anonRes.status, 401);
 
   // Usuário cliente autenticado bloqueado (403)
   const clientRes = await fetch(`${baseUrl}/api/admin/backups/snapshot`, {
@@ -122,7 +139,7 @@ test('2. Backups (/api/admin/backups/snapshot): bloqueia não-admin (403) e gera
   assert.ok(adminBody.backup.objectKey.startsWith('backups/confiare-backup-'));
   assert.ok(adminBody.backup.objectKey.endsWith('.json'));
   assert.ok(adminBody.backup.sizeBytes > 100);
-  assert.ok(adminBody.backup.tablesBackedUp.plans >= 5);
+  assert.ok(adminBody.backup.tablesBackedUp.plans >= 4);
 
   // Confirma download real do Object Storage
   const downloaded = await assetsFiles.download(adminBody.backup.objectKey);
@@ -176,22 +193,22 @@ test('3. Monitoramento de Alertas (/api/admin/monitoring/alerts): grava alerta c
   assert.ok(notifRows[0].title.includes('CRITICAL'));
 });
 
-test('4. Blindagem de Produção (/api/neon/* exige admin em NODE_ENV=production) e zero vazamento de segredos em rotas públicas', async () => {
+test('4. Blindagem de Produção (/api/neon/* exige admin em todos os ambientes) e zero vazamento de segredos em rotas públicas', async () => {
   const admin = await registerUserAndPromote('admin');
   const prevEnv = process.env.NODE_ENV;
 
   try {
     process.env.NODE_ENV = 'production';
 
-    // Visitante anônimo tentando acessar diagnóstico Neon em produção -> bloqueado (403)
+    // Visitante anônimo tentando acessar diagnóstico Neon -> bloqueado (401)
     const anonNeonRes = await fetch(`${baseUrl}/api/neon/postgres`);
-    assert.equal(anonNeonRes.status, 403);
+    assert.equal(anonNeonRes.status, 401);
 
-    // Tentativa de falsificação via header x-user-role em produção -> bloqueado (403)
+    // Tentativa de falsificação via header x-user-role em produção -> bloqueado (401)
     const spoofNeonRes = await fetch(`${baseUrl}/api/neon/postgres`, {
       headers: { 'x-user-role': 'admin' },
     });
-    assert.equal(spoofNeonRes.status, 403);
+    assert.equal(spoofNeonRes.status, 401);
 
     // Admin autenticado com token real -> autorizado (200)
     const adminNeonRes = await fetch(`${baseUrl}/api/neon/postgres`, {
