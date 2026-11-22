@@ -96,7 +96,7 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
     } catch (err) {
       setValidationError(
         (err as Error).message ||
-          'Não foi possível salvar a indicação de substituto no servidor.'
+        'Não foi possível salvar a indicação de substituto no servidor.'
       );
     } finally {
       setSavingReferral(false);
@@ -128,11 +128,10 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
           <button
             type="button"
             onClick={() => setPerspective('cliente')}
-            className={`min-h-[38px] px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-center ${
-              perspective === 'cliente'
-                ? 'bg-brand-primary text-white font-semibold'
-                : 'text-brand-ink/70 hover:text-brand-ink'
-            }`}
+            className={`min-h-[38px] px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-center ${perspective === 'cliente'
+              ? 'bg-brand-primary text-white font-semibold'
+              : 'text-brand-ink/70 hover:text-brand-ink'
+              }`}
           >
             Visão do Cliente (Receber Indicação)
           </button>
@@ -142,11 +141,10 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
               setPerspective('prestador');
               setProviderSavedSuccess(false);
             }}
-            className={`min-h-[38px] px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-center ${
-              perspective === 'prestador'
-                ? 'bg-brand-link text-white font-semibold'
-                : 'text-brand-ink/70 hover:text-brand-ink'
-            }`}
+            className={`min-h-[38px] px-3 py-2 rounded-xl text-xs font-medium transition-colors cursor-pointer text-center ${perspective === 'prestador'
+              ? 'bg-brand-link text-white font-semibold'
+              : 'text-brand-ink/70 hover:text-brand-ink'
+              }`}
           >
             Visão do Prestador (Indicar até 2)
           </button>
@@ -235,11 +233,10 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
                 return (
                   <div
                     key={sub.id}
-                    className={`bg-white rounded-3xl p-5 sm:p-6 border transition-all flex flex-col justify-between gap-5 min-w-0 ${
-                      isAccepted
-                        ? 'border-2 border-brand-link'
-                        : 'border-brand-primary/10'
-                    }`}
+                    className={`bg-white rounded-3xl p-5 sm:p-6 border transition-all flex flex-col justify-between gap-5 min-w-0 ${isAccepted
+                      ? 'border-2 border-brand-link'
+                      : 'border-brand-primary/10'
+                      }`}
                   >
                     <div className="space-y-4">
                       <div className="flex items-start justify-between gap-2">
@@ -391,11 +388,10 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
                     key={col.id}
                     type="button"
                     onClick={() => toggleSubSelection(col.id)}
-                    className={`text-left p-4 rounded-2xl border transition-all cursor-pointer min-w-0 ${
-                      selected
-                        ? 'bg-brand-primary text-white border-brand-primary'
-                        : 'bg-brand-background/60 text-brand-ink border-brand-primary/15'
-                    }`}
+                    className={`text-left p-4 rounded-2xl border transition-all cursor-pointer min-w-0 ${selected
+                      ? 'bg-brand-primary text-white border-brand-primary'
+                      : 'bg-brand-background/60 text-brand-ink border-brand-primary/15'
+                      }`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-display font-bold text-sm truncate">
@@ -408,9 +404,8 @@ export const SubstituteReferralScreen: React.FC<SubstituteReferralScreenProps> =
                       </span>
                     </div>
                     <p
-                      className={`text-xs mt-1 ${
-                        selected ? 'text-white/80' : 'text-brand-ink/70'
-                      }`}
+                      className={`text-xs mt-1 ${selected ? 'text-white/80' : 'text-brand-ink/70'
+                        }`}
                     >
                       {col.mentorName
                         ? `Seu apadrinhado na rede`
@@ -523,8 +518,8 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
 
   const [selectedRequestId, setSelectedRequestId] = useState<string>(
     serviceRequests.find((r) => r.status === 'concluido')?.id ||
-      serviceRequests[0]?.id ||
-      ''
+    serviceRequests[0]?.id ||
+    ''
   );
   const [completingRequest, setCompletingRequest] = useState(false);
   const [displayPublicName, setDisplayPublicName] = useState(false);
@@ -560,7 +555,7 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
     } catch (err) {
       setError(
         (err as Error).message ||
-          'Não foi possível marcar a solicitação como concluída.'
+        'Não foi possível marcar a solicitação como concluída.'
       );
     } finally {
       setCompletingRequest(false);
@@ -604,7 +599,7 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
     } catch (err) {
       setError(
         (err as Error).message ||
-          'Não foi possível publicar a avaliação. Verifique se o atendimento está concluído e vinculado ao prestador.'
+        'Não foi possível publicar a avaliação. Verifique se o atendimento está concluído e vinculado ao prestador.'
       );
     } finally {
       setSubmittingReview(false);
@@ -819,11 +814,10 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
                         type="button"
                         aria-label={`${crit.label}: ${star} estrelas`}
                         onClick={() => crit.setter(star)}
-                        className={`w-9 h-9 rounded-lg font-mono text-xs font-bold transition-colors cursor-pointer ${
-                          star <= crit.val
-                            ? 'bg-brand-accent-strong text-white'
-                            : 'bg-white text-brand-ink/50 border border-brand-primary/10'
-                        }`}
+                        className={`w-9 h-9 rounded-lg font-mono text-xs font-bold transition-colors cursor-pointer ${star <= crit.val
+                          ? 'bg-brand-accent-strong text-white'
+                          : 'bg-white text-brand-ink/50 border border-brand-primary/10'
+                          }`}
                       >
                         ★
                       </button>
@@ -844,22 +838,20 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
                 <button
                   type="button"
                   onClick={() => setWouldRecommend(true)}
-                  className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
-                    wouldRecommend
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-white text-brand-ink'
-                  }`}
+                  className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${wouldRecommend
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-white text-brand-ink'
+                    }`}
                 >
                   Sim, recomendo
                 </button>
                 <button
                   type="button"
                   onClick={() => setWouldRecommend(false)}
-                  className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
-                    !wouldRecommend
-                      ? 'bg-brand-primary text-white'
-                      : 'bg-white text-brand-ink'
-                  }`}
+                  className={`min-h-[36px] px-3.5 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${!wouldRecommend
+                    ? 'bg-brand-primary text-white'
+                    : 'bg-white text-brand-ink'
+                    }`}
                 >
                   Não
                 </button>
@@ -912,8 +904,8 @@ export const PostServiceReviewScreen: React.FC<PostServiceReviewScreenProps> = (
         {/* Right Side: Impacto na Reputação */}
         <aside className="lg:col-span-4 space-y-4">
           <div className="bg-brand-primary text-white rounded-3xl p-6 space-y-4">
-          <p className="text-xs font-semibold text-brand-accent-contrast">
-            Integridade de Avaliações
+            <p className="text-xs font-semibold text-brand-accent-contrast">
+              Integridade de Avaliações
             </p>
             <h2 className="font-display font-bold text-lg">
               Como sua avaliação protege toda a comunidade

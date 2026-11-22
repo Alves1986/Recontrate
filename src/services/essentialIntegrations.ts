@@ -1,5 +1,30 @@
+import crypto from 'node:crypto';
 import { pool } from '../db/index';
-import { getNodeEnvironment, isDemoModeEnabled } from '../config/environment';
+import {
+  getNodeEnvironment,
+  isDemoModeEnabled,
+} from '../config/environment';
+import { getAppBaseUrl, getSessionSecretBytes } from '../config/runtimeSecrets';
+
+export function generateEmailUnsubscribeToken(email: string): string {
+  const secret = getSessionSecretBytes();
+  return crypto
+    .createHmac('sha256', secret)
+    .update(`unsubscribe:${email.trim().toLowerCase()}`)
+    .digest('hex');
+}
+
+export function verifyEmailUnsubscribeToken(
+  email: string,
+  signature: string
+): boolean {
+  if (!email || !signature) return false;
+  const expected = generateEmailUnsubscribeToken(email);
+  const sigBuf = Buffer.from(signature.trim());
+  const expBuf = Buffer.from(expected);
+  if (sigBuf.length !== expBuf.length) return false;
+  return crypto.timingSafeEqual(sigBuf, expBuf);
+}
 
 export interface CapturedEmailDelivery {
   to: string;
@@ -8,6 +33,8 @@ export interface CapturedEmailDelivery {
   variables: Record<string, string>;
   provider: string;
   messageId: string;
+  headers?: Record<string, string>;
+  bodyText?: string;
 }
 
 let emailDeliveryObserverForTests:
@@ -247,8 +274,41 @@ export class TransactionalEmailService {
       input.template === 'confirmacao_email' ||
       input.template === 'recuperacao_senha';
 
+    if (!isCriticalAuthEmail) {
+      const { rows: unsubRows } = await pool
+        .query(
+          `SELECT 1 FROM email_unsubscribes WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+          [input.to]
+        )
+        .catch(() => ({ rows: [] as any[] }));
+      if (unsubRows.length > 0) {
+        return {
+          delivered: false,
+          provider: 'unsubscribed-suppressed',
+          messageId,
+        };
+      }
+    }
+
+    const unsubSig = generateEmailUnsubscribeToken(input.to);
+    const appBaseUrl = getAppBaseUrl().replace(/\/$/, '');
+    const apiUnsubUrl = `${appBaseUrl}/api/public/email/unsubscribe?email=${encodeURIComponent(
+      input.to
+    )}&sig=${encodeURIComponent(unsubSig)}`;
+    const uiUnsubUrl = `${appBaseUrl}/descadastrar-email?email=${encodeURIComponent(
+      input.to
+    )}&sig=${encodeURIComponent(unsubSig)}`;
+
+    const emailHeaders: Record<string, string> = {
+      'List-Unsubscribe': `<${apiUnsubUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    };
+
     let provider = 'confiare-transactional-outbox';
-    const bodyText = formatEmailBodyText(input.template, input.variables);
+    const rawBodyText = formatEmailBodyText(input.template, input.variables);
+    const bodyText = isCriticalAuthEmail
+      ? rawBodyText
+      : `${rawBodyText}\n\n---\nNão deseja mais receber comunicados ou avisos promocionais do Recontrate? Descadastre-se em 1 clique: ${uiUnsubUrl}`;
 
     if (resendApiKey && !resendApiKey.startsWith('YOUR_')) {
       const res = await fetch('https://api.resend.com/emails', {
@@ -263,6 +323,7 @@ export class TransactionalEmailService {
           to: [input.to],
           subject: input.subject,
           text: bodyText,
+          headers: emailHeaders,
         }),
       });
       if (!res.ok) {
@@ -289,6 +350,8 @@ export class TransactionalEmailService {
         variables: input.variables,
         provider,
         messageId,
+        headers: emailHeaders,
+        bodyText,
       });
     }
 

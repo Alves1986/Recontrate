@@ -21,6 +21,7 @@ import {
   AuthService,
   sanitizeUserText,
 } from '../services/authService';
+import { verifyEmailUnsubscribeToken } from '../services/essentialIntegrations';
 import { MarketplaceDataService } from '../services/marketplaceDataService';
 import { SpecialtiesTaxonomyService } from '../services/specialtiesService';
 import {
@@ -77,7 +78,14 @@ const RegisterSchema = z.object({
   categoryId: z.string().uuid().optional(),
   specialtyIds: z.array(z.string().uuid()).min(1).max(5).optional(),
   principalSpecialtyId: z.string().uuid().optional(),
+  birthDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Informe sua data de nascimento válida (AAAA-MM-DD).'),
   lgpdConsent: z.boolean(),
+  termsVersion: z.string().optional(),
+  privacyVersion: z.string().optional(),
+  marketingOptIn: z.boolean().optional().default(false),
+  aiTrainingOptOut: z.boolean().optional().default(true),
   referralCode: z.string().trim().max(32).optional(),
 });
 
@@ -126,7 +134,10 @@ const CreateServiceRequestSchema = z.object({
   urgency: z.enum(['Hoje', 'Amanhã', 'Esta semana', 'Flexível']).default('Hoje'),
   preferredTime: z.string().default('Comercial'),
   estimatedBudget: z.string().optional(),
-  lgpdContactConsent: z.boolean().default(true),
+  lgpdContactConsent: z.literal(true, {
+    message:
+      'Autorize expressamente o compartilhamento limitado para matching LGPD.',
+  }),
   customerPhone: z.string().optional(),
 });
 
@@ -151,7 +162,7 @@ const RepeatRequestSchema = z.object({
   desiredDate: z.string().min(2),
   urgency: z.string().default('Esta semana'),
   notes: z.string().optional(),
-  lgpdShareConsent: z.boolean().default(true),
+  lgpdShareConsent: z.boolean(),
   customerPhone: z.string().optional(),
 });
 
@@ -498,8 +509,13 @@ export function createPhase1Router(): express.Router {
       const parsed = RegisterSchema.parse(req.body);
       const result = await authService.registerUser({
         ...parsed,
+        termsVersion: parsed.termsVersion || CURRENT_TERMS_VERSION,
+        privacyVersion: parsed.privacyVersion || CURRENT_PRIVACY_VERSION,
         ipAddress: req.ip,
-        userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
+        userAgent:
+          typeof req.headers['user-agent'] === 'string'
+            ? req.headers['user-agent']
+            : undefined,
       });
 
       res.status(201).json({
@@ -1780,6 +1796,659 @@ export function createPhase1Router(): express.Router {
             req.body?.subscriptionId ? String(req.body.subscriptionId) : undefined
           );
         res.json({ ok: true, ...result });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  // =========================================================================
+  // 5. LGPD ART. 18 PRIVACY CENTER, 1-CLICK UNSUBSCRIBE & CONTENT MODERATION
+  // =========================================================================
+  router.get(
+    '/app/privacidade/preferences',
+    requireAuth(authService),
+    async (req, res) => {
+      try {
+        await ensureSchemaAndSeed();
+        const session = req.authSession!;
+        const [{ rows: profRows }, { rows: logRows }] = await Promise.all([
+          pool.query(
+            `SELECT birth_date, age_verified_18_plus, terms_version, privacy_version,
+                    terms_accepted_at, privacy_accepted_at, marketing_opt_in,
+                    marketing_opt_in_at, ai_training_opt_out, cookie_preferences_json
+             FROM profiles
+             WHERE user_id = $1::uuid
+             LIMIT 1`,
+            [session.userId]
+          ),
+          pool.query(
+            `SELECT id, consent_type, granted, document_version, ip_address, created_at
+             FROM consent_logs
+             WHERE user_id = $1::uuid
+             ORDER BY created_at DESC
+             LIMIT 50`,
+            [session.userId]
+          ),
+        ]);
+        const p = profRows[0] || {};
+        res.json({
+          ok: true,
+          preferences: {
+            birthDate: p.birth_date || null,
+            ageVerified18Plus: Boolean(p.age_verified_18_plus),
+            termsVersion: p.terms_version || CURRENT_TERMS_VERSION,
+            privacyVersion: p.privacy_version || CURRENT_PRIVACY_VERSION,
+            termsAcceptedAt: p.terms_accepted_at || null,
+            privacyAcceptedAt: p.privacy_accepted_at || null,
+            marketingOptIn: Boolean(p.marketing_opt_in),
+            marketingOptInAt: p.marketing_opt_in_at || null,
+            aiTrainingOptOut: p.ai_training_opt_out !== false,
+            cookiePreferences: p.cookie_preferences_json || null,
+          },
+          consentHistory: logRows,
+        });
+      } catch (err) {
+        res.status(500).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.patch(
+    '/app/privacidade/preferences',
+    requireAuth(authService),
+    async (req, res) => {
+      try {
+        await ensureSchemaAndSeed();
+        const session = req.authSession!;
+        const schema = z.object({
+          marketingOptIn: z.boolean().optional(),
+          aiTrainingOptOut: z.boolean().optional(),
+          cookiePreferences: z
+            .object({
+              version: z.string(),
+              decidedAtUtc: z.string(),
+              necessary: z.literal(true),
+              analytics: z.boolean(),
+              advertising: z.boolean(),
+            })
+            .optional(),
+        });
+        const parsed = schema.parse(req.body || {});
+        const sets: string[] = [];
+        const params: unknown[] = [session.userId];
+        const logs: Array<{ type: string; granted: boolean }> = [];
+
+        if (typeof parsed.marketingOptIn === 'boolean') {
+          params.push(parsed.marketingOptIn);
+          sets.push(`marketing_opt_in = $${params.length}`);
+          sets.push(
+            `marketing_opt_in_at = ${parsed.marketingOptIn ? 'NOW()' : 'NULL'}`
+          );
+          logs.push({ type: 'marketing', granted: parsed.marketingOptIn });
+        }
+        if (typeof parsed.aiTrainingOptOut === 'boolean') {
+          params.push(parsed.aiTrainingOptOut);
+          sets.push(`ai_training_opt_out = $${params.length}`);
+          logs.push({
+            type: 'ai_training_opt_out',
+            granted: parsed.aiTrainingOptOut,
+          });
+        }
+        if (parsed.cookiePreferences) {
+          params.push(JSON.stringify(parsed.cookiePreferences));
+          sets.push(`cookie_preferences_json = $${params.length}::jsonb`);
+          logs.push({
+            type: 'cookies_anpd',
+            granted:
+              parsed.cookiePreferences.analytics ||
+              parsed.cookiePreferences.advertising,
+          });
+        }
+
+        if (sets.length > 0) {
+          sets.push('updated_at = NOW()');
+          await pool.query(
+            `UPDATE profiles SET ${sets.join(', ')} WHERE user_id = $1::uuid`,
+            params
+          );
+        }
+
+        if (parsed.marketingOptIn === true) {
+          await pool.query(
+            `DELETE FROM email_unsubscribes WHERE LOWER(email) = LOWER($1)`,
+            [session.email]
+          );
+        }
+
+        for (const entry of logs) {
+          await pool.query(
+            `INSERT INTO consent_logs (user_id, consent_type, granted, document_version, ip_address, user_agent)
+             VALUES ($1::uuid, $2, $3, $4, $5, $6)`,
+            [
+              session.userId,
+              entry.type,
+              entry.granted,
+              CURRENT_PRIVACY_VERSION,
+              req.ip || '127.0.0.1',
+              typeof req.headers['user-agent'] === 'string'
+                ? req.headers['user-agent']
+                : null,
+            ]
+          );
+        }
+
+        res.json({ ok: true });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.get(
+    '/app/privacidade/export',
+    requireAuth(authService),
+    async (req, res) => {
+      try {
+        await ensureSchemaAndSeed();
+        const session = req.authSession!;
+        const format = String(req.query.format || 'json').toLowerCase();
+
+        const [
+          userRes,
+          profileRes,
+          provRes,
+          reqRes,
+          repRes,
+          revRes,
+          consRes,
+          subRes,
+          invRes,
+        ] = await Promise.all([
+          pool.query(
+            `SELECT id, email, roles, active_role, status, email_verified, email_verified_at,
+                    onboarding_completed, created_at, updated_at
+             FROM users
+             WHERE id = $1::uuid`,
+            [session.userId]
+          ),
+          pool.query(
+            `SELECT full_name, phone, city, neighborhood, birth_date, age_verified_18_plus,
+                    lgpd_consent, lgpd_consent_at, terms_version, privacy_version,
+                    terms_accepted_at, privacy_accepted_at, marketing_opt_in,
+                    marketing_opt_in_at, ai_training_opt_out, cookie_preferences_json,
+                    created_at, updated_at
+             FROM profiles
+             WHERE user_id = $1::uuid`,
+            [session.userId]
+          ),
+          session.providerProfileId
+            ? pool.query(
+                `SELECT id, slug, name, category, bio, city, neighborhoods, years_experience,
+                        plan_slug, verification_status, is_verified, reviews_count,
+                        completed_jobs, created_at, updated_at
+                 FROM provider_profiles
+                 WHERE id = $1`,
+                [session.providerProfileId]
+              )
+            : Promise.resolve({ rows: [] as any[] }),
+          pool.query(
+            `SELECT id, category_name, problem_title, description, neighborhood, city,
+                    urgency, preferred_time, status, lgpd_contact_consent, created_at
+             FROM service_requests
+             WHERE customer_user_id = $1::uuid
+             ORDER BY created_at DESC`,
+            [session.userId]
+          ),
+          pool.query(
+            `SELECT id, provider_profile_id, category_name, service_type, desired_date,
+                    urgency, status, lgpd_share_consent, created_at
+             FROM repeat_requests
+             WHERE customer_user_id = $1::uuid
+             ORDER BY created_at DESC`,
+            [session.userId]
+          ),
+          pool.query(
+            `SELECT id, provider_profile_id, client_name_display, neighborhood, service_title,
+                    rating, comment, created_at
+             FROM reviews
+             WHERE customer_user_id = $1::uuid
+             ORDER BY created_at DESC`,
+            [session.userId]
+          ),
+          pool.query(
+            `SELECT id, consent_type, granted, document_version, created_at
+             FROM consent_logs
+             WHERE user_id = $1::uuid
+             ORDER BY created_at DESC`,
+            [session.userId]
+          ),
+          session.providerProfileId
+            ? pool.query(
+                `SELECT id, plan_id, status, ciclo, inicio, fim, cancelada_em, criado_em
+                 FROM subscriptions
+                 WHERE provider_profile_id = $1
+                 ORDER BY criado_em DESC`,
+                [session.providerProfileId]
+              )
+            : Promise.resolve({ rows: [] as any[] }),
+          session.providerProfileId
+            ? pool.query(
+                `SELECT i.id, i.subscription_id, i.valor_centavos, i.status, i.metodo,
+                        i.vencimento, i.pago_em
+                 FROM invoices i
+                 JOIN subscriptions s ON s.id = i.subscription_id
+                 WHERE s.provider_profile_id = $1
+                 ORDER BY i.criado_em DESC`,
+                [session.providerProfileId]
+              )
+            : Promise.resolve({ rows: [] as any[] }),
+        ]);
+
+        const exportPayload = {
+          exportedAtUtc: new Date().toISOString(),
+          lgpdArticle: 'Art. 18, II e V da Lei nº 13.709/2018 (LGPD)',
+          user: userRes.rows[0] || null,
+          profile: profileRes.rows[0] || null,
+          providerProfile: provRes.rows[0] || null,
+          serviceRequests: reqRes.rows,
+          repeatRequests: repRes.rows,
+          reviews: revRes.rows,
+          consentLogs: consRes.rows,
+          subscriptions: subRes.rows,
+          invoices: invRes.rows,
+        };
+
+        await authService.logAudit({
+          actorUserId: session.userId,
+          actorRole: session.activeRole,
+          action: 'lgpd_data_exported',
+          targetType: 'user',
+          targetId: session.userId,
+          metadata: { format },
+          ipAddress: req.ip,
+        });
+
+        if (format === 'csv') {
+          const escCsv = (val: unknown) => {
+            const raw =
+              val === null || val === undefined
+                ? ''
+                : typeof val === 'object'
+                  ? JSON.stringify(val)
+                  : String(val);
+            return `"${raw.replace(/"/g, '""')}"`;
+          };
+          const csvLines: string[] = ['secao,registro_id,dados_json'];
+          csvLines.push(
+            `user,${escCsv(exportPayload.user?.id)},${escCsv(exportPayload.user)}`
+          );
+          csvLines.push(
+            `profile,${escCsv(session.userId)},${escCsv(exportPayload.profile)}`
+          );
+          if (exportPayload.providerProfile) {
+            csvLines.push(
+              `provider_profile,${escCsv(exportPayload.providerProfile.id)},${escCsv(exportPayload.providerProfile)}`
+            );
+          }
+          for (const row of exportPayload.serviceRequests) {
+            csvLines.push(
+              `service_request,${escCsv(row.id)},${escCsv(row)}`
+            );
+          }
+          for (const row of exportPayload.repeatRequests) {
+            csvLines.push(
+              `repeat_request,${escCsv(row.id)},${escCsv(row)}`
+            );
+          }
+          for (const row of exportPayload.reviews) {
+            csvLines.push(`review,${escCsv(row.id)},${escCsv(row)}`);
+          }
+          for (const row of exportPayload.consentLogs) {
+            csvLines.push(`consent_log,${escCsv(row.id)},${escCsv(row)}`);
+          }
+          for (const row of exportPayload.subscriptions) {
+            csvLines.push(`subscription,${escCsv(row.id)},${escCsv(row)}`);
+          }
+          for (const row of exportPayload.invoices) {
+            csvLines.push(`invoice,${escCsv(row.id)},${escCsv(row)}`);
+          }
+          res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+          res.setHeader(
+            'Content-Disposition',
+            'attachment; filename="recontrate-meus-dados.csv"'
+          );
+          res.send('\uFEFF' + csvLines.join('\n'));
+          return;
+        }
+
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader(
+          'Content-Disposition',
+          'attachment; filename="recontrate-meus-dados.json"'
+        );
+        res.json({ ok: true, data: exportPayload });
+      } catch (err) {
+        res.status(500).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.post(
+    '/app/privacidade/delete-account',
+    requireAuth(authService),
+    async (req, res) => {
+      try {
+        await ensureSchemaAndSeed();
+        const session = req.authSession!;
+        const parsed = z
+          .object({
+            confirmationText: z.literal('EXCLUIR MINHA CONTA', {
+              message:
+                'Confirme digitando exatamente EXCLUIR MINHA CONTA para prosseguir.',
+            }),
+          })
+          .parse(req.body || {});
+        void parsed;
+
+        const anonymizedEmail = `deleted-${session.userId}@anonymized.recontrate.invalid`;
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+
+          // Preserve legal email unsubscribe block so former owner is never contacted again
+          await client.query(
+            `INSERT INTO email_unsubscribes (email, reason)
+             VALUES ($1, 'lgpd_account_deletion')
+             ON CONFLICT (email) DO NOTHING`,
+            [session.email.toLowerCase()]
+          );
+
+          await client.query(
+            `UPDATE users
+             SET email = $2,
+                 status = 'suspenso',
+                 email_verified = false,
+                 verification_token_hash = NULL,
+                 reset_password_token = NULL,
+                 reset_password_token_hash = NULL,
+                 deleted_at = NOW(),
+                 updated_at = NOW()
+             WHERE id = $1::uuid`,
+            [session.userId, anonymizedEmail]
+          );
+
+          await client.query(
+            `UPDATE profiles
+             SET full_name = 'Titular Excluído',
+                 phone = '',
+                 neighborhood = '',
+                 birth_date = NULL,
+                 marketing_opt_in = false,
+                 ai_training_opt_out = true,
+                 updated_at = NOW()
+             WHERE user_id = $1::uuid`,
+            [session.userId]
+          );
+
+          if (session.providerProfileId) {
+            await client.query(
+              `UPDATE provider_profiles
+               SET name = 'Profissional Excluído',
+                   professional_name = 'Profissional Excluído',
+                   bio = '',
+                   whatsapp = '',
+                   verification_status = 'rejeitado',
+                   is_verified = false,
+                   available_today = false,
+                   deleted_at = NOW(),
+                   updated_at = NOW()
+               WHERE id = $1`,
+              [session.providerProfileId]
+            );
+          }
+
+          await client.query(
+            `UPDATE opportunities
+             SET client_name_full = 'Titular Excluído',
+                 client_name_masked = 'Titular Excluído',
+                 client_whatsapp = ''
+             WHERE customer_user_id = $1::uuid`,
+            [session.userId]
+          );
+
+          await client.query(
+            `INSERT INTO consent_logs (user_id, consent_type, granted, document_version, ip_address)
+             VALUES ($1::uuid, 'account_deletion_requested', true, $2, $3)`,
+            [session.userId, CURRENT_PRIVACY_VERSION, req.ip || '127.0.0.1']
+          );
+
+          await client.query('COMMIT');
+        } catch (txErr) {
+          await client.query('ROLLBACK');
+          throw txErr;
+        } finally {
+          client.release();
+        }
+
+        await authService.logAudit({
+          actorUserId: session.userId,
+          actorRole: session.activeRole,
+          action: 'lgpd_account_deleted_anonymized',
+          targetType: 'user',
+          targetId: session.userId,
+          metadata: {
+            fiscalRecordsRetainedYears: 5,
+          },
+          ipAddress: req.ip,
+        });
+
+        res.clearCookie('confiare_session');
+        res.json({
+          ok: true,
+          deleted: true,
+          message:
+            'Sua conta e dados pessoais identificáveis foram anonimizados. Registros fiscais/faturas anônimas permanecem mantidos pelo prazo legal de 5 anos (CTN).',
+        });
+      } catch (err) {
+        res.status(400).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  const handleUnsubscribeRequest = async (
+    req: express.Request,
+    res: express.Response
+  ) => {
+    try {
+      await ensureSchemaAndSeed();
+      const emailRaw = String(req.body?.email || req.query.email || '').trim();
+      const sigRaw = String(req.body?.sig || req.query.sig || '').trim();
+      const reason = String(req.body?.reason || 'one_click_unsubscribe').slice(
+        0,
+        120
+      );
+
+      if (!emailRaw || !verifyEmailUnsubscribeToken(emailRaw, sigRaw)) {
+        res.status(400).json({
+          ok: false,
+          error: 'Link ou assinatura de descadastro inválida.',
+        });
+        return;
+      }
+
+      const normalizedEmail = emailRaw.toLowerCase();
+      await pool.query(
+        `INSERT INTO email_unsubscribes (email, reason, unsubscribed_at)
+         VALUES ($1, $2, NOW())
+         ON CONFLICT (email) DO UPDATE SET
+           reason = EXCLUDED.reason,
+           unsubscribed_at = NOW()`,
+        [normalizedEmail, sanitizeUserText(reason)]
+      );
+
+      const { rows: uRows } = await pool.query<{ id: string }>(
+        `SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1`,
+        [normalizedEmail]
+      );
+      if (uRows[0]?.id) {
+        await pool.query(
+          `UPDATE profiles
+           SET marketing_opt_in = false, marketing_opt_in_at = NULL, updated_at = NOW()
+           WHERE user_id = $1::uuid`,
+          [uRows[0].id]
+        );
+        await pool
+          .query(
+            `INSERT INTO consent_logs (user_id, consent_type, granted, document_version, ip_address)
+             VALUES ($1::uuid, 'marketing', false, $2, $3)`,
+            [uRows[0].id, CURRENT_PRIVACY_VERSION, req.ip || '127.0.0.1']
+          )
+          .catch(() => null);
+      }
+
+      res.json({
+        ok: true,
+        unsubscribed: true,
+        email: normalizedEmail,
+        message: 'E-mail descadastrado de comunicações promocionais com sucesso.',
+      });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  };
+
+  router.get('/public/email/unsubscribe', handleUnsubscribeRequest);
+  router.post('/public/email/unsubscribe', handleUnsubscribeRequest);
+
+  router.post('/public/reports', authRateLimit(20), async (req, res) => {
+    try {
+      await ensureSchemaAndSeed();
+      const schema = z.object({
+        targetType: z.enum(['provider_profile', 'review', 'other']),
+        targetId: z.string().trim().min(1).max(120),
+        category: z.enum([
+          'conteudo_ilicito',
+          'direitos_autorais',
+          'fraude_golpe',
+          'dados_pessoais',
+          'assedio',
+        ]),
+        description: z
+          .string()
+          .trim()
+          .min(10, 'Descreva a denúncia com pelo menos 10 caracteres.')
+          .max(2000),
+        reporterEmail: z.string().trim().email().optional(),
+      });
+      const parsed = schema.parse(req.body || {});
+
+      let reporterUserId: string | null = null;
+      const bearer = String(req.headers.authorization || '').replace(
+        /^Bearer\s+/i,
+        ''
+      );
+      const cookieToken =
+        typeof (req as any).cookies?.confiare_session === 'string'
+          ? (req as any).cookies.confiare_session
+          : '';
+      const rawToken = bearer || cookieToken;
+      if (rawToken) {
+        const session = await authService
+          .verifySessionToken(rawToken)
+          .catch(() => null);
+        if (session?.userId) reporterUserId = session.userId;
+      }
+
+      const { rows } = await pool.query<{ id: string; created_at: Date }>(
+        `INSERT INTO content_reports (
+          target_type, target_id, category, description, reporter_user_id, reporter_email, status
+        ) VALUES ($1, $2, $3, $4, $5::uuid, $6, 'pendente')
+        RETURNING id, created_at`,
+        [
+          parsed.targetType,
+          sanitizeUserText(parsed.targetId),
+          parsed.category,
+          sanitizeUserText(parsed.description),
+          reporterUserId,
+          parsed.reporterEmail ? sanitizeUserText(parsed.reporterEmail) : null,
+        ]
+      );
+
+      res.status(201).json({
+        ok: true,
+        reportId: rows[0].id,
+        createdAt: rows[0].created_at,
+      });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: (err as Error).message });
+    }
+  });
+
+  router.get(
+    '/admin/reports',
+    requireRole(['admin'], authService),
+    async (_req, res) => {
+      try {
+        await ensureSchemaAndSeed();
+        const { rows } = await pool.query(
+          `SELECT * FROM content_reports ORDER BY created_at DESC LIMIT 100`
+        );
+        res.json({ ok: true, reports: rows });
+      } catch (err) {
+        res.status(500).json({ ok: false, error: (err as Error).message });
+      }
+    }
+  );
+
+  router.patch(
+    '/admin/reports/:id',
+    requireRole(['admin'], authService),
+    async (req, res) => {
+      try {
+        await ensureSchemaAndSeed();
+        const session = req.authSession!;
+        const reportId = z.string().uuid().parse(req.params.id);
+        const parsed = z
+          .object({
+            status: z.enum(['em_analise', 'resolvida', 'arquivada']),
+            resolutionNotes: z.string().max(1000).optional(),
+          })
+          .parse(req.body || {});
+
+        const { rows } = await pool.query(
+          `UPDATE content_reports
+           SET status = $2,
+               resolution_notes = $3,
+               reviewed_by = $4::uuid,
+               updated_at = NOW()
+           WHERE id = $1::uuid
+           RETURNING *`,
+          [
+            reportId,
+            parsed.status,
+            parsed.resolutionNotes
+              ? sanitizeUserText(parsed.resolutionNotes)
+              : null,
+            session.userId,
+          ]
+        );
+        if (rows.length === 0) {
+          res.status(404).json({ ok: false, error: 'Denúncia não encontrada.' });
+          return;
+        }
+
+        await authService.logAudit({
+          actorUserId: session.userId,
+          actorRole: 'admin',
+          action: 'content_report_moderated',
+          targetType: 'content_report',
+          targetId: reportId,
+          metadata: { status: parsed.status },
+          ipAddress: req.ip,
+        });
+
+        res.json({ ok: true, report: rows[0] });
       } catch (err) {
         res.status(400).json({ ok: false, error: (err as Error).message });
       }

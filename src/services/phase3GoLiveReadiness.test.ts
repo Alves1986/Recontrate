@@ -55,6 +55,7 @@ async function registerUserAndPromote(role: 'cliente' | 'admin') {
         phone: '(11) 99123-9876',
         neighborhood: 'Pinheiros',
         role: 'cliente',
+        birthDate: '1990-05-15',
         lgpdConsent: true,
       }),
     });

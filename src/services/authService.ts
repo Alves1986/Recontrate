@@ -7,6 +7,17 @@ import type { AppRole } from '../db/rls';
 import { ProviderReferralService } from './providerReferralService';
 import { SpecialtiesTaxonomyService } from './specialtiesService';
 import { TransactionalEmailService } from './essentialIntegrations';
+import {
+  getAppBaseUrl,
+  getSessionSecretBytes,
+  resetSessionSecretCacheForTests,
+} from '../config/runtimeSecrets';
+
+export {
+  getAppBaseUrl,
+  getSessionSecretBytes,
+  resetSessionSecretCacheForTests,
+};
 
 const referralService = new ProviderReferralService();
 const emailService = new TransactionalEmailService();
@@ -31,51 +42,6 @@ export interface AuthenticatedUserSession {
   onboardingCompleted: boolean;
   providerProfileId: string | null;
   redirectTo: string;
-}
-
-let ephemeralDevSessionSecret: Uint8Array | null = null;
-let cachedSessionSecretRaw: string | null = null;
-let cachedSessionSecretBytes: Uint8Array | null = null;
-
-export function resetSessionSecretCacheForTests(): void {
-  if (process.env.NODE_ENV === 'test') {
-    cachedSessionSecretRaw = null;
-    cachedSessionSecretBytes = null;
-  }
-}
-
-export function getSessionSecretBytes(): Uint8Array {
-  const raw = (process.env.SESSION_SECRET || '').trim();
-  const nodeEnv = getNodeEnvironment();
-  const isSharedRuntime =
-    nodeEnv === 'production' ||
-    nodeEnv === 'staging' ||
-    process.env.VERCEL_ENV === 'production' ||
-    process.env.VERCEL_ENV === 'preview';
-
-  if (raw && !raw.startsWith('YOUR_')) {
-    if (raw.length < 32) {
-      throw new Error(
-        'Configuração de segurança inválida: SESSION_SECRET deve possuir ao menos 32 caracteres de alta entropia.'
-      );
-    }
-    if (cachedSessionSecretRaw !== raw || !cachedSessionSecretBytes) {
-      cachedSessionSecretRaw = raw;
-      cachedSessionSecretBytes = new TextEncoder().encode(raw);
-    }
-    return cachedSessionSecretBytes;
-  }
-
-  if (isSharedRuntime) {
-    throw new Error(
-      'Variável de ambiente obrigatória ausente: defina SESSION_SECRET dedicada com ao menos 32 caracteres aleatórios.'
-    );
-  }
-
-  if (!ephemeralDevSessionSecret) {
-    ephemeralDevSessionSecret = crypto.randomBytes(32);
-  }
-  return ephemeralDevSessionSecret;
 }
 
 export function hashOneTimeToken(rawToken: string): string {
@@ -147,14 +113,6 @@ export function sanitizeUserText(input: string): string {
     .replace(/>/g, '&gt;')
     .replace(/javascript:/gi, '')
     .trim();
-}
-
-function getAppBaseUrl(): string {
-  return (
-    process.env.APP_URL ||
-    process.env.VITE_APP_URL ||
-    'http://localhost:3005'
-  ).replace(/\/$/, '');
 }
 
 export class AuthService {
@@ -363,7 +321,7 @@ export class AuthService {
     lgpdConsent: boolean;
     referralCode?: string;
     ipAddress?: string;
-    birthDate?: string;
+    birthDate: string;
     ageVerified18Plus?: boolean;
     marketingOptIn?: boolean;
     aiTrainingOptOut?: boolean;
@@ -376,6 +334,40 @@ export class AuthService {
         'É obrigatório aceitar os Termos de Uso e a Política de Privacidade LGPD para criar uma conta.'
       );
     }
+
+    const birthRaw = (input.birthDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthRaw)) {
+      throw new Error(
+        'Informe sua data de nascimento válida (AAAA-MM-DD) para verificação de maioridade (LGPD art. 14).'
+      );
+    }
+    const [bYear, bMonth, bDay] = birthRaw.split('-').map(Number);
+    const parsedBirth = new Date(Date.UTC(bYear, bMonth - 1, bDay));
+    if (
+      Number.isNaN(parsedBirth.getTime()) ||
+      parsedBirth.getUTCFullYear() !== bYear ||
+      parsedBirth.getUTCMonth() + 1 !== bMonth ||
+      parsedBirth.getUTCDate() !== bDay
+    ) {
+      throw new Error('Data de nascimento inválida.');
+    }
+    const nowUtc = new Date();
+    let age = nowUtc.getUTCFullYear() - bYear;
+    const monthDiff = nowUtc.getUTCMonth() + 1 - bMonth;
+    if (monthDiff < 0 || (monthDiff === 0 && nowUtc.getUTCDate() < bDay)) {
+      age -= 1;
+    }
+    if (age < 12) {
+      throw new Error(
+        'Cadastro bloqueado para menores de 12 anos (LGPD art. 14 §1º): o tratamento de dados pessoais de crianças exige consentimento específico e em destaque de ao menos um dos pais ou responsável legal, além de não ser elegível para conta autônoma na plataforma.'
+      );
+    }
+    if (age < 18) {
+      throw new Error(
+        'Cadastro permitido apenas para maiores de 18 anos completos (LGPD art. 14 / Código Civil).'
+      );
+    }
+    const ageVerified18Plus = true;
 
     await ensureSchemaAndSeed();
 
@@ -504,7 +496,7 @@ export class AuthService {
           cleanCity,
           cleanNeighborhood,
           input.birthDate || null,
-          Boolean(input.ageVerified18Plus),
+          ageVerified18Plus,
           termsVer,
           privacyVer,
           Boolean(input.marketingOptIn),
@@ -517,13 +509,16 @@ export class AuthService {
         .query(
           `INSERT INTO consent_logs (user_id, consent_type, granted, document_version, ip_address, user_agent)
            VALUES ($1, 'terms_and_privacy', true, $2, $3, $4),
-                  ($1, 'marketing', $5, $2, $3, $4)`,
+                  ($1, 'age_18_plus', true, $2, $3, $4),
+                  ($1, 'marketing', $5, $2, $3, $4),
+                  ($1, 'ai_training_opt_out', $6, $2, $3, $4)`,
           [
             createdUser.id,
             `${termsVer}|${privacyVer}`,
             input.ipAddress || '127.0.0.1',
             input.userAgent || null,
             Boolean(input.marketingOptIn),
+            input.aiTrainingOptOut ?? true,
           ]
         )
         .catch(() => null);

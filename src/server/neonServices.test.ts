@@ -39,6 +39,7 @@ test.before(async () => {
         password,
         fullName: 'Neon Admin Verifier',
         role: 'cliente',
+        birthDate: '1990-05-15',
         lgpdConsent: true,
       }),
     });

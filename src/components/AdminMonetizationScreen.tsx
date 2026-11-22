@@ -91,13 +91,15 @@ export const AdminMonetizationScreen: React.FC<{ authToken?: string }> = ({
   });
   const [planSaveLoading, setPlanSaveLoading] = useState(false);
   const [planSaveFeedback, setPlanSaveFeedback] = useState('');
+  const [contentReports, setContentReports] = useState<any[]>([]);
+  const [reportsFeedback, setReportsFeedback] = useState('');
 
   const loadAdminDashboard = useCallback(async () => {
     setLoading(true);
     try {
       const headers = buildAdminHeaders(false);
       const reqInit: RequestInit = { credentials: 'include', headers };
-      const [mRes, sRes, aRes, pRes, provRes, healthRes, promoRes, taxRes, specsRes, refRes] = await Promise.all([
+      const [mRes, sRes, aRes, pRes, provRes, healthRes, promoRes, taxRes, specsRes, refRes, repRes] = await Promise.all([
         fetch('/api/admin/metrics', reqInit).then((r) => r.json()),
         fetch('/api/admin/subscriptions', reqInit).then((r) => r.json()),
         fetch('/api/admin/ads', reqInit).then((r) => r.json()),
@@ -120,6 +122,9 @@ export const AdminMonetizationScreen: React.FC<{ authToken?: string }> = ({
         fetch('/api/admin/referrals', reqInit)
           .then((r) => (r.ok ? r.json() : { ok: false }))
           .catch(() => ({ ok: false })),
+        fetch('/api/admin/reports', reqInit)
+          .then((r) => (r.ok ? r.json() : { ok: false }))
+          .catch(() => ({ ok: false })),
       ]);
       if (mRes.ok) setMetrics(mRes.metrics);
       if (sRes.ok) setAdminData(sRes);
@@ -127,6 +132,7 @@ export const AdminMonetizationScreen: React.FC<{ authToken?: string }> = ({
       if (healthRes?.ok) setSystemHealth(healthRes);
       if (promoRes?.ok) setPromoAnalytics(promoRes);
       if (refRes?.ok) setReferralAnalytics(refRes);
+      if (repRes?.ok) setContentReports(repRes.reports || []);
       if (taxRes?.ok) {
         setTaxonomyQueue({
           suggestions: taxRes.suggestions || [],
@@ -1687,6 +1693,86 @@ export const AdminMonetizationScreen: React.FC<{ authToken?: string }> = ({
           <p className="text-xs text-brand-ink/65">
             Ainda não há indicações registradas no programa. Assim que usuários cadastrados compartilharem seus códigos, o ranking e métricas aparecerão aqui.
           </p>
+        )}
+      </section>
+
+      {/* 8. MODERAÇÃO DE CONTEÚDO E DIREITOS AUTORAIS (UGC REPORTS) */}
+      <section className="bg-white rounded-3xl p-6 border border-brand-primary/10 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-semibold text-brand-accent-strong">
+              Conformidade UGC & Direitos Autorais
+            </p>
+            <h2 className="font-display font-bold text-lg text-brand-ink">
+              Fila de Denúncias de Conteúdo ({contentReports.length})
+            </h2>
+          </div>
+          {reportsFeedback && (
+            <span className="text-xs font-semibold text-emerald-700">
+              {reportsFeedback}
+            </span>
+          )}
+        </div>
+
+        {contentReports.length === 0 ? (
+          <p className="text-xs text-brand-ink/70">
+            Nenhuma denúncia registrada até o momento.
+          </p>
+        ) : (
+          <div className="space-y-3 text-xs">
+            {contentReports.map((rep) => (
+              <div
+                key={rep.id}
+                className="p-4 rounded-2xl bg-brand-background/70 border border-brand-primary/10 space-y-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-bold text-brand-ink">
+                    [{rep.category}] Alvo: {rep.target_type} ({rep.target_id})
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-white border border-brand-primary/15 font-mono uppercase text-[10px]">
+                    {rep.status}
+                  </span>
+                </div>
+                <p className="text-brand-ink/80">{rep.description}</p>
+                {rep.status === 'pendente' && (
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {(['em_analise', 'resolvida', 'arquivada'] as const).map(
+                      (nextStatus) => (
+                        <button
+                          key={nextStatus}
+                          type="button"
+                          onClick={async () => {
+                            setReportsFeedback('');
+                            const res = await fetch(
+                              `/api/admin/reports/${rep.id}`,
+                              {
+                                method: 'PATCH',
+                                credentials: 'include',
+                                headers: buildAdminHeaders(true),
+                                body: JSON.stringify({
+                                  status: nextStatus,
+                                  resolutionNotes: `Tratado via Painel Admin (${nextStatus}).`,
+                                }),
+                              }
+                            );
+                            if (res.ok) {
+                              setReportsFeedback(
+                                `Denúncia ${rep.id.slice(0, 8)} marcada como ${nextStatus}.`
+                              );
+                              loadAdminDashboard();
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-brand-primary text-white font-semibold cursor-pointer"
+                        >
+                          Marcar {nextStatus}
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         )}
       </section>
     </div>

@@ -98,7 +98,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       value={problemInput}
                       onChange={(e) => setProblemInput(e.target.value)}
                       placeholder="Ex.: Disjuntor desarmando, vazamento..."
-                      className="w-full bg-transparent text-sm font-medium text-brand-ink placeholder:text-brand-ink/45 focus:outline-none truncate"
+                      className="w-full bg-transparent text-sm font-medium text-brand-ink placeholder:text-brand-ink/70 focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-lg truncate"
                     />
                   </div>
                 </div>
@@ -108,7 +108,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   <div className="w-full min-w-0">
                     <label
                       htmlFor="home-search-where"
-                      className="block text-[11px] font-medium text-brand-ink/65"
+                      className="block text-[11px] font-medium text-brand-ink/75"
                     >
                       Onde?
                     </label>
@@ -118,7 +118,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       value={locationInput}
                       onChange={(e) => setLocationInput(e.target.value)}
                       placeholder="Bairro ou cidade"
-                      className="w-full bg-transparent text-sm font-medium text-brand-ink placeholder:text-brand-ink/45 focus:outline-none truncate"
+                      className="w-full bg-transparent text-sm font-medium text-brand-ink placeholder:text-brand-ink/70 focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-lg truncate"
                     />
                   </div>
                 </div>

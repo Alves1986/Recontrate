@@ -56,6 +56,7 @@ async function createAdminToken() {
         phone: '(11) 99123-0000',
         neighborhood: 'Pinheiros',
         role: 'cliente',
+        birthDate: '1990-05-15',
         lgpdConsent: true,
       }),
     });

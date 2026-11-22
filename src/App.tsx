@@ -3,10 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import {
   CategoryName,
   ClientRegistration,
+  PlanSlug,
   PlanTier,
   ProviderOpportunity,
   ProviderProfile,
@@ -23,39 +24,9 @@ import {
 } from './data/seedData';
 import { applyNewReviewToProvider } from './utils/marketplaceRules';
 import { BrandLogo } from './components/BrandLogo';
-import {
-  CompatibleProvidersListScreen,
-  CreateServiceRequestScreen,
-} from './components/ServiceRequestAndListScreens';
-import {
-  ProviderProfileScreen,
-  RepeatRequestScreen,
-} from './components/ProviderProfileAndRepeatScreens';
-import {
-  PostServiceReviewScreen,
-  SubstituteReferralScreen,
-} from './components/SubstituteAndReviewScreens';
-import { ProviderDashboardScreen } from './components/ProviderDashboardScreen';
-import { AdminMonetizationScreen } from './components/AdminMonetizationScreen';
-import {
-  ForProvidersPage,
-  PublicLandingPage,
-  TermsAndPrivacyPage,
-} from './components/PublicPages';
-import {
-  PlansPricingPage,
-  planTierToSlug,
-} from './components/PlansPricingPage';
-import { ReferralDashboardPanel } from './components/ReferralDashboardPanel';
-import { DemoShowcasePage } from './components/DemoShowcasePage';
-import {
-  ForgotAndResetPasswordPage,
-  LoginPage,
-  OnboardingPage,
-  PadrinhoDashboardPage,
-  SignupPage,
-  VerifyEmailPage,
-} from './components/AuthPages';
+import { CookieConsentBanner } from './components/CookieConsentBanner';
+import { ReportContentModal } from './components/ReportContentModal';
+import { getLegalIdentity } from './config/legalIdentity';
 import type {
   AuthenticatedUserSession,
   UserRole,
@@ -65,6 +36,192 @@ import {
   detectStandaloneDisplayMode,
   shouldRenderMobileLoginOnly,
 } from './utils/pwaMobileMode';
+
+const CompatibleProvidersListScreen = lazy(() =>
+  import('./components/ServiceRequestAndListScreens').then((m) => ({
+    default: m.CompatibleProvidersListScreen,
+  }))
+);
+const CreateServiceRequestScreen = lazy(() =>
+  import('./components/ServiceRequestAndListScreens').then((m) => ({
+    default: m.CreateServiceRequestScreen,
+  }))
+);
+const ProviderProfileScreen = lazy(() =>
+  import('./components/ProviderProfileAndRepeatScreens').then((m) => ({
+    default: m.ProviderProfileScreen,
+  }))
+);
+const RepeatRequestScreen = lazy(() =>
+  import('./components/ProviderProfileAndRepeatScreens').then((m) => ({
+    default: m.RepeatRequestScreen,
+  }))
+);
+const PostServiceReviewScreen = lazy(() =>
+  import('./components/SubstituteAndReviewScreens').then((m) => ({
+    default: m.PostServiceReviewScreen,
+  }))
+);
+const SubstituteReferralScreen = lazy(() =>
+  import('./components/SubstituteAndReviewScreens').then((m) => ({
+    default: m.SubstituteReferralScreen,
+  }))
+);
+const ProviderDashboardScreen = lazy(() =>
+  import('./components/ProviderDashboardScreen').then((m) => ({
+    default: m.ProviderDashboardScreen,
+  }))
+);
+const AdminMonetizationScreen = lazy(() =>
+  import('./components/AdminMonetizationScreen').then((m) => ({
+    default: m.AdminMonetizationScreen,
+  }))
+);
+const ForProvidersPage = lazy(() =>
+  import('./components/PublicPages').then((m) => ({
+    default: m.ForProvidersPage,
+  }))
+);
+const PublicLandingPage = lazy(() =>
+  import('./components/PublicPages').then((m) => ({
+    default: m.PublicLandingPage,
+  }))
+);
+const TermsAndPrivacyPage = lazy(() =>
+  import('./components/PublicPages').then((m) => ({
+    default: m.TermsAndPrivacyPage,
+  }))
+);
+const PlansPricingPage = lazy(() =>
+  import('./components/PlansPricingPage').then((m) => ({
+    default: m.PlansPricingPage,
+  }))
+);
+const ReferralDashboardPanel = lazy(() =>
+  import('./components/ReferralDashboardPanel').then((m) => ({
+    default: m.ReferralDashboardPanel,
+  }))
+);
+const DemoShowcasePage = lazy(() =>
+  import('./components/DemoShowcasePage').then((m) => ({
+    default: m.DemoShowcasePage,
+  }))
+);
+const ForgotAndResetPasswordPage = lazy(() =>
+  import('./components/AuthPages').then((m) => ({
+    default: m.ForgotAndResetPasswordPage,
+  }))
+);
+const LoginPage = lazy(() =>
+  import('./components/AuthPages').then((m) => ({ default: m.LoginPage }))
+);
+const OnboardingPage = lazy(() =>
+  import('./components/AuthPages').then((m) => ({
+    default: m.OnboardingPage,
+  }))
+);
+const PadrinhoDashboardPage = lazy(() =>
+  import('./components/AuthPages').then((m) => ({
+    default: m.PadrinhoDashboardPage,
+  }))
+);
+const SignupPage = lazy(() =>
+  import('./components/AuthPages').then((m) => ({ default: m.SignupPage }))
+);
+const VerifyEmailPage = lazy(() =>
+  import('./components/AuthPages').then((m) => ({
+    default: m.VerifyEmailPage,
+  }))
+);
+const PrivacyCenterPage = lazy(() =>
+  import('./components/PrivacyCenterPage').then((m) => ({
+    default: m.PrivacyCenterPage,
+  }))
+);
+
+function planTierToSlug(tier?: PlanTier): PlanSlug {
+  switch (tier) {
+    case 'Essencial':
+      return 'essencial';
+    case 'Profissional':
+      return 'profissional';
+    case 'Premium':
+      return 'premium';
+    default:
+      return 'gratuito';
+  }
+}
+
+const EmailUnsubscribeConfirmView: React.FC<{
+  onNavigateUrl: (path: string) => void;
+}> = ({ onNavigateUrl }) => {
+  const [status, setStatus] = useState<'loading' | 'success' | 'error'>(
+    'loading'
+  );
+  const [message, setMessage] = useState(
+    'Processando seu pedido de descadastro...'
+  );
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get('email') || '';
+    const sig = params.get('sig') || '';
+    if (!email || !sig) {
+      setStatus('error');
+      setMessage('Link de descadastro incompleto ou inválido.');
+      return;
+    }
+    fetch('/api/public/email/unsubscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, sig }),
+    })
+      .then((r) => r.json().catch(() => null))
+      .then((body) => {
+        if (body?.ok) {
+          setStatus('success');
+          setMessage(
+            body.message ||
+              `O e-mail ${email} foi removido das comunicações promocionais.`
+          );
+        } else {
+          setStatus('error');
+          setMessage(body?.error || 'Não foi possível validar o link.');
+        }
+      })
+      .catch(() => {
+        setStatus('error');
+        setMessage('Erro de conexão ao processar o descadastro.');
+      });
+  }, []);
+
+  return (
+    <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 text-center space-y-4 my-10 text-xs">
+      <h1 className="font-display font-bold text-xl text-brand-ink">
+        Descadastro de Comunicações por E-mail
+      </h1>
+      <p
+        role="status"
+        className={`p-4 rounded-xl font-medium ${
+          status === 'error'
+            ? 'bg-red-50 text-red-800 border border-red-200'
+            : status === 'success'
+              ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+              : 'bg-brand-background text-brand-ink'
+        }`}
+      >
+        {message}
+      </p>
+      <button
+        type="button"
+        onClick={() => onNavigateUrl('/')}
+        className="min-h-[42px] px-5 py-2.5 rounded-xl bg-brand-primary text-white font-display font-semibold cursor-pointer"
+      >
+        Voltar ao início
+      </button>
+    </div>
+  );
+};
 
 export function isProtectedRoutePath(pathname: string): boolean {
   return (
@@ -84,6 +241,9 @@ export function canUserAccessRoute(
   }
   if (!user) {
     return { allowed: false, redirectTo: '/entrar' };
+  }
+  if (pathname === '/app/privacidade') {
+    return { allowed: true };
   }
   if (!user.onboardingCompleted && pathname !== '/app/onboarding') {
     return { allowed: false, redirectTo: '/app/onboarding' };
@@ -125,6 +285,14 @@ export default function App() {
   const [authToken, setAuthToken] = useState<string>('');
   const [authChecked, setAuthChecked] = useState<boolean>(false);
   const [demoMode, setDemoMode] = useState<boolean>(false);
+  const [cookieBannerSignal, setCookieBannerSignal] = useState<number>(0);
+  const [reportModalTarget, setReportModalTarget] = useState<{
+    open: boolean;
+    targetType: 'provider_profile' | 'review' | 'other';
+    targetId: string;
+    label?: string;
+  }>({ open: false, targetType: 'other', targetId: 'geral' });
+  const legalIdentity = getLegalIdentity();
   const [viewportWidth, setViewportWidth] = useState<number>(() =>
     typeof window !== 'undefined' ? window.innerWidth : 1024
   );
@@ -736,6 +904,12 @@ export default function App() {
           Ambiente de demonstração · Dados fictícios · Sem cobrança, e-mail ou WhatsApp reais
         </div>
       )}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:rounded-xl focus:bg-brand-primary focus:text-white focus:font-semibold focus:shadow-lg"
+      >
+        Pular para o conteúdo principal
+      </a>
       {/* HEADER PÚBLICO / AUTENTICADO */}
       {showMobileLoginHome ? (
         <header className="bg-white/95 backdrop-blur border-b border-brand-primary/10">
@@ -759,7 +933,7 @@ export default function App() {
                 Instalar App
               </button>
             ) : (
-              <span className="text-[11px] font-mono uppercase tracking-wider text-brand-ink/55">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-brand-ink/70">
                 App Mobile
               </span>
             )}
@@ -771,7 +945,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => navigateUrl('/')}
-              className="text-left focus:outline-none cursor-pointer shrink-0"
+              className="text-left focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-xl cursor-pointer shrink-0"
               aria-label="Início do Recontrate"
             >
               <BrandLogo variant="dark" size="sm" decorative />
@@ -859,7 +1033,7 @@ export default function App() {
                 </>
               ) : (
 
-                <div className="flex items-center gap-2 text-xs">
+                <div className="flex flex-wrap items-center gap-2 text-xs">
                   <button
                     type="button"
                     onClick={() => navigateUrl(authUser.redirectTo)}
@@ -877,6 +1051,17 @@ export default function App() {
                     }`}
                   >
                     Indicar (+15 dias)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigateUrl('/app/privacidade')}
+                    className={`px-3 py-2 rounded-xl font-semibold cursor-pointer ${
+                      pathname === '/app/privacidade'
+                        ? 'bg-brand-primary text-white'
+                        : 'bg-brand-background text-brand-ink hover:bg-brand-surface-hover'
+                    }`}
+                  >
+                    Privacidade LGPD
                   </button>
                   <button
                     type="button"
@@ -907,7 +1092,18 @@ export default function App() {
       )}
 
       {/* MAIN ROUTER VIEWPORT */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
+      <main
+        id="main-content"
+        tabIndex={-1}
+        className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8"
+      >
+        <Suspense
+          fallback={
+            <div className="max-w-lg mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 text-center text-xs text-brand-ink/75 my-8">
+              Carregando módulo...
+            </div>
+          }
+        >
         {/* ÁREA PÚBLICA */}
         {pathname === '/' &&
           (showMobileLoginHome ? (
@@ -1009,6 +1205,9 @@ export default function App() {
               allProviders={providers}
               onSelectProvider={(id) => navigateUrl(`/profissionais/${id}`)}
               onNavigate={handleLegacyScreenNavigate}
+              onOpenReportModal={(target) =>
+                setReportModalTarget({ open: true, ...target })
+              }
             />
           ) : (
             <div className="max-w-xl mx-auto bg-white rounded-3xl p-8 border border-brand-primary/10 text-center space-y-3 my-8">
@@ -1058,12 +1257,36 @@ export default function App() {
           />
         )}
 
-        {pathname === '/termos' && <TermsAndPrivacyPage mode="termos" />}
+        {pathname === '/termos' && (
+          <TermsAndPrivacyPage mode="termos" onNavigateUrl={navigateUrl} />
+        )}
         {pathname === '/privacidade' && (
-          <TermsAndPrivacyPage mode="privacidade" />
+          <TermsAndPrivacyPage
+            mode="privacidade"
+            onNavigateUrl={navigateUrl}
+          />
+        )}
+        {pathname === '/descadastrar-email' && (
+          <EmailUnsubscribeConfirmView onNavigateUrl={navigateUrl} />
         )}
 
         {/* ÁREA AUTENTICADA PROTEGIDA */}
+        {authUser && pathname === '/app/privacidade' && (
+          <PrivacyCenterPage
+            authToken={authToken}
+            userEmail={authUser.email}
+            onOpenCookieBanner={() => setCookieBannerSignal((s) => s + 1)}
+            onAccountDeleted={() => {
+              setAuthUser(null);
+              setAuthToken('');
+              setOwnProviderProfile(null);
+              setServiceRequests([]);
+              setOpportunities([]);
+              navigateUrl('/');
+            }}
+            onNavigateUrl={navigateUrl}
+          />
+        )}
         {authUser && pathname === '/app/onboarding' && (
           <OnboardingPage
             user={authUser}
@@ -1442,15 +1665,16 @@ export default function App() {
         {authUser && pathname.startsWith('/admin') && (
           <AdminMonetizationScreen authToken={authToken} />
         )}
+        </Suspense>
       </main>
 
-      {/* FOOTER COM TERMOS, PRIVACIDADE, CONTATO E REDES SOCIAIS */}
+      {/* FOOTER COM TERMOS, PRIVACIDADE, COOKIES ANPD, IDENTIDADE DO CONTROLADOR E DENÚNCIA UGC */}
       {showMobileLoginHome ? (
-        <footer className="py-5 px-4 text-center text-xs text-brand-ink/60 space-y-2">
+        <footer className="py-5 px-4 text-center text-xs text-brand-ink/75 space-y-2">
           <div className="flex justify-center">
             <BrandLogo variant="dark" size="sm" decorative />
           </div>
-          <div className="flex items-center justify-center gap-4">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <button
               type="button"
               onClick={() => navigateUrl('/termos')}
@@ -1466,11 +1690,34 @@ export default function App() {
             >
               Privacidade LGPD
             </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() => setCookieBannerSignal((s) => s + 1)}
+              className="hover:text-brand-ink cursor-pointer"
+            >
+              Cookies
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() =>
+                setReportModalTarget({
+                  open: true,
+                  targetType: 'other',
+                  targetId: pathname || '/',
+                  label: 'Plataforma / Conteúdo Geral',
+                })
+              }
+              className="hover:text-brand-ink cursor-pointer"
+            >
+              Denunciar
+            </button>
           </div>
         </footer>
       ) : (
         <footer className="bg-white border-t border-brand-primary/10 mt-12">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4 text-xs text-brand-ink/70">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-4 text-xs text-brand-ink/75">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex flex-wrap items-center gap-3">
                 <BrandLogo variant="dark" size="sm" />
@@ -1513,23 +1760,74 @@ export default function App() {
                 >
                   Privacidade LGPD
                 </button>
+                {authUser && (
+                  <button
+                    type="button"
+                    onClick={() => navigateUrl('/app/privacidade')}
+                    className="hover:text-brand-ink cursor-pointer font-semibold text-brand-link"
+                  >
+                    Meus Dados LGPD
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setCookieBannerSignal((s) => s + 1)}
+                  className="hover:text-brand-ink cursor-pointer"
+                >
+                  Preferências de Cookies
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReportModalTarget({
+                      open: true,
+                      targetType: 'other',
+                      targetId: pathname || '/',
+                      label: 'Conteúdo ou Direitos Autorais',
+                    })
+                  }
+                  className="hover:text-brand-ink cursor-pointer"
+                >
+                  Denunciar conteúdo / Direitos autorais
+                </button>
               </div>
             </div>
-            <div className="pt-4 border-t border-brand-primary/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px] text-brand-ink/60">
-              <p>
-                Recontrate · Plataforma de indicação e recontratação de profissionais — você não paga comissão à plataforma; todo valor do serviço é negociado diretamente com o cliente, fora da plataforma.
-              </p>
-              <p>
-                Contato do projeto:{' '}
-                <span className="font-mono text-brand-ink/75">
-                  {import.meta.env.VITE_PROJECT_CONTACT_EMAIL ||
-                    'Canal oficial em configuração (VITE_PROJECT_CONTACT_EMAIL)'}
-                </span>
+            <div className="pt-4 border-t border-brand-primary/10 space-y-1.5 text-[11px] text-brand-ink/75">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
+                <p>
+                  Recontrate · Plataforma de indicação e recontratação de profissionais — você não paga comissão à plataforma; todo valor do serviço é negociado diretamente com o cliente, fora da plataforma.
+                </p>
+                <p>
+                  SAC: <span className="font-mono">{legalIdentity.supportEmail}</span> · DPO (LGPD):{' '}
+                  <span className="font-mono">{legalIdentity.dpoEmail}</span>
+                </p>
+              </div>
+              <p className="text-brand-ink/70">
+                Controlador: {legalIdentity.companyName} · CNPJ:{' '}
+                <span className="font-mono">{legalIdentity.cnpj}</span> · Endereço: {legalIdentity.address}
               </p>
             </div>
           </div>
         </footer>
       )}
+
+      <CookieConsentBanner
+        onNavigateUrl={navigateUrl}
+        authToken={authToken}
+        isAuthenticated={Boolean(authUser)}
+        externalOpenSignal={cookieBannerSignal}
+      />
+
+      <ReportContentModal
+        open={reportModalTarget.open}
+        onClose={() =>
+          setReportModalTarget((prev) => ({ ...prev, open: false }))
+        }
+        defaultTargetType={reportModalTarget.targetType}
+        defaultTargetId={reportModalTarget.targetId}
+        targetLabel={reportModalTarget.label}
+        authToken={authToken}
+      />
     </div>
   );
 }

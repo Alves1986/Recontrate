@@ -47,6 +47,38 @@ export default defineConfig(({ mode }) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      chunkSizeWarningLimit: 500,
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              {
+                name: 'vendor-react',
+                test: /node_modules[\\/]react/,
+                priority: 30,
+              },
+              {
+                name: 'vendor-icons',
+                test: /node_modules[\\/]lucide-react/,
+                priority: 20,
+              },
+              {
+                name: 'vendor-motion',
+                test: /node_modules[\\/](motion|framer-motion)/,
+                priority: 15,
+              },
+              {
+                name: 'vendor',
+                test: /node_modules/,
+                maxSize: 380000,
+                priority: 10,
+              },
+            ],
+          },
+        },
+      },
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.

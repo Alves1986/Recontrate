@@ -603,14 +603,26 @@ export class SubscriptionLifecycleService {
   }
 
   /**
-   * Cancels subscription at provider's request: sets status='cancelada',
-   * keeps access to paid plan features until 'fim' (end of paid period).
+   * Cancels subscription at provider's request:
+   * - Standard cancel: status='cancelada', keeps paid plan features until 'fim'.
+   * - CDC art. 49 (7-day withdrawal right): if exerciseWithdrawalRight=true within 7 days of sub.inicio,
+   *   refunds paid invoice(s) in full, marks invoice 'estornada', returns to 'gratuito' immediately, and logs audit.
    */
   async cancelSubscription(
     subscriptionId: string,
     reason = 'Solicitação do prestador',
-    now = new Date()
-  ): Promise<SubscriptionRow> {
+    now = new Date(),
+    options?: { exerciseWithdrawalRight?: boolean }
+  ): Promise<
+    SubscriptionRow & {
+      withdrawalRefund?: {
+        refunded: boolean;
+        amountCents: number;
+        invoiceId: string;
+        refundedAt: string;
+      } | null;
+    }
+  > {
     const [sub] = await db
       .select()
       .from(subscriptions)
@@ -619,8 +631,106 @@ export class SubscriptionLifecycleService {
       throw new Error(`Assinatura não encontrada: ${subscriptionId}`);
     }
 
+    const exerciseWithdrawal = Boolean(options?.exerciseWithdrawalRight);
+    const elapsedMs = now.getTime() - new Date(sub.inicio).getTime();
+    const withinWithdrawalWindow = elapsedMs <= 7 * 24 * 60 * 60 * 1000;
+
+    if (exerciseWithdrawal && !withinWithdrawalWindow) {
+      throw new Error(
+        'O prazo legal de 7 dias corridos para arrependimento com estorno integral (CDC art. 49) encerrou para esta assinatura. Você ainda pode cancelar sem multa mantendo acesso até o fim do período pago.'
+      );
+    }
+
     if (sub.gatewaySubscriptionId) {
       await this.billing.cancelSubscription(sub.gatewaySubscriptionId, reason);
+    }
+
+    let withdrawalRefund: {
+      refunded: boolean;
+      amountCents: number;
+      invoiceId: string;
+      refundedAt: string;
+    } | null = null;
+
+    if (exerciseWithdrawal) {
+      const { rows: paidInvoices } = await pool.query<{
+        id: string;
+        gateway_invoice_id: string | null;
+        valor_centavos: number;
+      }>(
+        `SELECT id, gateway_invoice_id, valor_centavos
+         FROM invoices
+         WHERE subscription_id = $1
+           AND status = 'paga'
+           AND valor_centavos > 0
+         ORDER BY pago_em DESC NULLS LAST, criado_em DESC
+         LIMIT 1`,
+        [subscriptionId]
+      );
+
+      if (paidInvoices.length > 0) {
+        const inv = paidInvoices[0];
+        const refundResult = await this.billing.refundInvoice(
+          inv.gateway_invoice_id || inv.id,
+          inv.valor_centavos
+        );
+        await pool.query(
+          `UPDATE invoices
+           SET status = 'estornada', atualizado_em = $2
+           WHERE id = $1`,
+          [inv.id, now]
+        );
+        withdrawalRefund = {
+          refunded: true,
+          amountCents: refundResult.refundedAmountCents || inv.valor_centavos,
+          invoiceId: inv.id,
+          refundedAt: refundResult.refundedAt,
+        };
+      } else {
+        withdrawalRefund = {
+          refunded: true,
+          amountCents: 0,
+          invoiceId: '',
+          refundedAt: now.toISOString(),
+        };
+      }
+
+      const freePlan = await this.getPlanBySlug('gratuito');
+      const [updated] = await db
+        .update(subscriptions)
+        .set({
+          status: 'expirada',
+          planId: freePlan.id,
+          scheduledPlanId: null,
+          canceladaEm: now,
+          fim: now,
+          motivoCancelamento: `${reason} (CDC art. 49 — Direito de arrependimento em 7 dias)`,
+          proximaCobranca: null,
+          atualizadoEm: now,
+        })
+        .where(eq(subscriptions.id, subscriptionId))
+        .returning();
+
+      await db
+        .update(providerProfiles)
+        .set({ planSlug: 'gratuito' })
+        .where(eq(providerProfiles.id, sub.providerProfileId));
+
+      await forfeitLaunchOfferOnCancel(subscriptionId, now);
+
+      await this.logEvent({
+        subscriptionId: sub.id,
+        evento: 'subscription_canceled',
+        dadosAnteriores: { status: sub.status, planId: sub.planId },
+        dadosNovos: {
+          status: 'expirada',
+          cdcArt49WithdrawalRight: true,
+          withdrawalRefund,
+          motivo: reason,
+        },
+      });
+
+      return { ...updated, withdrawalRefund };
     }
 
     const [updated] = await db
@@ -648,7 +758,7 @@ export class SubscriptionLifecycleService {
       },
     });
 
-    return updated;
+    return { ...updated, withdrawalRefund: null };
   }
 
   /**

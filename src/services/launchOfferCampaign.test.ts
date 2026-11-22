@@ -68,6 +68,7 @@ test.before(async () => {
         password,
         fullName: 'Admin Launch Offer Test',
         role: 'cliente',
+        birthDate: '1990-05-15',
         lgpdConsent: true,
       }),
     });

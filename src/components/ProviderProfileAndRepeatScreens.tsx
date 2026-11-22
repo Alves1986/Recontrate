@@ -28,6 +28,11 @@ interface ProviderProfileScreenProps {
   allProviders: ProviderProfile[];
   onSelectProvider: (id: string) => void;
   onNavigate: (screen: ScreenId, providerId?: string) => void;
+  onOpenReportModal?: (target: {
+    targetType: 'provider_profile' | 'review' | 'other';
+    targetId: string;
+    label: string;
+  }) => void;
 }
 
 export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
@@ -35,6 +40,7 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
   allProviders,
   onSelectProvider,
   onNavigate,
+  onOpenReportModal,
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
@@ -190,6 +196,21 @@ export const ProviderProfileScreen: React.FC<ProviderProfileScreenProps> = ({
                 {copyFailed ? 'Não foi possível copiar o link' : copiedLink ? 'Link copiado' : 'Copiar link do perfil'}
               </span>
             </button>
+            {onOpenReportModal && (
+              <button
+                type="button"
+                onClick={() =>
+                  onOpenReportModal({
+                    targetType: 'provider_profile',
+                    targetId: provider.id,
+                    label: provider.name,
+                  })
+                }
+                className="w-full min-h-[38px] px-3 py-1.5 rounded-lg border border-brand-primary/15 hover:bg-red-50 text-brand-ink/75 hover:text-red-800 text-[11px] font-medium transition-colors cursor-pointer"
+              >
+                Denunciar conteúdo / Direitos autorais
+              </button>
+            )}
           </div>
         </div>
       </section>

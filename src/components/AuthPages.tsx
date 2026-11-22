@@ -15,6 +15,10 @@ import type { AuthenticatedUserSession } from '../services/authService';
 import { INITIAL_TAXONOMY_CATEGORIES } from '../data/taxonomySeed';
 import { ProviderSpecialtiesManager } from './ProviderSpecialtiesManager';
 import { BrandLogo } from './BrandLogo';
+import {
+  CURRENT_PRIVACY_VERSION,
+  CURRENT_TERMS_VERSION,
+} from '../config/legalIdentity';
 
 async function safeParseJson<T = any>(res: Response): Promise<T | null> {
   try {
@@ -198,7 +202,7 @@ export const LoginPage: React.FC<{
             E-mail
           </label>
           <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-brand-primary/15">
-            <Mail className="w-4 h-4 text-brand-ink/50" />
+            <Mail className="w-4 h-4 text-brand-ink/70" aria-hidden="true" />
             <input
               id="login-email"
               type="email"
@@ -206,7 +210,7 @@ export const LoginPage: React.FC<{
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="seu@email.com.br"
-              className="w-full focus:outline-none text-sm"
+              className="w-full focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-md text-sm"
             />
           </div>
         </div>
@@ -228,7 +232,7 @@ export const LoginPage: React.FC<{
             </button>
           </div>
           <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-brand-primary/15">
-            <Lock className="w-4 h-4 text-brand-ink/50" />
+            <Lock className="w-4 h-4 text-brand-ink/70" aria-hidden="true" />
             <input
               id="login-password"
               type="password"
@@ -236,7 +240,7 @@ export const LoginPage: React.FC<{
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full focus:outline-none text-sm"
+              className="w-full focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-md text-sm"
             />
           </div>
         </div>
@@ -346,6 +350,7 @@ export const SignupPage: React.FC<{
   }, [referralCode]);
   const [alsoEnableSecondRole, setAlsoEnableSecondRole] = useState(false);
   const [fullName, setFullName] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
@@ -362,6 +367,8 @@ export const SignupPage: React.FC<{
   const [specialtySearch, setSpecialtySearch] = useState('');
   const [loadingTaxonomy, setLoadingTaxonomy] = useState(false);
   const [lgpdConsent, setLgpdConsent] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
+  const [aiTrainingOptOut, setAiTrainingOptOut] = useState(true);
   const [websiteHoneypot, setWebsiteHoneypot] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -452,10 +459,39 @@ export const SignupPage: React.FC<{
     }
   };
 
+  const computeAgeYears = (isoDate: string): number | null => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return null;
+    const [y, m, d] = isoDate.split('-').map(Number);
+    const now = new Date();
+    let age = now.getUTCFullYear() - y;
+    const diffMonth = now.getUTCMonth() + 1 - m;
+    if (diffMonth < 0 || (diffMonth === 0 && now.getUTCDate() < d)) {
+      age -= 1;
+    }
+    return age;
+  };
+
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     if (websiteHoneypot.trim() !== '') {
+      return;
+    }
+    const age = computeAgeYears(birthDate);
+    if (age === null) {
+      setError('Informe sua data de nascimento completa para continuar.');
+      return;
+    }
+    if (age < 12) {
+      setError(
+        'Cadastro bloqueado para menores de 12 anos (LGPD art. 14 §1º): o tratamento de dados pessoais de crianças exige consentimento específico e em destaque de ao menos um dos pais ou responsável legal e não permite abertura de conta autônoma.'
+      );
+      return;
+    }
+    if (age < 18) {
+      setError(
+        'Cadastro permitido apenas para maiores de 18 anos completos (LGPD art. 14 / Código Civil).'
+      );
       return;
     }
     if (!lgpdConsent) {
@@ -497,6 +533,7 @@ export const SignupPage: React.FC<{
           role,
           alsoEnableSecondRole,
           fullName,
+          birthDate,
           email,
           password,
           phone,
@@ -516,6 +553,10 @@ export const SignupPage: React.FC<{
             ? referralCode.trim().toUpperCase()
             : undefined,
           lgpdConsent,
+          termsVersion: CURRENT_TERMS_VERSION,
+          privacyVersion: CURRENT_PRIVACY_VERSION,
+          marketingOptIn,
+          aiTrainingOptOut,
         }),
       }).catch(() => null);
       const body = res ? await safeParseJson(res) : null;
@@ -653,12 +694,16 @@ export const SignupPage: React.FC<{
       )}
 
       <form onSubmit={handleSignup} className="space-y-4 text-xs">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="font-semibold text-brand-ink">
-              Nome completo
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="space-y-1 sm:col-span-1">
+            <label
+              htmlFor="signup-fullname"
+              className="font-semibold text-brand-ink"
+            >
+              Nome completo *
             </label>
             <input
+              id="signup-fullname"
               type="text"
               required
               value={fullName}
@@ -668,11 +713,32 @@ export const SignupPage: React.FC<{
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="font-semibold text-brand-ink">
-              WhatsApp / Telefone
+          <div className="space-y-1 sm:col-span-1">
+            <label
+              htmlFor="signup-birthdate"
+              className="font-semibold text-brand-ink"
+            >
+              Data de nascimento (+18) *
             </label>
             <input
+              id="signup-birthdate"
+              type="date"
+              required
+              value={birthDate}
+              onChange={(e) => setBirthDate(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-brand-primary/15 text-sm"
+            />
+          </div>
+
+          <div className="space-y-1 sm:col-span-1">
+            <label
+              htmlFor="signup-phone"
+              className="font-semibold text-brand-ink"
+            >
+              WhatsApp / Telefone *
+            </label>
+            <input
+              id="signup-phone"
               type="text"
               required
               value={phone}
@@ -809,7 +875,8 @@ export const SignupPage: React.FC<{
                     value={specialtySearch}
                     onChange={(e) => setSpecialtySearch(e.target.value)}
                     placeholder="Ex.: chuveiro, porcelanato, split..."
-                    className="w-full focus:outline-none text-xs"
+                    aria-label="Filtrar especialidade oficial"
+                    className="w-full focus-visible:outline-2 focus-visible:outline-brand-accent-strong focus-visible:outline-offset-2 rounded-md text-xs"
                   />
                 </div>
               </div>
@@ -918,33 +985,59 @@ export const SignupPage: React.FC<{
           />
         </div>
 
-        <label className="flex items-start gap-2.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={lgpdConsent}
-            onChange={(e) => setLgpdConsent(e.target.checked)}
-            className="mt-0.5"
-          />
-          <span className="text-brand-ink/80 leading-relaxed">
-            Autorizo o uso dos dados informados acima para operação da minha conta no Recontrate, ciente dos{' '}
-            <button
-              type="button"
-              onClick={() => onNavigateUrl('/termos')}
-              className="underline font-semibold text-brand-link cursor-pointer"
-            >
-              Termos de Uso
-            </button>{' '}
-            e da{' '}
-            <button
-              type="button"
-              onClick={() => onNavigateUrl('/privacidade')}
-              className="underline font-semibold text-brand-link cursor-pointer"
-            >
-              Política de Privacidade e LGPD
-            </button>
-            .
-          </span>
-        </label>
+        <div className="space-y-3 pt-1">
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={lgpdConsent}
+              onChange={(e) => setLgpdConsent(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-brand-ink/80 leading-relaxed">
+              Declaro ter <strong>18 anos ou mais</strong> (cadastro bloqueado para menores de 12 anos — LGPD art. 14 §1º) e aceito os{' '}
+              <button
+                type="button"
+                onClick={() => onNavigateUrl('/termos')}
+                className="underline font-semibold text-brand-link cursor-pointer"
+              >
+                Termos de Uso ({CURRENT_TERMS_VERSION})
+              </button>{' '}
+              e a{' '}
+              <button
+                type="button"
+                onClick={() => onNavigateUrl('/privacidade')}
+                className="underline font-semibold text-brand-link cursor-pointer"
+              >
+                Política de Privacidade e LGPD ({CURRENT_PRIVACY_VERSION})
+              </button>
+              . *
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={marketingOptIn}
+              onChange={(e) => setMarketingOptIn(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-brand-ink/75 leading-relaxed">
+              (Opcional — LGPD art. 8º §4º) Autorizo receber novidades comerciais, campanhas e avisos promocionais do Recontrate por e-mail.
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={aiTrainingOptOut}
+              onChange={(e) => setAiTrainingOptOut(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="text-brand-ink/75 leading-relaxed">
+              Não utilizar meus dados de perfil ou descrições para treinamento de modelos externos de Inteligência Artificial (opt-out padrão LGPD/IA).
+            </span>
+          </label>
+        </div>
 
         <button
           type="submit"

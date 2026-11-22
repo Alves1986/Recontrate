@@ -115,6 +115,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
   } | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [exerciseWithdrawalRight, setExerciseWithdrawalRight] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [copiedQuoteTemplate, setCopiedQuoteTemplate] = useState(false);
   const [realtimeNotifications, setRealtimeNotifications] = useState<
@@ -468,6 +469,7 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
             reason:
               cancelReason.trim() ||
               'Cancelamento solicitado pelo prestador no painel',
+            exerciseWithdrawalRight,
           }),
         }
       );
@@ -477,11 +479,13 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
       }
       setShowCancelModal(false);
       setCancelReason('');
+      setExerciseWithdrawalRight(false);
       await loadSubscriptionData();
       setCheckoutNotice({
         type: 'success',
-        message:
-          'Assinatura cancelada sem multa. Seus benefícios seguem ativos até o fim do período já pago e seu histórico de avaliações permanece intacto.',
+        message: body.withdrawalRefund?.refunded
+          ? 'Cancelamento por arrependimento (CDC art. 49) concluído com reembolso integral e retorno imediato ao plano Gratuito.'
+          : 'Assinatura cancelada sem multa. Seus benefícios seguem ativos até o fim do período já pago e seu histórico de avaliações permanece intacto.',
       });
     } catch (err) {
       setCheckoutNotice({
@@ -1515,9 +1519,21 @@ export const ProviderDashboardScreen: React.FC<ProviderDashboardScreenProps> = (
               Confirmar cancelamento da assinatura
             </h3>
             <p className="text-brand-ink/80 leading-relaxed">
-              Não cobramos multa nem fidelidade. Você mantém os benefícios do plano{' '}
+              Não cobramos multa nem fidelidade. No cancelamento padrão você mantém os benefícios do plano{' '}
               <strong>{currentPlanConfig.nome}</strong> até o final do período já pago e depois retorna automaticamente para o plano Gratuito sem perder suas avaliações.
             </p>
+            <label className="flex items-start gap-2.5 p-3 rounded-xl bg-brand-background/70 border border-brand-primary/10 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={exerciseWithdrawalRight}
+                onChange={(e) => setExerciseWithdrawalRight(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-brand-primary"
+              />
+              <span className="leading-relaxed text-brand-ink">
+                <strong>Direito de Arrependimento (CDC art. 49 — até 7 dias corridos):</strong>{' '}
+                Solicitar cancelamento imediato com estorno integral de eventual valor já pago nos últimos 7 dias e retorno imediato ao plano Gratuito.
+              </span>
+            </label>
             <div className="space-y-1">
               <label className="font-semibold text-brand-ink block">
                 Motivo do cancelamento (opcional)

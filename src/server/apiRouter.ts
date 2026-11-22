@@ -524,11 +524,20 @@ export function createApiRouter(): express.Router {
           return;
         }
         const reason = req.body?.reason || 'Cancelamento solicitado no painel';
+        const exerciseWithdrawalRight = Boolean(
+          req.body?.exerciseWithdrawalRight
+        );
         const updated = await lifecycleService.cancelSubscription(
           subId,
-          reason
+          reason,
+          new Date(),
+          { exerciseWithdrawalRight }
         );
-        res.json({ ok: true, subscription: updated });
+        res.json({
+          ok: true,
+          subscription: updated,
+          withdrawalRefund: updated.withdrawalRefund ?? null,
+        });
       } catch (err) {
         res.status(400).json({ ok: false, error: (err as Error).message });
       }

@@ -60,6 +60,7 @@ async function registerAndOnboardUser(input: {
         neighborhood: input.neighborhood || 'Pinheiros',
         role: input.role,
         category: input.category || 'Eletricista',
+        birthDate: '1990-05-15',
         lgpdConsent: true,
       }),
     });

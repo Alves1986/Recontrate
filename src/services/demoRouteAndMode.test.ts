@@ -126,6 +126,7 @@ test('4. Backend bloqueia cadastro real, cobrança real e webhook real quando x-
       email: 'bloqueado@demo.confiare.invalid',
       password: 'Confiare#2026!Password',
       fullName: 'Teste Bloqueado',
+      birthDate: '1990-05-15',
     }),
   });
   assert.equal(regRes.status, 403);

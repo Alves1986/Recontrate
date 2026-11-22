@@ -54,6 +54,7 @@ async function createProviderAndAdminTokens() {
         neighborhood: 'Pinheiros',
         role: 'prestador',
         category: 'Elétrica',
+        birthDate: '1990-05-15',
         lgpdConsent: true,
       }),
     });
@@ -88,6 +89,7 @@ async function createProviderAndAdminTokens() {
           phone: '(11) 99123-0001',
           neighborhood: 'Pinheiros',
           role: 'cliente',
+          birthDate: '1990-05-15',
           lgpdConsent: true,
         }),
       })

@@ -44,6 +44,7 @@ test.before(async () => {
         password,
         fullName: 'Admin Checkout E2E',
         role: 'cliente',
+        birthDate: '1990-05-15',
         lgpdConsent: true,
       }),
     });
